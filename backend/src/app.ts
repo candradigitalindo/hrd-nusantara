@@ -22,6 +22,7 @@ import trainingRoutes from './routes/trainingRoutes';
 import competencyRoutes from './routes/competencyRoutes';
 import communicationRoutes from './routes/communicationRoutes';
 import whatsappRoutes from './routes/whatsappRoutes';
+import deviceRoutes from './routes/deviceRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 
@@ -108,6 +109,7 @@ export const createApp = () => {
   app.use('/api', competencyRoutes);
   app.use('/api', communicationRoutes);
   app.use('/api', whatsappRoutes);
+  app.use('/api', deviceRoutes);
   app.use('/api', reportRoutes);
 
   app.use((_req: Request, res: Response) => {

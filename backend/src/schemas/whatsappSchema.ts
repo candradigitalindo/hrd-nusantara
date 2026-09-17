@@ -74,7 +74,9 @@ export const listConversationQuerySchema = z.object({
   employeeId: ulidField.optional(),
   contactNumber: nomor.optional(),
   direction: z.enum(MESSAGE_DIRECTIONS).optional(),
-  /// Pencarian isi pesan, untuk pelacakan isu.
+  /// Pencarian isi pesan, untuk pelacakan isu. Per KATA UTUH, bukan potongan
+  /// kata: isi pesan terenkripsi, jadi pencocokan lewat indeks buta. Beberapa
+  /// kata berarti DAN. Lihat src/utils/fieldCrypto.ts.
   search: z.string().trim().min(2).max(200).optional(),
   startDate: dateOnlyField.optional(),
   endDate: dateOnlyField.optional(),
@@ -91,6 +93,18 @@ export const markNotifiedSchema = z
   .object({ eventIds: z.array(ulidField).min(1).max(200) })
   .strict();
 
+// --- Retensi ---
+
+/// dryRun bawaannya true: penghapusan permanen tidak boleh terjadi hanya
+/// karena seseorang salah menekan tombol atau lupa mengisi body.
+export const purgeSchema = z.object({ dryRun: z.boolean().default(true) }).strict();
+
+// --- Sesi Baileys ---
+
+/// logout bawaannya false: memutus sementara cukup untuk perawatan, sedangkan
+/// logout menghapus pairing dan memaksa scan QR ulang oleh pemegang nomor.
+export const disconnectSchema = z.object({ logout: z.boolean().default(false) }).strict();
+
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 export type UpdateAccountInput = z.infer<typeof updateAccountSchema>;
 export type ListAccountQuery = z.infer<typeof listAccountQuerySchema>;
@@ -98,3 +112,5 @@ export type BellysWebhookInput = z.infer<typeof bellysWebhookSchema>;
 export type ListConversationQuery = z.infer<typeof listConversationQuerySchema>;
 export type ListSessionEventQuery = z.infer<typeof listSessionEventQuerySchema>;
 export type MarkNotifiedInput = z.infer<typeof markNotifiedSchema>;
+export type PurgeInput = z.infer<typeof purgeSchema>;
+export type DisconnectInput = z.infer<typeof disconnectSchema>;

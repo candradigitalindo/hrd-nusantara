@@ -15,18 +15,22 @@
     "prisma:studio": "prisma studio",
     "test": "jest --runInBand",
     "test:watch": "jest --watch --runInBand",
-    "models:download": "bash scripts/download-models.sh"
+    "models:download": "bash scripts/download-models.sh",
+    "whatsapp:reencrypt": "ts-node src/whatsappReencrypt.ts",
+    "push:test": "ts-node scripts/uji-push.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.0.0",
+    "baileys": "^7.0.0-rc14",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
     "express": "^4.18.0",
     "express-rate-limit": "^8.7.0",
+    "firebase-admin": "^14.4.0",
     "helmet": "^6.0.0",
     "jsonwebtoken": "^9.0.0",
     "luxon": "^3.7.2",
@@ -34,6 +38,7 @@
     "onnxruntime-node": "^1.30.0",
     "pg": "^8.11.0",
     "prisma": "^5.0.0",
+    "qrcode": "^1.5.4",
     "redis": "^4.6.0",
     "sharp": "^0.35.4",
     "ulid": "^2.3.0",
@@ -48,6 +53,7 @@
     "@types/luxon": "^3.7.5",
     "@types/morgan": "^1.9.4",
     "@types/node": "^20.0.0",
+    "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.1",
     "jest": "^30.5.1",
     "nodemon": "^3.0.0",
@@ -55,5 +61,8 @@
     "ts-jest": "^29.4.12",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

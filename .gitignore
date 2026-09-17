@@ -52,3 +52,14 @@ Thumbs.db
 .flutter-plugins-dependencies
 *.iml
 mobile/build/
+
+# Kredensial sesi WhatsApp: setara akses penuh ke akun WhatsApp perusahaan.
+whatsapp-sessions/
+
+# Kunci privat service account (Firebase dsb). Ditaruh di dalam repo supaya
+# mudah di-mount ke container, tapi tidak boleh pernah ikut ter-commit.
+**/secrets/*
+# ...kecuali petunjuk cara menaruh kuncinya, yang justru harus ikut repo.
+!**/secrets/README.md
+*-adminsdk-*.json
+*serviceAccount*.json

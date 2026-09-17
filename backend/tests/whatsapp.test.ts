@@ -1,12 +1,12 @@
 import { createHmac } from 'crypto';
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import { prisma, resetDatabase, makeEmployee } from './helpers/db';
+import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
 
-const app = createApp();
+const app = bikinApp();
 
 const NOMOR_PERUSAHAAN = '08111111111';
 const NOMOR_PELANGGAN = '08222222222';
@@ -211,13 +211,20 @@ describe('Pengiriman ulang webhook', () => {
 
 describe('Arsip percakapan', () => {
   const isiArsip = async () => {
-    await daftarkanNomor();
-    await kirimWebhook(pesan({ body: 'Mau reservasi meja', messageId: 'm1' }));
-    await kirimWebhook(
-      pesan({ from: NOMOR_PERUSAHAAN, to: NOMOR_PELANGGAN, body: 'Meja tersedia', messageId: 'm2' })
+    // Tiap langkah penyiapan diperiksa: kalau webhook-nya gagal, kegagalan
+    // harus terlihat di sini, bukan muncul kemudian sebagai "hasil pencarian
+    // kosong" yang menunjuk ke tempat yang salah.
+    expectStatus(await daftarkanNomor(), 201);
+    expectStatus(await kirimWebhook(pesan({ body: 'Mau reservasi meja', messageId: 'm1' })), 201);
+    expectStatus(
+      await kirimWebhook(
+        pesan({ from: NOMOR_PERUSAHAAN, to: NOMOR_PELANGGAN, body: 'Meja tersedia', messageId: 'm2' })
+      ),
+      201
     );
-    await kirimWebhook(
-      pesan({ from: '08555555555', body: 'Keluhan: pesanan lama', messageId: 'm3' })
+    expectStatus(
+      await kirimWebhook(pesan({ from: '08555555555', body: 'Keluhan: pesanan lama', messageId: 'm3' })),
+      201
     );
   };
 
@@ -383,5 +390,194 @@ describe('Sesi Belly\'s dan pemberitahuan', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.reason).toBe('not_company_number');
+  });
+});
+
+describe('Enkripsi isi pesan di database', () => {
+  const siapkan = async () => {
+    expectStatus(await daftarkanNomor(), 201);
+    expectStatus(
+      await kirimWebhook(pesan({ body: 'Keluhan: pesanan lama sekali', messageId: 'enc-1' })),
+      201
+    );
+  };
+
+  it('tidak menyimpan isi pesan dalam bentuk terbuka', async () => {
+    await siapkan();
+
+    // Dibaca langsung dari database, melewati controller — ini yang akan
+    // dilihat siapa pun yang punya akses ke dump database.
+    const baris = await prisma.whatsAppConversation.findUniqueOrThrow({
+      where: { externalMessageId: 'enc-1' },
+      select: { messageBody: true, searchTokens: true },
+    });
+
+    expect(baris.messageBody).not.toContain('Keluhan');
+    expect(baris.messageBody).not.toContain('pesanan');
+    expect(baris.messageBody).toMatch(/^v1\./);
+    expect(baris.searchTokens.length).toBeGreaterThan(0);
+    // Indeksnya pun tidak boleh memuat katanya.
+    expect(baris.searchTokens.join(' ')).not.toContain('keluhan');
+  });
+
+  it('mengembalikan isi pesan yang terbaca lewat API', async () => {
+    await siapkan();
+
+    const res = await request(app).get('/api/whatsapp/conversations').set(auth(hrToken));
+
+    expectStatus(res, 200);
+    expect(res.body.data[0].messageBody).toBe('Keluhan: pesanan lama sekali');
+    // Token pencarian tidak ada gunanya bagi pembaca dan hanya memperbesar
+    // yang ikut bocor kalau responsnya bocor.
+    expect(res.body.data[0].searchTokens).toBeUndefined();
+  });
+
+  it('tetap bisa mencari walau isinya terenkripsi', async () => {
+    await siapkan();
+
+    const res = await request(app)
+      .get('/api/whatsapp/conversations?search=keluhan')
+      .set(auth(hrToken));
+
+    expectStatus(res, 200);
+    expect(res.body.pagination.total).toBe(1);
+  });
+
+  it('mencari beberapa kata sebagai DAN, bukan ATAU', async () => {
+    await siapkan();
+    expectStatus(
+      await kirimWebhook(pesan({ body: 'Pesanan sudah siap', messageId: 'enc-2' })),
+      201
+    );
+
+    // "pesanan" ada di kedua pesan, "keluhan" hanya di satu.
+    expectStatus(
+      await request(app).get('/api/whatsapp/conversations?search=pesanan').set(auth(hrToken)),
+      200
+    );
+    const satu = await request(app)
+      .get('/api/whatsapp/conversations?search=keluhan%20pesanan')
+      .set(auth(hrToken));
+
+    expect(satu.body.pagination.total).toBe(1);
+  });
+
+  it('tidak menemukan potongan kata', async () => {
+    await siapkan();
+
+    // Harga yang dibayar untuk enkripsi: pencarian menjadi per kata utuh.
+    // Diuji supaya perubahan perilaku ini tercatat, bukan mengagetkan.
+    const res = await request(app)
+      .get('/api/whatsapp/conversations?search=keluh')
+      .set(auth(hrToken));
+
+    expectStatus(res, 200);
+    expect(res.body.pagination.total).toBe(0);
+  });
+
+  it('tidak membuka seluruh arsip saat kata pencarian habis oleh tanda baca', async () => {
+    await siapkan();
+
+    // "??" tidak menyisakan satu token pun. Kalau ini diteruskan sebagai
+    // "cocokkan semua token" dengan daftar kosong, database akan menjawab
+    // dengan SELURUH arsip — kebocoran dari sebuah salah ketik.
+    const res = await request(app)
+      .get('/api/whatsapp/conversations?search=%3F%3F')
+      .set(auth(hrToken));
+
+    expectStatus(res, 200);
+    expect(res.body.pagination.total).toBe(0);
+    expect(res.body.data).toHaveLength(0);
+  });
+});
+
+describe('Retensi arsip', () => {
+  const HARI = 24 * 60 * 60 * 1000;
+
+  const isiArsipLamaBaru = async () => {
+    expectStatus(await daftarkanNomor(), 201);
+    expectStatus(
+      await kirimWebhook(
+        pesan({
+          body: 'Pesan lama',
+          messageId: 'tua-1',
+          timestamp: new Date(Date.now() - 400 * HARI).toISOString(),
+        })
+      ),
+      201
+    );
+    expectStatus(
+      await kirimWebhook(
+        pesan({ body: 'Pesan baru', messageId: 'muda-1', timestamp: new Date().toISOString() })
+      ),
+      201
+    );
+  };
+
+  /// Retensi dibaca dari environment saat boot; di test nilainya diganti
+  /// sementara supaya kedua cabang bisa diuji tanpa proses terpisah.
+  const denganRetensi = async <T>(hari: number, jalankan: () => Promise<T>): Promise<T> => {
+    const semula = env.WHATSAPP_RETENTION_DAYS;
+    (env as { WHATSAPP_RETENTION_DAYS: number }).WHATSAPP_RETENTION_DAYS = hari;
+    try {
+      return await jalankan();
+    } finally {
+      (env as { WHATSAPP_RETENTION_DAYS: number }).WHATSAPP_RETENTION_DAYS = semula;
+    }
+  };
+
+  const purge = (token: string, body: Record<string, unknown> = {}) =>
+    request(app).post('/api/whatsapp/retention/purge').set(auth(token)).send(body);
+
+  it('menolak menghapus kalau kebijakan retensi belum diatur', async () => {
+    await isiArsipLamaBaru();
+
+    const res = await denganRetensi(0, () => purge(hrToken, { dryRun: false }));
+
+    // Tanpa kebijakan, tidak ada dasar untuk menghapus apa pun.
+    expect(res.status).toBe(400);
+    expect(await prisma.whatsAppConversation.count()).toBe(2);
+  });
+
+  it('menghitung tanpa menghapus saat dry run', async () => {
+    await isiArsipLamaBaru();
+
+    const res = await denganRetensi(365, () => purge(hrToken, { dryRun: true }));
+
+    expectStatus(res, 200);
+    expect(res.body.wouldDeleteConversations).toBe(1);
+    expect(await prisma.whatsAppConversation.count()).toBe(2);
+  });
+
+  it('dry run adalah bawaannya kalau body kosong', async () => {
+    await isiArsipLamaBaru();
+
+    // Penghapusan permanen tidak boleh terjadi karena body lupa diisi.
+    const res = await denganRetensi(365, () => purge(hrToken));
+
+    expectStatus(res, 200);
+    expect(res.body.dryRun).toBe(true);
+    expect(await prisma.whatsAppConversation.count()).toBe(2);
+  });
+
+  it('menghapus hanya yang lewat masa simpan', async () => {
+    await isiArsipLamaBaru();
+
+    const res = await denganRetensi(365, () => purge(hrToken, { dryRun: false }));
+
+    expectStatus(res, 200);
+    expect(res.body.deletedConversations).toBe(1);
+
+    const sisa = await prisma.whatsAppConversation.findMany({ select: { externalMessageId: true } });
+    expect(sisa.map((s) => s.externalMessageId)).toEqual(['muda-1']);
+  });
+
+  it('menolak karyawan biasa menghapus arsip', async () => {
+    await isiArsipLamaBaru();
+
+    const res = await denganRetensi(365, () => purge(budiToken, { dryRun: false }));
+
+    expect(res.status).toBe(403);
+    expect(await prisma.whatsAppConversation.count()).toBe(2);
   });
 });

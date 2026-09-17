@@ -4,6 +4,12 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
 import { normalizePhoneNumber, resolveScope } from '../utils/whatsappRules';
+import { decryptField, tokenizeText, blindIndex } from '../utils/fieldCrypto';
+import { retentionCutoff } from '../utils/whatsappRetention';
+import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
+import { connectAccount, disconnectAccount, getSession, getQrString } from '../services/whatsapp/session';
+import { toDataURL } from 'qrcode';
+import { env } from '../config/env';
 import type {
   CreateAccountInput,
   UpdateAccountInput,
@@ -12,6 +18,8 @@ import type {
   ListConversationQuery,
   ListSessionEventQuery,
   MarkNotifiedInput,
+  PurgeInput,
+  DisconnectInput,
 } from '../schemas/whatsappSchema';
 
 const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
@@ -133,97 +141,54 @@ export const handleBellysWebhook = async (req: Request, res: Response) => {
   const payload = req.body as BellysWebhookInput;
 
   if (payload.event === 'session') {
-    const nomor = normalizePhoneNumber(payload.phoneNumber);
-    if (!nomor) return res.status(400).json({ error: 'Nomor tidak valid' });
+    const hasil = await applySessionEvent({
+      phoneNumber: payload.phoneNumber,
+      status: payload.status,
+      occurredAt: payload.timestamp,
+      note: payload.note,
+    });
 
-    const akun = await prisma.whatsAppAccount.findUnique({ where: { phoneNumber: nomor } });
-    if (!akun) {
+    if (hasil.status === 'nomor_tidak_valid') {
+      return res.status(400).json({ error: 'Nomor tidak valid' });
+    }
+    if (hasil.status === 'nomor_tidak_terdaftar') {
       return res.status(404).json({
         error: 'Nomor ini tidak terdaftar sebagai nomor perusahaan',
         reason: 'not_company_number',
       });
     }
 
-    const waktu = payload.timestamp ?? new Date();
-
-    await prisma.$transaction([
-      prisma.whatsAppSessionEvent.create({
-        data: {
-          id: generateULID(),
-          accountId: akun.id,
-          eventType: payload.status,
-          occurredAt: waktu,
-          note: payload.note,
-        },
-      }),
-      prisma.whatsAppAccount.update({
-        where: { id: akun.id },
-        data: {
-          sessionStatus: payload.status === 'connected' ? 'connected' : payload.status === 'disconnected' ? 'disconnected' : 'pending_scan',
-          ...(payload.status === 'connected' ? { lastConnectedAt: waktu } : {}),
-          ...(payload.status === 'disconnected' ? { lastDisconnectedAt: waktu } : {}),
-        },
-      }),
-    ]);
-
     return res.json({ accepted: true, event: 'session', status: payload.status });
   }
 
-  // event === 'message'
-  const akunAktif = await prisma.whatsAppAccount.findMany({
-    where: { isActive: true },
-    select: { id: true, phoneNumber: true, assignedEmployeeId: true },
-  });
-
-  const lingkup = resolveScope({
+  const hasil = await ingestMessage({
+    externalMessageId: payload.messageId,
     from: payload.from,
     to: payload.to,
-    companyNumbers: new Set(akunAktif.map((a) => a.phoneNumber)),
+    body: payload.body,
+    type: payload.type,
+    timestamp: payload.timestamp,
   });
 
-  if (!lingkup.allowed) {
+  if (hasil.status === 'ditolak') {
     // 202: kiriman diterima dan sengaja tidak diarsipkan. Menjawab error
-    // akan membuat Belly's mengirim ulang pesan yang memang di luar lingkup.
+    // akan membuat pengirimnya mengulang pesan yang memang di luar lingkup.
     return res.status(202).json({
       accepted: false,
-      reason: lingkup.rejection,
+      reason: hasil.alasan,
       message: 'Pesan di luar ruang lingkup pemantauan, tidak diarsipkan',
     });
   }
 
-  const akun = akunAktif.find((a) => a.phoneNumber === lingkup.companyNumber)!;
-
-  try {
-    const percakapan = await prisma.whatsAppConversation.create({
-      data: {
-        id: generateULID(),
-        accountId: akun.id,
-        externalMessageId: payload.messageId,
-        senderWhatsappNumber: normalizePhoneNumber(payload.from)!,
-        receiverWhatsappNumber: normalizePhoneNumber(payload.to)!,
-        contactNumber: lingkup.contactNumber!,
-        messageBody: payload.body,
-        messageType: payload.type,
-        timestamp: payload.timestamp,
-        direction: lingkup.direction!,
-        // Disalin saat pesan masuk: nomor bisa berpindah tangan, dan arsip
-        // lama harus tetap menunjuk pemegang yang benar saat itu.
-        employeeId: akun.assignedEmployeeId,
-      },
-      select: { id: true, direction: true, timestamp: true },
-    });
-
-    res.status(201).json({ accepted: true, conversationId: percakapan.id, direction: percakapan.direction });
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const ada = await prisma.whatsAppConversation.findUnique({
-        where: { externalMessageId: payload.messageId },
-        select: { id: true },
-      });
-      return res.json({ accepted: true, duplicate: true, conversationId: ada?.id });
-    }
-    throw error;
+  if (hasil.status === 'duplikat') {
+    return res.json({ accepted: true, duplicate: true, conversationId: hasil.conversationId });
   }
+
+  res.status(201).json({
+    accepted: true,
+    conversationId: hasil.conversationId,
+    direction: hasil.direction,
+  });
 };
 
 // ============ Arsip percakapan ============
@@ -252,9 +217,24 @@ export const getConversations = async (req: Request, res: Response) => {
     ...(query.accountId ? { accountId: query.accountId } : {}),
     ...(query.employeeId ? { employeeId: query.employeeId } : {}),
     ...(query.direction ? { direction: query.direction } : {}),
-    // Pelacakan isu: pencarian isi pesan.
-    ...(query.search ? { messageBody: { contains: query.search, mode: 'insensitive' } } : {}),
   };
+
+  // Pelacakan isu. Isi pesan terenkripsi, jadi LIKE tidak mungkin: kata yang
+  // dicari diubah menjadi HMAC yang sama seperti saat pesan disimpan, lalu
+  // dicocokkan pada indeks buta. Beberapa kata berarti DAN, bukan ATAU.
+  if (query.search) {
+    const token = tokenizeText(query.search).map(blindIndex);
+    if (token.length === 0) {
+      // Yang dicari habis oleh tanda baca (misalnya "??"). hasEvery dengan
+      // array kosong cocok dengan SEMUA baris, jadi harus dicegat di sini —
+      // kalau tidak, pencarian tak berarti justru membuka seluruh arsip.
+      return res.json({
+        data: [],
+        pagination: { page: query.page, limit: query.limit, total: 0, totalPages: 1 },
+      });
+    }
+    where.searchTokens = { hasEvery: token };
+  }
 
   if (query.contactNumber) {
     const nomor = normalizePhoneNumber(query.contactNumber);
@@ -283,13 +263,64 @@ export const getConversations = async (req: Request, res: Response) => {
   ]);
 
   res.json({
-    data,
+    // Token pencarian tidak pernah ikut keluar: tidak berguna bagi pembaca
+    // dan hanya memperbesar permukaan kalau responsnya bocor.
+    data: data.map((row) => ({ ...row, messageBody: decryptField(row.messageBody) })),
     pagination: {
       page: query.page,
       limit: query.limit,
       total,
       totalPages: Math.ceil(total / query.limit) || 1,
     },
+  });
+};
+
+// ============ Retensi ============
+
+/**
+ * Menghapus arsip yang sudah lewat masa simpan.
+ *
+ * Bawaannya dry run. Ini penghapusan permanen atas data yang tidak bisa
+ * dipulihkan dari mana pun, jadi yang menjalankan harus menyatakan
+ * dryRun: false secara eksplisit setelah melihat berapa yang akan hilang.
+ */
+export const purgeExpiredConversations = async (req: Request, res: Response) => {
+  const { dryRun } = req.body as PurgeInput;
+
+  const batas = retentionCutoff(new Date(), env.WHATSAPP_RETENTION_DAYS);
+  if (!batas) {
+    return res.status(400).json({
+      error:
+        'Kebijakan retensi belum diatur. Setel WHATSAPP_RETENTION_DAYS lebih dulu, ' +
+        'baru arsip boleh dihapus.',
+    });
+  }
+
+  const ringkasan = { retentionDays: env.WHATSAPP_RETENTION_DAYS, cutoff: batas };
+
+  if (dryRun) {
+    const [percakapan, kejadian] = await Promise.all([
+      prisma.whatsAppConversation.count({ where: { timestamp: { lt: batas } } }),
+      prisma.whatsAppSessionEvent.count({ where: { occurredAt: { lt: batas } } }),
+    ]);
+    return res.json({
+      dryRun: true,
+      ...ringkasan,
+      wouldDeleteConversations: percakapan,
+      wouldDeleteSessionEvents: kejadian,
+    });
+  }
+
+  const [percakapan, kejadian] = await prisma.$transaction([
+    prisma.whatsAppConversation.deleteMany({ where: { timestamp: { lt: batas } } }),
+    prisma.whatsAppSessionEvent.deleteMany({ where: { occurredAt: { lt: batas } } }),
+  ]);
+
+  res.json({
+    dryRun: false,
+    ...ringkasan,
+    deletedConversations: percakapan.count,
+    deletedSessionEvents: kejadian.count,
   });
 };
 
@@ -350,4 +381,93 @@ export const markEventsNotified = async (req: Request, res: Response) => {
   });
 
   res.json({ marked: hasil.count });
+};
+
+// ============ Sesi Baileys ============
+
+const akunUntukSesi = async (id: string) =>
+  prisma.whatsAppAccount.findUnique({
+    where: { id },
+    select: { id: true, phoneNumber: true, label: true, isActive: true, assignedEmployeeId: true },
+  });
+
+const driverMati = (res: Response) =>
+  res.status(503).json({
+    error: 'Driver WhatsApp tidak aktif. Setel WHATSAPP_BAILEYS_ENABLED=true untuk menyalakannya.',
+  });
+
+/**
+ * Menyambungkan nomor perusahaan ke WhatsApp.
+ *
+ * Tidak mengembalikan QR secara langsung: QR baru muncul beberapa saat
+ * setelah koneksi dibuka, jadi pemanggilnya menyambung lalu menanyakan
+ * GET .../session sampai QR-nya ada.
+ */
+export const connectWhatsAppAccount = async (req: Request, res: Response) => {
+  if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+
+  const akun = await akunUntukSesi(req.params.id);
+  if (!akun) return res.status(404).json({ error: 'Nomor WhatsApp tidak ditemukan' });
+  if (!akun.isActive) {
+    return res.status(409).json({ error: 'Nomor ini nonaktif. Aktifkan dulu sebelum disambungkan.' });
+  }
+
+  const sesi = await connectAccount(akun.id, akun.phoneNumber);
+  res.status(202).json({ ...sesi, label: akun.label });
+};
+
+/**
+ * Keadaan sesi berikut QR-nya kalau sedang menunggu scan.
+ *
+ * Boleh dilihat pemegang nomornya sendiri, bukan hanya HR: yang harus
+ * memindai QR dengan ponsel perusahaan adalah dia.
+ */
+export const getWhatsAppSession = async (req: Request, res: Response) => {
+  const actor = req.user!;
+
+  const akun = await akunUntukSesi(req.params.id);
+  if (!akun) return res.status(404).json({ error: 'Nomor WhatsApp tidak ditemukan' });
+
+  if (!isHr(actor.role) && akun.assignedEmployeeId !== actor.id) {
+    return res.status(403).json({ error: 'Anda bukan pemegang nomor ini' });
+  }
+
+  if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+
+  const sesi = getSession(akun.id);
+  if (!sesi) {
+    return res.json({
+      accountId: akun.id,
+      phoneNumber: akun.phoneNumber,
+      label: akun.label,
+      status: 'disconnected',
+      qrTersedia: false,
+      qr: null,
+      catatan: 'Sesi belum pernah dibuka di proses ini.',
+    });
+  }
+
+  const qr = getQrString(akun.id);
+
+  res.json({
+    ...sesi,
+    label: akun.label,
+    // QR dikirim sebagai gambar data URL supaya bisa langsung ditampilkan
+    // di web maupun aplikasi mobile tanpa pustaka tambahan.
+    qr: qr ? await toDataURL(qr) : null,
+  });
+};
+
+export const disconnectWhatsAppAccount = async (req: Request, res: Response) => {
+  if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+
+  const { logout } = req.body as DisconnectInput;
+
+  const akun = await akunUntukSesi(req.params.id);
+  if (!akun) return res.status(404).json({ error: 'Nomor WhatsApp tidak ditemukan' });
+
+  const sesi = await disconnectAccount(akun.id, { logout });
+  if (!sesi) return res.status(409).json({ error: 'Tidak ada sesi aktif untuk nomor ini' });
+
+  res.json({ ...sesi, label: akun.label });
 };

@@ -70,9 +70,26 @@ services:
       FACE_ANTISPOOF_MODEL: /app/models/antispoof/minifasnet_v2.onnx
       FACE_LIVENESS_THRESHOLD: ${FACE_LIVENESS_THRESHOLD:-0.6}
       FACE_LIVENESS_ENABLED: ${FACE_LIVENESS_ENABLED:-true}
+      # Pemantauan WhatsApp. Bawaan mati; kalau dinyalakan, FIELD_ENCRYPTION_KEY
+      # wajib ada atau backend menolak boot.
+      BELLYS_WEBHOOK_SECRET: ${BELLYS_WEBHOOK_SECRET:-}
+      WHATSAPP_MONITORING_ENABLED: ${WHATSAPP_MONITORING_ENABLED:-false}
+      WHATSAPP_RETENTION_DAYS: ${WHATSAPP_RETENTION_DAYS:-0}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+      # Satu nomor WhatsApp hanya boleh dipegang satu proses; kalau backend
+      # discale lebih dari satu replika, nyalakan hanya di salah satunya.
+      WHATSAPP_BAILEYS_ENABLED: ${WHATSAPP_BAILEYS_ENABLED:-false}
+      WHATSAPP_SESSION_DIR: /app/whatsapp-sessions
+      PUSH_NOTIFICATIONS_ENABLED: ${PUSH_NOTIFICATIONS_ENABLED:-false}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/secrets/firebase-service-account.json}
     volumes:
       # Foto pendaftaran wajah harus tetap ada walau container dibuat ulang.
       - faceuploads:/app/uploads
+      # Kredensial sesi WhatsApp harus bertahan walau container dibuat ulang,
+      # kalau tidak semua nomor harus discan QR ulang tiap deploy.
+      - whatsappsessions:/app/whatsapp-sessions
+      # Kunci privat, read-only. Tidak masuk image: di-mount dari host.
+      - ./backend/secrets:/app/secrets:ro
     ports:
       - '${BACKEND_PORT:-3000}:3000'
 
@@ -80,3 +97,4 @@ volumes:
   pgdata:
   redisdata:
   faceuploads:
+  whatsappsessions:

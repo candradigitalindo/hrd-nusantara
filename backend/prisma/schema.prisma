@@ -106,6 +106,7 @@ model Employee {
   scheduledShifts       ShiftSchedule[] // Employee yang dijadwalkan shift
   conductedInterviews   Interview[] // Employee yang melakukan wawancara
   evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
+  deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
 
   @@index([departmentId])
   @@index([positionId])
@@ -1476,7 +1477,15 @@ model WhatsAppConversation {
   /// Disimpan terpisah agar pencarian per kontak tidak perlu menebak arah.
   contactNumber String
 
+  /// Terenkripsi AES-256-GCM (lihat src/utils/fieldCrypto.ts). Jangan
+  /// dibaca langsung dari database: pakai decryptField.
   messageBody String
+
+  /// Indeks buta: tiap kata pada isi pesan disimpan sebagai HMAC. Ini yang
+  /// membuat pencarian tetap mungkin walau isinya terenkripsi. Tidak bisa
+  /// dibalikkan menjadi kata tanpa FIELD_ENCRYPTION_KEY.
+  searchTokens String[]
+
   messageType String @default("text") // text, image, document, audio, video
 
   timestamp DateTime
@@ -1497,6 +1506,8 @@ model WhatsAppConversation {
   @@index([senderWhatsappNumber])
   @@index([accountId, timestamp])
   @@index([contactNumber])
+  /// GIN: pencarian memakai hasEvery pada array token.
+  @@index([searchTokens], type: Gin)
 }
 
 model ComplaintOrDisciplinaryAction {
@@ -1602,4 +1613,35 @@ model PerformanceFormTemplate {
 
   @@index([positionId])
   @@index([isActive])
+}
+
+/// Perangkat yang berhak menerima notifikasi push milik seorang karyawan.
+///
+/// Dipisah dari Employee karena satu orang bisa memasang aplikasi di beberapa
+/// perangkat, dan tiap pemasangan punya token sendiri yang bisa kedaluwarsa
+/// sendiri-sendiri.
+model DeviceToken {
+  id String @id
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  /// Token dari Firebase Cloud Messaging. Unik: satu token milik satu
+  /// pemasangan aplikasi. Kalau ponsel berpindah tangan, tokennya harus
+  /// BERPINDAH pemilik — bukan terduplikasi — supaya notifikasi orang lama
+  /// tidak terus mengalir ke pemegang baru.
+  token String @unique
+
+  platform String // android, ios, web
+
+  /// Token yang ditolak FCM sebagai tidak sah dimatikan, bukan dihapus:
+  /// jejaknya masih berguna untuk menelusuri perangkat mana yang berhenti
+  /// menerima pemberitahuan.
+  isActive Boolean @default(true)
+
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([employeeId, isActive])
 }

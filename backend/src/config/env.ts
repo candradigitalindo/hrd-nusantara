@@ -103,6 +103,50 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
+  // Menyalakan driver Baileys: backend membuka koneksi WhatsApp sendiri,
+  // tanpa layanan pihak ketiga. Terpisah dari WHATSAPP_MONITORING_ENABLED
+  // supaya arsip dan webhook tetap bisa dipakai tanpa membuka koneksi —
+  // berguna saat backend dijalankan lebih dari satu instance, karena satu
+  // nomor WhatsApp hanya boleh dipegang oleh satu proses.
+  WHATSAPP_BAILEYS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  // Kredensial sesi WhatsApp disimpan di sini. Isinya setara dengan akses
+  // penuh ke akun WhatsApp itu, jadi harus di luar direktori yang disajikan
+  // ke publik dan tidak boleh ikut masuk git.
+  WHATSAPP_SESSION_DIR: z.string().default('./whatsapp-sessions'),
+
+  // Berapa lama arsip percakapan disimpan sebelum boleh dihapus. 0 berarti
+  // tanpa batas — sengaja dijadikan bawaan, karena menghapus arsip secara
+  // diam-diam adalah kerusakan yang tidak bisa dibatalkan. Berapa lamanya
+  // adalah keputusan hukum dan bisnis, bukan keputusan kode.
+  WHATSAPP_RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(0),
+
+  // --- Notifikasi push ke ponsel karyawan ---
+  // Dipakai untuk memberi tahu pemegang nomor bahwa sesi WhatsApp-nya
+  // terputus atau perlu discan ulang.
+  PUSH_NOTIFICATIONS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  // Berkas JSON service account Firebase. Isinya kunci privat: simpan di luar
+  // repo dan jangan disajikan lewat HTTP.
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+
+  // --- Enkripsi kolom ---
+  // Kunci induk untuk data pribadi yang tersimpan di database (mulai dari
+  // isi pesan WhatsApp). Sekali diisi JANGAN diganti tanpa mengenkripsi
+  // ulang seluruh baris lama: baris lama tidak akan terbaca lagi.
+  FIELD_ENCRYPTION_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, 'base64').length === 32, {
+      message: 'FIELD_ENCRYPTION_KEY harus 32 byte dalam base64. Generate: openssl rand -base64 32',
+    })
+    .optional(),
+
   UPLOAD_DIR: z.string().default('./uploads'),
 
   // Foto selfie tiap check-in TIDAK disimpan secara bawaan.
@@ -116,7 +160,37 @@ const envSchema = z.object({
     .transform((v) => v === 'true'),
 });
 
-const parsed = envSchema.safeParse(process.env);
+/**
+ * Pemantauan WhatsApp menyimpan isi percakapan orang, termasuk pelanggan dan
+ * tamu yang tidak pernah menjadi bagian dari perusahaan. Menyalakannya tanpa
+ * kunci enkripsi berarti menumpuk data pribadi dalam bentuk terbuka, jadi
+ * kombinasi itu ditolak sejak boot — bukan dibiarkan jalan dan baru ketahuan
+ * saat audit.
+ */
+const konfigurasi = envSchema.superRefine((cfg, ctx) => {
+  // Push yang dinyalakan tanpa kredensial akan gagal diam-diam pada setiap
+  // notifikasi, dan gejalanya baru terasa saat ada nomor yang sesinya putus
+  // berhari-hari tanpa ada yang diberi tahu.
+  if (cfg.PUSH_NOTIFICATIONS_ENABLED && !cfg.FIREBASE_SERVICE_ACCOUNT_PATH) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['FIREBASE_SERVICE_ACCOUNT_PATH'],
+      message: 'wajib diisi kalau PUSH_NOTIFICATIONS_ENABLED=true.',
+    });
+  }
+
+  if (cfg.WHATSAPP_MONITORING_ENABLED && !cfg.FIELD_ENCRYPTION_KEY) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['FIELD_ENCRYPTION_KEY'],
+      message:
+        'wajib diisi kalau WHATSAPP_MONITORING_ENABLED=true, karena isi pesan tidak boleh ' +
+        'tersimpan terbuka. Generate: openssl rand -base64 32',
+    });
+  }
+});
+
+const parsed = konfigurasi.safeParse(process.env);
 
 if (!parsed.success) {
   console.error('\nKonfigurasi environment tidak valid:\n');

@@ -8,6 +8,10 @@ import {
   getConversations,
   getSessionEvents,
   markEventsNotified,
+  purgeExpiredConversations,
+  connectWhatsAppAccount,
+  getWhatsAppSession,
+  disconnectWhatsAppAccount,
 } from '../controllers/whatsappController';
 import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -19,6 +23,8 @@ import {
   listConversationQuerySchema,
   listSessionEventQuerySchema,
   markNotifiedSchema,
+  purgeSchema,
+  disconnectSchema,
 } from '../schemas/whatsappSchema';
 
 const router = express.Router();
@@ -50,6 +56,28 @@ router.put(
   asyncHandler(updateAccount)
 );
 
+// --- Sesi WhatsApp (Baileys) ---
+router.post(
+  '/whatsapp/accounts/:id/connect',
+  requireRole(...HR),
+  validate(idParamSchema, 'params'),
+  asyncHandler(connectWhatsAppAccount)
+);
+// Tanpa requireRole: pemegang nomor perlu melihat QR-nya sendiri untuk
+// memindai ulang. Penyaringan siapa melihat apa dikerjakan di controller.
+router.get(
+  '/whatsapp/accounts/:id/session',
+  validate(idParamSchema, 'params'),
+  asyncHandler(getWhatsAppSession)
+);
+router.post(
+  '/whatsapp/accounts/:id/disconnect',
+  requireRole(...HR),
+  validate(idParamSchema, 'params'),
+  validate(disconnectSchema),
+  asyncHandler(disconnectWhatsAppAccount)
+);
+
 // --- Arsip percakapan ---
 // Hanya HR: arsip ini memuat data pribadi pihak ketiga (pelanggan dan tamu)
 // yang tidak pernah menjadi bagian dari perusahaan.
@@ -58,6 +86,17 @@ router.get(
   requireRole(...HR),
   validate(listConversationQuerySchema, 'query'),
   asyncHandler(getConversations)
+);
+
+// --- Retensi ---
+// Tidak ada penjadwal di dalam aplikasi; ini dipanggil oleh cron di luar,
+// supaya jadwal penghapusan terlihat dan bisa diaudit oleh yang mengelola
+// server, bukan tersembunyi di dalam proses.
+router.post(
+  '/whatsapp/retention/purge',
+  requireRole(...HR),
+  validate(purgeSchema),
+  asyncHandler(purgeExpiredConversations)
 );
 
 // --- Kejadian sesi ---
