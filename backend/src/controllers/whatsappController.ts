@@ -262,6 +262,27 @@ export const getConversations = async (req: Request, res: Response) => {
     }),
   ]);
 
+  // Arsip ini memuat percakapan pelanggan dan tamu yang tidak pernah menjadi
+  // bagian dari perusahaan. Siapa membaca apa, dan dengan penyaring apa,
+  // harus bisa dijawab saat diaudit — itu inti pertanggungjawaban UU PDP.
+  res.locals.audit = {
+    action: 'whatsapp.conversations.read',
+    entity: 'WhatsAppConversation',
+    summary: `Membaca ${data.length} percakapan dari ${total} hasil`,
+    metadata: {
+      penyaring: {
+        accountId: query.accountId,
+        employeeId: query.employeeId,
+        contactNumber: query.contactNumber,
+        direction: query.direction,
+        pencarian: query.search,
+        startDate: query.startDate,
+        endDate: query.endDate,
+      },
+      total,
+    },
+  };
+
   res.json({
     // Token pencarian tidak pernah ikut keluar: tidak berguna bagi pembaca
     // dan hanya memperbesar permukaan kalau responsnya bocor.
@@ -303,6 +324,13 @@ export const purgeExpiredConversations = async (req: Request, res: Response) => 
       prisma.whatsAppConversation.count({ where: { timestamp: { lt: batas } } }),
       prisma.whatsAppSessionEvent.count({ where: { occurredAt: { lt: batas } } }),
     ]);
+    res.locals.audit = {
+      action: 'whatsapp.retention.purge',
+      entity: 'WhatsAppConversation',
+      summary: `Simulasi hapus: ${percakapan} percakapan akan terhapus`,
+      metadata: { dryRun: true, ...ringkasan, akanTerhapus: percakapan },
+    };
+
     return res.json({
       dryRun: true,
       ...ringkasan,
@@ -315,6 +343,20 @@ export const purgeExpiredConversations = async (req: Request, res: Response) => 
     prisma.whatsAppConversation.deleteMany({ where: { timestamp: { lt: batas } } }),
     prisma.whatsAppSessionEvent.deleteMany({ where: { occurredAt: { lt: batas } } }),
   ]);
+
+  // Penghapusan permanen atas data yang tidak bisa dipulihkan dari mana pun.
+  // Kalau satu jejak saja harus ada di tabel ini, ini orangnya.
+  res.locals.audit = {
+    action: 'whatsapp.retention.purge',
+    entity: 'WhatsAppConversation',
+    summary: `MENGHAPUS PERMANEN ${percakapan.count} percakapan dan ${kejadian.count} kejadian sesi`,
+    metadata: {
+      dryRun: false,
+      ...ringkasan,
+      terhapusPercakapan: percakapan.count,
+      terhapusKejadianSesi: kejadian.count,
+    },
+  };
 
   res.json({
     dryRun: false,
@@ -413,6 +455,15 @@ export const connectWhatsAppAccount = async (req: Request, res: Response) => {
   }
 
   const sesi = await connectAccount(akun.id, akun.phoneNumber);
+
+  res.locals.audit = {
+    action: 'whatsapp.session.connect',
+    entity: 'WhatsAppAccount',
+    entityId: akun.id,
+    summary: `Membuka sesi WhatsApp untuk ${akun.label}`,
+    metadata: { phoneNumber: akun.phoneNumber, status: sesi.status },
+  };
+
   res.status(202).json({ ...sesi, label: akun.label });
 };
 
@@ -468,6 +519,16 @@ export const disconnectWhatsAppAccount = async (req: Request, res: Response) => 
 
   const sesi = await disconnectAccount(akun.id, { logout });
   if (!sesi) return res.status(409).json({ error: 'Tidak ada sesi aktif untuk nomor ini' });
+
+  res.locals.audit = {
+    action: 'whatsapp.session.disconnect',
+    entity: 'WhatsAppAccount',
+    entityId: akun.id,
+    summary: logout
+      ? `Logout sesi ${akun.label} — pemegang nomor harus scan QR ulang`
+      : `Memutus sementara sesi ${akun.label}`,
+    metadata: { phoneNumber: akun.phoneNumber, logout },
+  };
 
   res.json({ ...sesi, label: akun.label });
 };

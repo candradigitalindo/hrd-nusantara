@@ -36,6 +36,16 @@ export const login = async (req: Request, res: Response) => {
   // Pesan error sengaja sama untuk email tidak ada, password salah, dan akun
   // belum punya password — supaya tidak membocorkan email mana yang terdaftar.
   if (!employee || !employee.password || !isValid) {
+    // Percobaan login yang gagal dicatat: beruntun dari satu IP, inilah
+    // satu-satunya tanda awal ada yang menebak kata sandi. Kata sandinya
+    // sendiri tidak pernah ikut, hanya email yang dicoba.
+    res.locals.audit = {
+      action: 'auth.login.gagal',
+      entity: 'Employee',
+      entityId: employee?.id,
+      summary: `Login gagal untuk ${email}`,
+      metadata: { email, alasan: !employee ? 'email_tidak_terdaftar' : 'password_salah' },
+    };
     return res.status(401).json({ error: 'Email atau password salah' });
   }
 
@@ -63,6 +73,13 @@ export const login = async (req: Request, res: Response) => {
       console.warn('Gagal mencatat lastLoginAt:', error);
     }
   }
+
+  res.locals.audit = {
+    action: 'auth.login.berhasil',
+    entity: 'Employee',
+    entityId: employee.id,
+    summary: `${employee.email} login`,
+  };
 
   res.json({
     token,

@@ -1645,3 +1645,56 @@ model DeviceToken {
 
   @@index([employeeId, isActive])
 }
+
+/// Jejak audit: siapa melakukan apa, kapan.
+///
+/// UU PDP 27/2022 menuntut pengendali data bisa menunjukkan pertanggungjawaban
+/// atas pemrosesan data pribadi. Sistem ini menyimpan gaji, data biometrik,
+/// dan arsip percakapan pelanggan — tanpa jejak audit, tidak ada cara
+/// menjawab "siapa yang menghapus arsip itu" atau "siapa yang membaca
+/// percakapan tamu bulan lalu".
+///
+/// Tabel ini APPEND-ONLY, ditegakkan trigger database, bukan sekadar
+/// kesepakatan di kode. Jejak audit yang bisa disunting oleh orang yang
+/// diauditnya bukan jejak audit.
+model AuditLog {
+  id String @id
+
+  /// SENGAJA tanpa relasi ke Employee. Relasi menuntut onDelete: SetNull,
+  /// dan SetNull adalah UPDATE — yang justru ditolak trigger append-only.
+  /// Identitas pelaku disalin sebagai cuplikan supaya jejaknya tetap
+  /// terbaca walau karyawannya sudah dihapus atau ganti peran.
+  actorId    String?
+  actorEmail String?
+  actorRole  String?
+
+  /// Pola rute yang dijalankan, misalnya "POST /api/whatsapp/retention/purge".
+  /// Dipakai pola, bukan path mentah, supaya bisa dikelompokkan; path
+  /// sebenarnya beserta id-nya tetap disimpan terpisah.
+  action String
+
+  entity   String?
+  entityId String?
+
+  method     String
+  path       String
+  statusCode Int
+
+  /// Keterangan singkat berbahasa manusia, diisi controller bila perlu.
+  summary String?
+
+  /// Rincian tambahan. Isi permintaan TIDAK pernah disalin ke sini apa
+  /// adanya: body memuat kata sandi, isi percakapan, dan foto wajah.
+  /// Controller yang ingin mencatat rincian harus memilihnya sendiri.
+  metadata Json?
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}

@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
+import { auditTrail } from './middleware/auditTrail';
 import { prisma } from './lib/prisma';
 import authRoutes from './routes/authRoutes';
 import employeeRoutes from './routes/employeeRoutes';
@@ -23,6 +24,7 @@ import competencyRoutes from './routes/competencyRoutes';
 import communicationRoutes from './routes/communicationRoutes';
 import whatsappRoutes from './routes/whatsappRoutes';
 import deviceRoutes from './routes/deviceRoutes';
+import auditRoutes from './routes/auditRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 
@@ -87,6 +89,10 @@ export const createApp = () => {
   // Webhook dipasang sebelum router lain: router-router di bawah memanggil
   // router.use(authenticateToken) dan sama-sama dipasang di '/api', sehingga
   // permintaan mesin akan tertolak sebagai "token tidak ada" bila lewat sana.
+  // Sebelum semua rute: pencatatannya berjalan saat respons selesai, jadi
+  // harus sudah terpasang sebelum rute mana pun menangani permintaan.
+  app.use('/api', auditTrail);
+
   app.use('/api/webhook', webhookRoutes);
 
   app.use('/api/auth', authRoutes);
@@ -110,6 +116,7 @@ export const createApp = () => {
   app.use('/api', communicationRoutes);
   app.use('/api', whatsappRoutes);
   app.use('/api', deviceRoutes);
+  app.use('/api', auditRoutes);
   app.use('/api', reportRoutes);
 
   app.use((_req: Request, res: Response) => {

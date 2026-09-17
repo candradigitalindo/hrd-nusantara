@@ -210,8 +210,41 @@ export const updateEmployee = async (req: Request, res: Response) => {
       : { disconnect: true };
   }
 
+  // Nilai sebelum perubahan, khusus untuk yang menyangkut hak akses dan
+  // status kerja. Jejak "role diubah" tanpa nilai lamanya tidak menjawab
+  // pertanyaan yang justru ditanyakan saat audit: naik dari apa ke apa.
+  const perluNilaiLama = input.role !== undefined || input.status !== undefined;
+  const sebelum = perluNilaiLama
+    ? await prisma.employee.findUnique({ where: { id }, select: { role: true, status: true } })
+    : null;
+
   try {
     const employee = await prisma.employee.update({ where: { id }, data, select: employeeSelect });
+
+    res.locals.audit = {
+      action: input.role !== undefined ? 'employee.ubah.role' : 'employee.ubah',
+      entity: 'Employee',
+      entityId: id,
+      summary:
+        input.role !== undefined && sebelum && sebelum.role !== input.role
+          ? `Mengubah role ${employee.email} dari ${sebelum.role} menjadi ${input.role}`
+          : `Memperbarui data ${employee.email}`,
+      // Hanya NAMA field yang berubah, bukan nilainya: alamat, tanggal lahir,
+      // dan nomor telepon adalah data pribadi yang tidak perlu disalin ke
+      // tabel audit yang tidak terenkripsi dan tidak bisa dihapus.
+      metadata: {
+        fieldBerubah: Object.keys(input),
+        ...(sebelum
+          ? {
+              roleSebelum: sebelum.role,
+              roleSesudah: employee.role,
+              statusSebelum: sebelum.status,
+              statusSesudah: employee.status,
+            }
+          : {}),
+      },
+    };
+
     res.json(employee);
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {

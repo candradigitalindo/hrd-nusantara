@@ -371,6 +371,26 @@ export const decidePayrollRun = async (req: Request, res: Response) => {
     });
   });
 
+  // Persetujuan penggajian mengunci angka yang akan dibayarkan ke orang.
+  // Siapa yang menyetujui, dan berapa totalnya saat itu, harus tercatat.
+  res.locals.audit = {
+    action: approved ? 'payroll.run.setujui' : 'payroll.run.kembalikan',
+    entity: 'PayrollRun',
+    entityId: run.id,
+    summary: approved
+      ? `Menyetujui batch penggajian ${run.code}`
+      : `Mengembalikan batch penggajian ${run.code} ke draft`,
+    metadata: {
+      kode: run.code,
+      nama: run.name,
+      periodeMulai: run.periodStart,
+      periodeSelesai: run.periodEnd,
+      statusSebelum: run.status,
+      statusSesudah: hasil.status,
+      catatan: note,
+    },
+  };
+
   res.json({
     message: approved ? 'Batch penggajian disetujui' : 'Batch dikembalikan ke draft',
     payrollRun: hasil,
