@@ -1,11 +1,21 @@
 import request from 'supertest';
+import type http from 'http';
 import type { Express } from 'express';
 import { DEFAULT_PASSWORD } from './db';
 
+/** Express app maupun server yang sudah mendengarkan; keduanya diterima supertest. */
+export type AppUji = Express | http.Server;
+
 /** Menghitung rute yang benar-benar terpasang pada sebuah app Express. */
-const hitungRute = (app: Express): string => {
+const hitungRute = (app: AppUji): string => {
   try {
-    const stack = (app as unknown as { _router?: { stack?: unknown[] } })._router?.stack;
+    // Kalau yang diberikan sebuah http.Server, app Express-nya ada sebagai
+    // penangan event 'request'.
+    const mungkinServer = app as unknown as { _events?: { request?: unknown } };
+    const express = (mungkinServer._events?.request ?? app) as {
+      _router?: { stack?: unknown[] };
+    };
+    const stack = express._router?.stack;
     if (!Array.isArray(stack)) return 'router-tidak-ada';
 
     const punyaAuth = stack.some((lapis) => {
@@ -19,7 +29,7 @@ const hitungRute = (app: Express): string => {
   }
 };
 
-export const login = async (app: Express, email: string, password = DEFAULT_PASSWORD) => {
+export const login = async (app: AppUji, email: string, password = DEFAULT_PASSWORD) => {
   const res = await request(app)
     .post('/api/auth/login')
     .send({ email, password });
@@ -39,6 +49,10 @@ export const login = async (app: Express, email: string, password = DEFAULT_PASS
       // server lain": kalau rutenya terpasang tapi jawabannya 404 HTML,
       // berarti respons itu bukan berasal dari app ini.
       `app=${hitungRute(app)}`,
+      // Ke mana permintaan ini SEBENARNYA dikirim. Kalau jawabannya datang
+      // dari server lain, inilah satu-satunya petunjuk yang membedakannya
+      // dari bug di aplikasi sendiri.
+      `url=${(res as unknown as { request?: { url?: string } }).request?.url ?? '-'}`,
     ].join(' ');
 
     throw new Error(`Login gagal untuk ${email}: ${rincian}`);

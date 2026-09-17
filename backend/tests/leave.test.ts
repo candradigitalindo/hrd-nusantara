@@ -1,6 +1,5 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import {
   prisma,
   resetDatabase,
@@ -11,8 +10,9 @@ import {
   makeHoliday,
 } from './helpers/db';
 import { login, auth } from './helpers/api';
+import { bikinApp } from './helpers/app';
 
-const app = createApp();
+const app = bikinApp();
 
 // 2026-03-02 Senin, 2026-03-06 Jumat, 2026-03-07 Sabtu.
 const SENIN = '2026-03-02';

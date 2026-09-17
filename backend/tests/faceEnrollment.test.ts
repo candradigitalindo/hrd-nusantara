@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import {
   prisma,
   resetDatabase,
@@ -11,9 +10,10 @@ import {
   MONAS,
 } from './helpers/db';
 import { login, auth } from './helpers/api';
+import { bikinApp } from './helpers/app';
 import { areModelsAvailable } from '../src/services/face';
 
-const app = createApp();
+const app = bikinApp();
 const FIXTURES = path.resolve(__dirname, 'fixtures/faces');
 const b64 = (nama: string) => fs.readFileSync(path.join(FIXTURES, nama)).toString('base64');
 

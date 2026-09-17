@@ -1,6 +1,5 @@
 import request from 'supertest';
 import { Prisma, Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import {
   prisma,
   resetDatabase,
@@ -9,9 +8,10 @@ import {
   makeLeaveBalance,
 } from './helpers/db';
 import { login, auth, expectStatus } from './helpers/api';
+import { bikinApp } from './helpers/app';
 import { generateULID } from '../src/utils/generateULID';
 
-const app = createApp();
+const app = bikinApp();
 
 const PERIODE = { periodStart: '2026-09-01', periodEnd: '2026-09-30' };
 
@@ -228,6 +228,129 @@ describe('Menjalankan penggajian', () => {
     await buatBatch('2026-09');
     const res = await buatBatch('2026-09');
     expect(res.status).toBe(409);
+  });
+});
+
+describe('PPh 21 bersifat opsional', () => {
+  /** Membuat komponen pajak yang tidak aktif, seperti hasil seed. */
+  const buatPph21TidakAktif = async () => {
+    const res = await request(app)
+      .post('/api/salary-components')
+      .set(auth(hrToken))
+      .send({
+        code: 'PPH21',
+        name: 'PPh 21',
+        type: 'deduction',
+        calculation: 'fixed',
+        defaultAmount: 0,
+      });
+    expectStatus(res, 201);
+
+    await request(app)
+      .put(`/api/salary-components/${res.body.id}`)
+      .set(auth(hrToken))
+      .send({ isActive: false });
+
+    return res.body.id as string;
+  };
+
+  it('penggajian berjalan normal tanpa komponen pajak sama sekali', async () => {
+    await tetapkanGaji();
+    const run = await buatBatch();
+    const hasil = await hitung(run.body.id);
+
+    expect(hasil.body.calculated).toBe(1);
+
+    const slip = await request(app)
+      .get(`/api/payrolls?employeeId=${budi.id}`)
+      .set(auth(hrToken));
+
+    expect(slip.body.data[0].netSalary).toBe(5_000_000);
+    expect(slip.body.data[0].totalDeductions).toBe(0);
+  });
+
+  it('komponen pajak yang tidak aktif tidak mengubah hasil apa pun', async () => {
+    await tetapkanGaji();
+    const komponenId = await buatPph21TidakAktif();
+
+    // Sengaja dipasangkan ke karyawan, tapi komponennya tidak aktif.
+    await request(app)
+      .post(`/api/employees/${budi.id}/salary-components`)
+      .set(auth(hrToken))
+      .send({ componentId: komponenId, amount: 500_000, effectiveFrom: '2026-01-01' });
+
+    const run = await buatBatch();
+    await hitung(run.body.id);
+
+    const slip = await request(app)
+      .get(`/api/payrolls?employeeId=${budi.id}`)
+      .set(auth(hrToken));
+
+    // Keberadaannya di daftar tidak boleh mengubah gaji bersih.
+    expect(slip.body.data[0].totalDeductions).toBe(0);
+    expect(slip.body.data[0].netSalary).toBe(5_000_000);
+    expect(slip.body.data[0].items.some((i: { code: string }) => i.code === 'PPH21')).toBe(false);
+  });
+
+  it('memotong pajak begitu komponennya diaktifkan dan diisi tarifnya', async () => {
+    await tetapkanGaji();
+    const komponenId = await buatPph21TidakAktif();
+
+    // Perusahaan yang memotong pajak sendiri tinggal mengaktifkan.
+    await request(app)
+      .put(`/api/salary-components/${komponenId}`)
+      .set(auth(hrToken))
+      .send({ isActive: true, defaultAmount: 250_000 });
+
+    await request(app)
+      .post(`/api/employees/${budi.id}/salary-components`)
+      .set(auth(hrToken))
+      .send({ componentId: komponenId, effectiveFrom: '2026-01-01' });
+
+    const run = await buatBatch();
+    await hitung(run.body.id);
+
+    const slip = await request(app)
+      .get(`/api/payrolls?employeeId=${budi.id}`)
+      .set(auth(hrToken));
+
+    expect(slip.body.data[0].totalDeductions).toBe(250_000);
+    expect(slip.body.data[0].netSalary).toBe(4_750_000);
+
+    const barisPajak = slip.body.data[0].items.find((i: { code: string }) => i.code === 'PPH21');
+    expect(barisPajak.type).toBe('deduction');
+  });
+
+  it('mendukung tarif persentase bagi yang memakainya', async () => {
+    await tetapkanGaji();
+
+    const res = await request(app)
+      .post('/api/salary-components')
+      .set(auth(hrToken))
+      .send({
+        code: 'PPH21_PCT',
+        name: 'PPh 21 (persentase)',
+        type: 'deduction',
+        calculation: 'percentage',
+        percentageBase: 'gross',
+        defaultPercentage: 5,
+      });
+    expectStatus(res, 201);
+
+    await request(app)
+      .post(`/api/employees/${budi.id}/salary-components`)
+      .set(auth(hrToken))
+      .send({ componentId: res.body.id, effectiveFrom: '2026-01-01' });
+
+    const run = await buatBatch();
+    await hitung(run.body.id);
+
+    const slip = await request(app)
+      .get(`/api/payrolls?employeeId=${budi.id}`)
+      .set(auth(hrToken));
+
+    // 5% dari 5.000.000.
+    expect(slip.body.data[0].totalDeductions).toBe(250_000);
   });
 });
 

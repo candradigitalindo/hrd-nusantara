@@ -1,10 +1,10 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import { prisma, resetDatabase, makeEmployee, makeDepartment, makePosition } from './helpers/db';
+import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 
-const app = createApp();
+const app = bikinApp();
 
 // Selalu di masa depan, supaya batas pendaftaran tidak pernah lewat.
 const MULAI = '2027-03-01T02:00:00.000Z';

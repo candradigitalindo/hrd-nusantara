@@ -1,10 +1,10 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import { prisma, resetDatabase, makeEmployee, makeDepartment } from './helpers/db';
+import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 
-const app = createApp();
+const app = bikinApp();
 
 beforeEach(resetDatabase);
 

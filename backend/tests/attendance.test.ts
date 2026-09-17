@@ -1,7 +1,6 @@
 import request from 'supertest';
 import { DateTime } from 'luxon';
 import { Role } from '@prisma/client';
-import { createApp } from '../src/app';
 import {
   prisma,
   resetDatabase,
@@ -14,8 +13,9 @@ import {
   TEST_TIMEZONE,
 } from './helpers/db';
 import { login, auth } from './helpers/api';
+import { bikinApp } from './helpers/app';
 
-const app = createApp();
+const app = bikinApp();
 
 /** Tanggal kalender menurut zona operasional, bukan UTC. */
 const hariOperasional = (d: Date) =>
