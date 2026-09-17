@@ -12,3 +12,18 @@ Dockerfile
 .dockerignore
 jest.config.ts
 tsconfig.test.json
+
+# Kunci privat service account. Tidak boleh pernah ikut ke dalam image:
+# image berpindah-pindah antar registry dan mesin, kunci tidak boleh ikut.
+secrets/
+
+# Kredensial sesi WhatsApp milik mesin pengembangan — setara akses penuh
+# ke akun WhatsApp perusahaan.
+whatsapp-sessions/
+
+# Foto pendaftaran wajah: data biometrik.
+uploads/
+
+# Bobot model diunduh di dalam image saat build, tidak perlu dikirim
+# sebagai konteks build (ratusan MB).
+models/

@@ -1,8 +1,18 @@
 # ---------- Tahap build ----------
-FROM node:22-alpine AS builder
+#
+# Debian, BUKAN Alpine. onnxruntime-node hanya membawa binari Linux yang
+# ter-link ke glibc — pemeriksaan pada berkasnya menunjukkan GLIBC_2.x,
+# libc.so.6, dan ld-linux-aarch64.so.1. Di Alpine yang memakai musl, modul
+# itu gagal dimuat, dan gagalnya baru terlihat pada presensi pertama di
+# produksi, bukan saat build. Image Debian memang lebih besar; pengenalan
+# wajah yang mati di produksi jauh lebih mahal.
+FROM node:22-bookworm-slim AS builder
 
-# Prisma butuh openssl untuk query engine-nya.
-RUN apk add --no-cache openssl
+# openssl untuk query engine Prisma; curl dan ca-certificates untuk mengunduh
+# bobot model.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -19,12 +29,14 @@ RUN npm run build
 # Bobot model diunduh saat build, bukan saat container start: image jadi
 # mandiri dan tidak perlu jaringan keluar saat dijalankan di produksi.
 COPY scripts ./scripts
-RUN apk add --no-cache bash curl && bash scripts/download-models.sh
+RUN bash scripts/download-models.sh
 
 # ---------- Tahap runtime ----------
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 
-RUN apk add --no-cache openssl
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -38,8 +50,14 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/models ./models
 
-# Foto pendaftaran wajah ditulis ke sini; dipasang sebagai volume oleh compose.
-RUN mkdir -p /app/uploads && chown -R node:node /app/uploads /app/models
+# Direktori yang ditulis saat runtime, keduanya dipasang sebagai volume oleh
+# compose. Kepemilikannya harus sudah benar DI DALAM IMAGE: volume bernama
+# mewarisi kepemilikan direktori yang ditimpanya, dan kalau direktorinya belum
+# ada, Docker membuatnya milik root — proses yang berjalan sebagai "node"
+# lalu tidak bisa menulis ke sana. Untuk whatsapp-sessions itu berarti
+# kredensial sesi gagal tersimpan dan tiap restart menuntut scan QR ulang.
+RUN mkdir -p /app/uploads /app/whatsapp-sessions \
+  && chown -R node:node /app/uploads /app/whatsapp-sessions /app/models
 
 # Jalan sebagai user non-root bawaan image node.
 USER node
