@@ -137,10 +137,14 @@ const LEAVE_TYPES = [
  * dan porsi pemberi kerja pada JHT, JP, serta BPJS Kesehatan) adalah beban
  * perusahaan, bukan potongan gaji, jadi tidak muncul di slip.
  *
- * PPh 21 sengaja TIDAK diisi: sejak 2024 pemotongan bulanan memakai Tarif
- * Efektif Rata-rata yang tabelnya panjang dan bergantung status PTKP tiap
- * karyawan. Menebaknya berisiko salah potong pajak, jadi komponennya dibuat
- * kosong untuk diisi bersama konsultan pajak Anda.
+ * PPh 21 disediakan sebagai komponen OPSIONAL dan dibuat tidak aktif.
+ * Penggajian berjalan normal tanpanya. Perusahaan yang memotong pajak sendiri
+ * tinggal mengaktifkan komponennya dan mengisi tarifnya; yang pemotongannya
+ * ditangani pihak lain cukup membiarkannya.
+ *
+ * Tarifnya sengaja tidak ditebak: sejak 2024 pemotongan bulanan memakai Tarif
+ * Efektif Rata-rata yang bergantung status PTKP tiap karyawan, dan menebak
+ * angkanya berarti salah potong pajak orang.
  */
 const SALARY_COMPONENTS = [
   {
@@ -157,6 +161,7 @@ const SALARY_COMPONENTS = [
     capAmount: 12_000_000,
     isTaxable: false,
     isStatutory: true,
+    isActive: true,
   },
   {
     code: 'BPJS_JHT',
@@ -170,6 +175,7 @@ const SALARY_COMPONENTS = [
     capAmount: null,
     isTaxable: false,
     isStatutory: true,
+    isActive: true,
   },
   {
     code: 'BPJS_JP',
@@ -185,13 +191,16 @@ const SALARY_COMPONENTS = [
     capAmount: 10_547_400,
     isTaxable: false,
     isStatutory: true,
+    isActive: true,
   },
   {
     code: 'PPH21',
     name: 'PPh 21',
     description:
-      'BELUM DIKONFIGURASI. Isi tarifnya bersama konsultan pajak: sejak 2024 ' +
-      'pemotongan bulanan memakai TER yang bergantung status PTKP karyawan.',
+      'OPSIONAL, tidak aktif. Penggajian berjalan tanpa komponen ini. ' +
+      'Untuk memakainya: aktifkan lewat PUT /api/salary-components/:id, isi ' +
+      'tarifnya, lalu pasangkan ke karyawan yang dipotong pajaknya. ' +
+      'Tarif TER bergantung status PTKP, jadi tetapkan bersama konsultan pajak.',
     type: 'deduction',
     calculation: 'fixed',
     percentageBase: null,
@@ -200,6 +209,9 @@ const SALARY_COMPONENTS = [
     capAmount: null,
     isTaxable: false,
     isStatutory: true,
+    // Tidak aktif: komponen yang tidak aktif diabaikan saat penggajian,
+    // sehingga keberadaannya di daftar tidak mengubah hasil apa pun.
+    isActive: false,
   },
   {
     code: 'TJ_TRANSPORT',
@@ -213,6 +225,7 @@ const SALARY_COMPONENTS = [
     capAmount: null,
     isTaxable: true,
     isStatutory: false,
+    isActive: true,
   },
   {
     code: 'TJ_MAKAN',
@@ -226,6 +239,7 @@ const SALARY_COMPONENTS = [
     capAmount: null,
     isTaxable: true,
     isStatutory: false,
+    isActive: true,
   },
   {
     code: 'TJ_JABATAN',
@@ -239,6 +253,7 @@ const SALARY_COMPONENTS = [
     capAmount: null,
     isTaxable: true,
     isStatutory: false,
+    isActive: true,
   },
 ];
 
@@ -371,8 +386,9 @@ const main = async () => {
   console.log('     POST /api/leave-balances');
   console.log('  3. Tetapkan struktur gaji tiap karyawan:');
   console.log('     POST /api/employees/:id/salary');
-  console.log('  4. PPh 21 masih kosong — isi tarifnya bersama konsultan pajak');
-  console.log('     sebelum penggajian dijalankan.\n');
+  console.log('\nCatatan: komponen PPh 21 dibuat OPSIONAL dan tidak aktif.');
+  console.log('  Penggajian berjalan normal tanpanya. Aktifkan hanya bila');
+  console.log('  perusahaan memotong pajak sendiri.\n');
 };
 
 main()
