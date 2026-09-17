@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment & secrets — JANGAN pernah di-commit
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Bobot model ML — berkas biner besar, diunduh lewat: npm run models:download
+models/
+*.onnx
+
+# Berkas unggahan (foto pendaftaran wajah) — data biometrik, jangan di-commit
+uploads/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Editor & OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Flutter / mobile (untuk nanti)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+mobile/build/

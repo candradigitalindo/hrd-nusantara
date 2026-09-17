@@ -1,0 +1,1605 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Akses berjenjang sesuai hrd_features_doc.md bagian 13.
+/// Dibuat enum (bukan String) karena nilainya menentukan hak akses —
+/// salah ketik di sini berarti lubang keamanan, jadi dijaga di level database.
+enum Role {
+  SUPER_ADMIN
+  HR_ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+/// This table is used by Prisma to store metadata about applied migrations.
+/// Learn more: https://pris.ly/d/migrations
+
+model Employee {
+  id          String    @id // ULID will be generated in the application code
+  nik         String    @unique
+  name        String
+  email       String    @unique
+  phoneNumber String?
+  address     String?
+  dateOfBirth DateTime?
+  /// "female" | "male". Diperlukan untuk hak cuti yang dibatasi undang-undang
+  /// (cuti haid Pasal 81 dan cuti melahirkan Pasal 82 UU 13/2003).
+  gender      String?
+
+  /// Tanggal mulai bekerja. Bukan createdAt — baris karyawan bisa dibuat
+  /// jauh sebelum atau sesudah orangnya benar-benar masuk kerja, dan masa
+  /// kerja yang dihitung dari createdAt akan salah.
+  joinDate DateTime?
+
+  /// Tanggal berhenti, beserta alasannya. Tanpa keduanya, tingkat perputaran
+  /// karyawan per periode tidak bisa dihitung dan penyebabnya tidak bisa
+  /// dianalisis sama sekali.
+  exitDate   DateTime?
+  exitReason String?
+
+  /// voluntary (mengundurkan diri) atau involuntary (diberhentikan).
+  /// Dipisah karena keduanya menuntut tindakan manajemen yang berbeda.
+  exitType      String?
+  /// Pola hari kerja. Kalau kosong, mengikuti departemen, lalu pola bawaan.
+  workPattern   WorkPattern? @relation(fields: [workPatternId], references: [id])
+  workPatternId String?
+  status        String       @default("active") // active, probation, contract, internship, on_leave, inactive, resign, terminated
+  password      String? // hash bcrypt; null = akun belum pernah diaktifkan
+  role          Role         @default(EMPLOYEE)
+  lastLoginAt   DateTime?
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  departmentId  String?
+  position      Position?    @relation(fields: [positionId], references: [id])
+  positionId    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relasi ke entitas lain
+  attendances                  Attendance[]                    @relation("EmployeeAttendance")
+  approvedOvertimes            Attendance[]                    @relation("OvertimeApprover")
+  faceEnrollments              FaceEnrollment[]                @relation("EmployeeFace")
+  enrolledFaces                FaceEnrollment[]                @relation("FaceEnroller")
+  leaveBalances                LeaveBalance[]
+  decidedLeaves                Leave[]                         @relation("LeaveDecider")
+  salaries                     EmployeeSalary[]
+  salaryComponents             EmployeeSalaryComponent[]
+  approvedPayrollRuns          PayrollRun[]                    @relation("PayrollApprover")
+  sourceCandidate              Candidate?                      @relation("CandidateHire")
+  candidateStageChanges        CandidateStageHistory[]         @relation("StageChanger")
+  performanceDiscussions       PerformanceDiscussion[]         @relation("DiscussionAuthor")
+  feedbackGiven                ContinuousFeedback[]            @relation("FeedbackAuthor")
+  feedbackReceived             ContinuousFeedback[]            @relation("FeedbackRecipient")
+  competencies                 EmployeeCompetency[]            @relation("CompetencyHolder")
+  competencyAssessments        EmployeeCompetency[]            @relation("CompetencyAssessor")
+  announcementReads            AnnouncementRead[]
+  chatRoomMemberships          ChatRoomMember[]
+  surveyParticipations         SurveyParticipation[]
+  whatsappAccounts             WhatsAppAccount[]
+  leaves                       Leave[] // Karyawan bisa mengajukan banyak cuti
+  payrolls                     Payroll[]
+  // Performance Review: Seorang karyawan bisa menjadi reviewee dan reviewer
+  performanceReviewsAsReviewee PerformanceReview[]             @relation(name: "RevieweeToReview")
+  performanceReviewsAsReviewer PerformanceReview[]             @relation(name: "ReviewerToReview")
+  trainingRegistrations        TrainingRegistration[]
+  certifications               CertificationRecord[]
+  complaintsActions            ComplaintOrDisciplinaryAction[]
+  // Assuming a relation for simplicity
+  whatsappConversations        WhatsAppConversation[]
+
+  // Bidirectional relations that need explicit back-link
+  createdJobPostings    JobPosting[] // Employee yang membuat lowongan
+  authoredAnnouncements Announcement[] // Employee yang membuat pengumuman
+  sentChatMessages      ChatMessage[] // Employee yang mengirim pesan
+  // Assuming Employee can be a member of many rooms - requires junction table
+  // memberships          RoomMembership[] // Example junction table
+  createdSurveys        Survey[] // Employee yang membuat survei
+  respondedSurveys      SurveyResponse[] // Employee yang merespon survei
+  // Complaint/Disciplinary Action reporting/handling
+  reportedComplaints    ComplaintOrDisciplinaryAction[] @relation(name: "ReportedByRelation")
+  handledComplaints     ComplaintOrDisciplinaryAction[] @relation(name: "HandledByRelation")
+  scheduledShifts       ShiftSchedule[] // Employee yang dijadwalkan shift
+  conductedInterviews   Interview[] // Employee yang melakukan wawancara
+  evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
+
+  @@index([departmentId])
+  @@index([positionId])
+  @@index([status])
+}
+
+model Department {
+  id                        String            @id
+  name                      String
+  description               String?
+  employees                 Employee[]
+  positions                 Position[]
+  announcementsToDepartment Announcement[] // Added for bidirectional relation
+  workPattern               WorkPattern?      @relation(fields: [workPatternId], references: [id])
+  workPatternId             String?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  trainingPrograms          TrainingProgram[]
+  surveys                   Survey[]
+  whatsappAccounts          WhatsAppAccount[]
+}
+
+model Position {
+  id                   String                    @id
+  name                 String
+  description          String?
+  department           Department?               @relation(fields: [departmentId], references: [id])
+  departmentId         String?
+  employees            Employee[]
+  competencyStandards  CompetencyStandard[]
+  performanceTemplates PerformanceFormTemplate[]
+  trainingPrograms     TrainingProgram[]
+  certificationTypes   CertificationType[]
+  jobPostings          JobPosting[]
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+
+  @@index([departmentId])
+}
+
+model Attendance {
+  id           String    @id
+  employee     Employee  @relation("EmployeeAttendance", fields: [employeeId], references: [id])
+  employeeId   String
+  checkInTime  DateTime
+  checkOutTime DateTime?
+
+  // Lat/long disimpan terpisah, bukan satu string. Komentar skema lama sudah
+  // menyarankan ini, dan memang perlu: jarak ke geofence tidak bisa dihitung
+  // dari string bebas.
+  checkInLatitude   Decimal? @db.Decimal(10, 7)
+  checkInLongitude  Decimal? @db.Decimal(10, 7)
+  checkOutLatitude  Decimal? @db.Decimal(10, 7)
+  checkOutLongitude Decimal? @db.Decimal(10, 7)
+
+  checkInMethod  String // gps, qr, face
+  checkOutMethod String?
+  faceImageUrl   String?
+  qrCodeScanned  String?
+
+  workLocation   WorkLocation? @relation(fields: [workLocationId], references: [id])
+  workLocationId String?
+
+  shiftSchedule   ShiftSchedule? @relation(fields: [shiftScheduleId], references: [id])
+  shiftScheduleId String?
+
+  // Hasil validasi otomatis (hrd_features_doc.md bagian 2), disimpan supaya
+  // laporan tidak perlu menghitung ulang tiap kali dibuka.
+  lateMinutes       Int @default(0)
+  earlyLeaveMinutes Int @default(0)
+  workedMinutes     Int @default(0)
+
+  // Lembur hanya dihitung ke payroll setelah disetujui atasan.
+  overtimeHours        Decimal   @default(0) @db.Decimal(6, 2)
+  overtimeApproved     Boolean   @default(false)
+  overtimeApprovedBy   Employee? @relation("OvertimeApprover", fields: [overtimeApprovedById], references: [id])
+  overtimeApprovedById String?
+  overtimeApprovedAt   DateTime?
+
+  // Hasil pencocokan wajah, disimpan untuk jejak audit: kalau kemudian ada
+  // sengketa "itu bukan saya", skor kemiripannya bisa ditelusuri.
+  faceVerified   Boolean @default(false)
+  faceMatchScore Float?
+  /// Skor "wajah hidup" dari model anti-spoofing, disimpan untuk audit dan
+  /// untuk menyetel ulang ambang berdasarkan data lapangan sendiri.
+  livenessScore  Float?
+
+  status    String   @default("present") // present, late, absent, no_checkout
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, checkInTime])
+  @@index([employeeId, checkOutTime])
+  @@index([shiftScheduleId])
+  @@index([workLocationId])
+  @@index([checkInTime])
+  @@index([overtimeApprovedById])
+}
+
+/// Wajah karyawan yang terdaftar, disimpan sebagai vektor ciri.
+///
+/// Yang disimpan adalah embedding 512 dimensi, bukan foto. Vektor ini tidak
+/// bisa dikembalikan menjadi gambar wajah, sehingga kebocoran database tidak
+/// langsung berarti kebocoran foto biometrik karyawan.
+model FaceEnrollment {
+  id         String   @id
+  employee   Employee @relation("EmployeeFace", fields: [employeeId], references: [id])
+  employeeId String
+
+  /// Float32 512 dimensi dalam bentuk biner: separuh ukuran array float64
+  /// dan presisinya persis sama dengan keluaran model.
+  embedding  Bytes
+  dimensions Int
+
+  /// Embedding dari model berbeda tidak bisa dibandingkan. Nama model dicatat
+  /// supaya pendaftaran lama ketahuan usang saat modelnya diganti.
+  modelName String
+
+  imageUrl       String?
+  detectionScore Float
+  isActive       Boolean @default(true)
+
+  enrolledBy   Employee? @relation("FaceEnroller", fields: [enrolledById], references: [id])
+  enrolledById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, isActive])
+  @@index([enrolledById])
+}
+
+/// Titik presensi resmi perusahaan.
+///
+/// Dokumen fitur meminta "verifikasi lokasi GPS" dan "scan QR di titik presensi
+/// tertentu", tapi tidak ada entitas yang mendefinisikan titik-titik itu.
+/// Tanpa tabel ini, validasi lokasi tidak punya acuan pembanding.
+model WorkLocation {
+  id           String  @id
+  name         String
+  address      String?
+  latitude     Decimal @db.Decimal(10, 7)
+  longitude    Decimal @db.Decimal(10, 7)
+  radiusMeters Int     @default(100)
+
+  /// Token yang dikodekan ke QR di lokasi. Unik, supaya sekali scan langsung
+  /// memetakan ke lokasi tanpa klien perlu menyebutkan lokasinya sendiri.
+  qrSecret String  @unique
+  isActive Boolean @default(true)
+
+  attendances Attendance[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([isActive])
+}
+
+model Leave {
+  id         String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  /// Dulu string bebas. Dijadikan relasi supaya kuota, syarat lampiran, dan
+  /// batasan per jenis cuti bisa diatur HR tanpa mengubah kode.
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  leaveTypeId String
+
+  startDate DateTime
+  endDate   DateTime
+
+  /// Jumlah hari yang dipotong dari saldo. Disimpan hasil hitungannya karena
+  /// kalender libur bisa berubah setelah pengajuan dibuat — saldo tidak boleh
+  /// ikut bergeser secara diam-diam.
+  totalDays Decimal @db.Decimal(5, 1)
+
+  reason        String?
+  attachmentUrl String?
+
+  status       String    @default("pending") // pending, approved, rejected, cancelled
+  decidedBy    Employee? @relation("LeaveDecider", fields: [decidedById], references: [id])
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  cancelledAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, status])
+  @@index([decidedById])
+  @@index([startDate, endDate])
+  @@index([leaveTypeId])
+  @@index([status, startDate])
+}
+
+/// Jenis cuti beserta aturannya, dikelola HR.
+model LeaveType {
+  id          String  @id
+  code        String  @unique // annual, sick, maternity, menstrual, unpaid, ...
+  name        String
+  description String?
+
+  /// Kuota hari per tahun. null = tanpa kuota, misalnya cuti sakit bersurat dokter.
+  defaultQuotaDays Int?
+  isPaid           Boolean @default(true)
+
+  /// Apakah pengajuan memotong saldo. Cuti sakit bersurat dokter lazimnya tidak.
+  deductsBalance     Boolean @default(true)
+  requiresAttachment Boolean @default(false)
+  maxConsecutiveDays Int?
+
+  /// "female" | "male" | null. Cuti haid dan melahirkan dibatasi undang-undang.
+  genderRestriction String?
+
+  /// Bila true, akhir pekan dan hari libur ikut dihitung — seperti cuti
+  /// melahirkan yang dihitung 3 bulan kalender, bukan hari kerja.
+  countsCalendarDays Boolean @default(false)
+
+  isActive  Boolean        @default(true)
+  leaves    Leave[]
+  balances  LeaveBalance[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([isActive])
+}
+
+/// Saldo cuti per karyawan per tahun (hrd_features_doc.md bagian 3).
+model LeaveBalance {
+  id          String    @id
+  employee    Employee  @relation(fields: [employeeId], references: [id])
+  employeeId  String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id])
+  leaveTypeId String
+  year        Int
+
+  /// Decimal, bukan Int: setengah hari cuti itu lazim.
+  entitledDays    Decimal @default(0) @db.Decimal(5, 1)
+  carriedOverDays Decimal @default(0) @db.Decimal(5, 1)
+  usedDays        Decimal @default(0) @db.Decimal(5, 1)
+
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Satu baris saldo per karyawan, per jenis cuti, per tahun.
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId, year])
+}
+
+/// Pola hari kerja, dipakai untuk menghitung berapa hari cuti memotong saldo.
+///
+/// Dibuat dapat dikonfigurasi karena satu perusahaan bisa punya beberapa pola
+/// sekaligus: kantor pusat Senin–Sabtu, sementara outlet dan hotel beroperasi
+/// tujuh hari dengan hari libur yang berputar per karyawan.
+model WorkPattern {
+  id          String  @id
+  code        String  @unique
+  name        String
+  description String?
+
+  /// 'fixed' = hari kerjanya tetap tiap pekan (kantor).
+  /// 'shift' = hari kerjanya mengikuti roster (outlet & hotel), sehingga
+  ///           hari libur tiap orang berbeda dan berpindah tiap pekan.
+  type String
+
+  /// Hari kerja dalam sepekan: 0 = Minggu, 6 = Sabtu.
+  /// Untuk pola 'shift' ini hanya cadangan, dipakai saat roster periode yang
+  /// diminta belum terbit — cuti sering diajukan jauh sebelum jadwal disusun.
+  workingWeekdays Int[]
+
+  /// Hotel dan restoran justru buka saat libur nasional, jadi tidak semua
+  /// pola memperlakukan hari libur sebagai hari tidak kerja.
+  observesPublicHolidays Boolean @default(true)
+
+  /// Dipakai karyawan yang tidak punya pola sendiri maupun lewat departemen.
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  employees   Employee[]
+  departments Department[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([isDefault])
+}
+
+/// Kalender hari libur, dipakai untuk menghitung hari kerja.
+model Holiday {
+  id   String   @id
+  date DateTime @unique
+  name String
+
+  /// Cuti bersama memotong kuota cuti tahunan karyawan; libur nasional tidak.
+  /// Keduanya sama-sama bukan hari kerja.
+  isCollectiveLeave Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+/// Slip gaji satu karyawan untuk satu periode.
+model Payroll {
+  id         String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  payrollRun   PayrollRun @relation(fields: [payrollRunId], references: [id])
+  payrollRunId String
+
+  payPeriodStart DateTime
+  payPeriodEnd   DateTime
+
+  /// Disalin saat penggajian dijalankan, bukan dibaca ulang dari struktur gaji.
+  /// Slip bulan lalu harus tetap menunjukkan angka yang berlaku saat itu
+  /// walaupun gajinya kemudian naik.
+  salaryType  String // monthly, daily, hourly
+  baseAmount  Decimal @db.Decimal(15, 2)
+  basicSalary Decimal @db.Decimal(15, 2)
+
+  /// Dasar prorata dan lembur, diambil dari modul presensi dan cuti.
+  scheduledDays   Int     @default(0)
+  workedDays      Int     @default(0)
+  unpaidLeaveDays Decimal @default(0) @db.Decimal(5, 1)
+  overtimeHours   Decimal @default(0) @db.Decimal(6, 2)
+
+  overtimePay     Decimal @default(0) @db.Decimal(15, 2)
+  totalAllowances Decimal @default(0) @db.Decimal(15, 2)
+  totalDeductions Decimal @default(0) @db.Decimal(15, 2)
+  grossSalary     Decimal @default(0) @db.Decimal(15, 2)
+  taxableIncome   Decimal @default(0) @db.Decimal(15, 2)
+  netSalary       Decimal @db.Decimal(15, 2)
+
+  status    String        @default("draft") // draft, calculated, approved, paid
+  note      String?
+  items     PayrollItem[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  /// Satu karyawan hanya boleh punya satu slip per batch penggajian.
+  @@unique([payrollRunId, employeeId])
+  @@index([employeeId, payPeriodStart])
+  @@index([status])
+}
+
+/// Rincian baris pada slip gaji.
+///
+/// Menggantikan kolom Json lama: dengan baris tersendiri, tiap komponen bisa
+/// diaudit, dijumlahkan per jenis, dan ditelusuri asal angkanya.
+model PayrollItem {
+  id        String  @id
+  payroll   Payroll @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+  payrollId String
+
+  /// null untuk baris bawaan seperti gaji pokok dan upah lembur.
+  component   SalaryComponent? @relation(fields: [componentId], references: [id])
+  componentId String?
+
+  code String
+  name String
+  type String // earning, deduction
+
+  amount Decimal @db.Decimal(15, 2)
+
+  /// Jejak bagaimana angkanya didapat, misalnya "2% dari 5.000.000".
+  /// Dipakai saat karyawan mempertanyakan slipnya.
+  calculationNote String?
+  isTaxable       Boolean @default(true)
+  sortOrder       Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([payrollId])
+  @@index([componentId])
+}
+
+/// Satu batch penggajian untuk satu periode.
+model PayrollRun {
+  id   String @id
+  code String @unique // mis. "2026-09"
+  name String
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status String @default("draft") // draft, calculated, approved, paid, cancelled
+
+  calculatedAt DateTime?
+  approvedBy   Employee? @relation("PayrollApprover", fields: [approvedById], references: [id])
+  approvedById String?
+  approvedAt   DateTime?
+  paidAt       DateTime?
+
+  note      String?
+  payrolls  Payroll[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status])
+  @@index([periodStart])
+}
+
+/// Jenis tunjangan dan potongan yang bisa dipakai berulang.
+model SalaryComponent {
+  id          String  @id
+  code        String  @unique
+  name        String
+  description String?
+
+  /// 'allowance' menambah penghasilan, 'deduction' menguranginya.
+  type String
+
+  /// 'fixed' = nominal tetap.
+  /// 'percentage' = persen dari dasar yang disebut percentageBase.
+  calculation String
+
+  /// Untuk 'percentage': 'basic' (gaji pokok) atau 'gross' (penghasilan kotor).
+  percentageBase String?
+
+  defaultAmount     Decimal? @db.Decimal(15, 2)
+  defaultPercentage Decimal? @db.Decimal(7, 4)
+
+  /// Batas atas dasar perhitungan. BPJS Kesehatan memakai plafon upah,
+  /// sehingga persentasenya berhenti bertambah di atas angka tertentu.
+  capAmount Decimal? @db.Decimal(15, 2)
+
+  /// Ikut menambah dasar pengenaan pajak.
+  isTaxable Boolean @default(true)
+
+  /// Komponen yang berasal dari regulasi (BPJS, PPh 21). Ditandai agar tidak
+  /// dihapus sembarangan dan mudah ditinjau saat aturannya berubah.
+  isStatutory Boolean @default(false)
+
+  isActive Boolean @default(true)
+
+  employeeComponents EmployeeSalaryComponent[]
+  payrollItems       PayrollItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, isActive])
+}
+
+/// Struktur gaji karyawan, dengan riwayat.
+///
+/// Berlaku-sejak dan berlaku-sampai disimpan supaya kenaikan gaji terekam dan
+/// penggajian periode lampau tetap memakai angka yang berlaku saat itu.
+model EmployeeSalary {
+  id         String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  /// 'monthly' = gaji bulanan, 'daily' = upah harian, 'hourly' = upah per jam.
+  /// F&B dan hotel lazim memakai ketiganya sekaligus untuk peran berbeda.
+  salaryType String
+
+  baseAmount Decimal @db.Decimal(15, 2)
+
+  effectiveFrom DateTime
+  /// null berarti masih berlaku.
+  effectiveTo   DateTime?
+
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, effectiveFrom])
+}
+
+/// Tunjangan atau potongan tetap yang melekat pada seorang karyawan.
+model EmployeeSalaryComponent {
+  id          String          @id
+  employee    Employee        @relation(fields: [employeeId], references: [id])
+  employeeId  String
+  component   SalaryComponent @relation(fields: [componentId], references: [id])
+  componentId String
+
+  /// Menimpa nilai bawaan komponen bila diisi.
+  amount     Decimal? @db.Decimal(15, 2)
+  percentage Decimal? @db.Decimal(7, 4)
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, effectiveFrom])
+  @@index([componentId])
+}
+
+model Candidate {
+  id                String     @id
+  name              String
+  email             String
+  phoneNumber       String?
+  status            String     @default("applied") // applied, screening, interview, offer, hired, rejected
+  appliedPosition   JobPosting @relation(fields: [appliedPositionId], references: [id])
+  appliedPositionId String
+  applicationDate   DateTime   @default(now())
+  cvUrl             String?
+  coverLetterUrl    String?
+
+  /// Dari mana pelamar datang: referral, jobstreet, walk-in, dan sebagainya.
+  /// Dipakai menilai saluran rekrutmen mana yang paling menghasilkan.
+  source String?
+
+  expectedSalary  Decimal? @db.Decimal(15, 2)
+  notes           String?
+  rejectionReason String?
+
+  /// Karyawan yang terbentuk ketika pelamar ini diterima.
+  ///
+  /// Tanpa tautan ini, jejak dari lamaran sampai menjadi karyawan terputus —
+  /// dan pertanyaan seperti "berapa biaya per rekrutan" tidak bisa dijawab.
+  hiredEmployee   Employee? @relation("CandidateHire", fields: [hiredEmployeeId], references: [id])
+  hiredEmployeeId String?   @unique
+
+  interviews              Interview[]
+  psychometricTestResults PsychometricTestResult[]
+  stageHistory            CandidateStageHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([appliedPositionId, status])
+  @@index([email])
+  @@index([status, applicationDate])
+}
+
+/// Riwayat perpindahan tahap seorang pelamar.
+///
+/// Tahap saat ini sudah tersimpan di Candidate.status, tapi status saja tidak
+/// menyimpan KAPAN perpindahannya terjadi. Tanpa riwayat ini, lama proses
+/// rekrutmen dan titik di mana pelamar paling banyak gugur tidak bisa dihitung.
+model CandidateStageHistory {
+  id          String    @id
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId String
+
+  /// null pada baris pertama, saat lamaran baru masuk.
+  fromStage String?
+  toStage   String
+
+  changedBy   Employee @relation("StageChanger", fields: [changedById], references: [id])
+  changedById String
+
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([candidateId, createdAt])
+  @@index([toStage, createdAt])
+}
+
+model JobPosting {
+  id           String    @id
+  title        String
+  description  String
+  requirements String
+  position     Position  @relation(fields: [positionId], references: [id])
+  positionId   String
+  postedDate   DateTime  @default(now())
+  deadline     DateTime?
+
+  /// Jumlah orang yang dicari. Tanpa ini, status "filled" tidak punya makna:
+  /// tidak ada yang tahu berapa lowongan yang harus terisi.
+  openings Int @default(1)
+
+  /// fulltime, contract, parttime, internship, daily
+  employmentType String?
+
+  /// Rentang gaji yang ditawarkan, boleh tidak diisi bila tidak dipublikasikan.
+  salaryRangeMin Decimal? @db.Decimal(15, 2)
+  salaryRangeMax Decimal? @db.Decimal(15, 2)
+
+  location String?
+
+  /// Biaya rekrutmen: pemasangan iklan, jasa agensi, dan sebagainya.
+  /// Diperlukan untuk menghitung biaya per rekrutan.
+  recruitmentCost Decimal? @db.Decimal(15, 2)
+
+  publishedAt DateTime?
+  closedAt    DateTime?
+
+  status      String      @default("draft") // draft, open, closed, filled, cancelled
+  createdBy   Employee    @relation(fields: [createdById], references: [id])
+  createdById String
+  candidates  Candidate[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([positionId])
+  @@index([status])
+  @@index([createdById])
+}
+
+model PerformanceReview {
+  id         String   @id
+  reviewee   Employee @relation("RevieweeToReview", fields: [revieweeId], references: [id])
+  revieweeId String
+  reviewer   Employee @relation("ReviewerToReview", fields: [reviewerId], references: [id])
+  reviewerId String
+
+  cycle   PerformanceCycle @relation(fields: [cycleId], references: [id])
+  cycleId String
+
+  /// Sudut pandang penilai: self, manager, peer, subordinate.
+  ///
+  /// Inilah yang membuat penilaian 360 derajat mungkin. Tanpa membedakan
+  /// sudut pandang, nilai dari atasan dan dari rekan sejawat tercampur
+  /// menjadi satu angka yang tidak bisa ditafsirkan.
+  reviewerType String @default("manager")
+
+  period         String
+  template       PerformanceFormTemplate? @relation(fields: [formTemplateId], references: [id])
+  formTemplateId String?
+
+  /// Nilai akhir berbobot, dihitung dari PerformanceScore.
+  totalScore Decimal? @db.Decimal(5, 2)
+  rating     Float?
+  feedback   String?
+
+  status      String    @default("draft") // draft, submitted, acknowledged, finalized
+  submittedAt DateTime?
+
+  scores      PerformanceScore[]
+  discussions PerformanceDiscussion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Satu penilai hanya menilai satu orang sekali per siklus, dari satu sudut
+  /// pandang. Tanpa ini, satu orang bisa mengisi penilaian ganda dan
+  /// memiringkan rata-ratanya.
+  @@unique([cycleId, revieweeId, reviewerId, reviewerType])
+  @@index([revieweeId, period])
+  @@index([reviewerId])
+  @@index([formTemplateId])
+  @@index([cycleId, status])
+}
+
+/// Nilai per kriteria pada satu penilaian.
+///
+/// Menggantikan kolom `answers` berbentuk Json: dengan baris tersendiri,
+/// pertanyaan seperti "berapa rata-rata nilai Kecepatan Pelayanan seluruh
+/// waiter" bisa dijawab langsung dari database.
+model PerformanceScore {
+  id       String            @id
+  review   PerformanceReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reviewId String
+
+  criterion   PerformanceCriterion @relation(fields: [criterionId], references: [id])
+  criterionId String
+
+  score   Decimal @db.Decimal(5, 2)
+  comment String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([reviewId, criterionId])
+  @@index([criterionId])
+}
+
+/// Kriteria penilaian pada sebuah formulir, beserta bobotnya.
+model PerformanceCriterion {
+  id         String                  @id
+  template   PerformanceFormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId String
+
+  code        String
+  name        String // mis. "Kecepatan Pelayanan"
+  description String?
+  category    String? // mis. "Pelayanan", "Kedisiplinan"
+
+  /// Bobot dalam persen. Jumlah seluruh kriteria pada satu formulir harus 100.
+  weight Decimal @db.Decimal(5, 2)
+
+  maxScore  Int @default(5)
+  sortOrder Int @default(0)
+
+  scores PerformanceScore[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, code])
+  @@index([templateId])
+}
+
+/// Periode penilaian: triwulan, semester, atau tahunan.
+model PerformanceCycle {
+  id   String @id
+  code String @unique // mis. "2026-Q3"
+  name String
+
+  /// quarterly, semester, annual
+  periodType  String
+  periodStart DateTime
+  periodEnd   DateTime
+
+  /// draft = disiapkan, open = penilaian berjalan, closed = terkunci.
+  status String @default("draft")
+
+  closedAt DateTime?
+  note     String?
+
+  reviews PerformanceReview[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([periodStart])
+}
+
+/// Catatan diskusi hasil sesi evaluasi (hrd_features_doc.md bagian 6).
+model PerformanceDiscussion {
+  id       String            @id
+  review   PerformanceReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reviewId String
+
+  author   Employee @relation("DiscussionAuthor", fields: [authorId], references: [id])
+  authorId String
+
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([reviewId, createdAt])
+}
+
+/// Umpan balik berkelanjutan: catatan informal di luar siklus penilaian.
+///
+/// Dipisah dari PerformanceReview karena sifatnya berbeda — diberikan kapan
+/// saja, tanpa formulir dan tanpa bobot, tapi tetap terekam agar penilaian
+/// berkala tidak hanya bersandar pada ingatan beberapa minggu terakhir.
+model ContinuousFeedback {
+  id String @id
+
+  recipient   Employee @relation("FeedbackRecipient", fields: [recipientId], references: [id])
+  recipientId String
+  author      Employee @relation("FeedbackAuthor", fields: [authorId], references: [id])
+  authorId    String
+
+  /// praise, improvement, note
+  type    String @default("note")
+  message String
+
+  /// Bila true, hanya penerima dan HR yang bisa melihat.
+  isPrivate Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([recipientId, createdAt])
+  @@index([authorId])
+}
+
+/// Program pelatihan: kurikulumnya, bukan pelaksanaannya.
+///
+/// Dokumen membedakan "program pelatihan wajib" seperti Hygiene dan SOP
+/// Pelayanan dari jadwal pelaksanaannya. Tanpa entitas ini, pertanyaan
+/// "siapa saja yang belum ikut pelatihan Hygiene" tidak bisa dijawab —
+/// yang ada hanya daftar sesi lepas tanpa induk.
+model TrainingProgram {
+  id          String  @id
+  code        String  @unique
+  name        String // mis. "Hygiene & Sanitasi"
+  description String?
+  category    String? // mis. "Keselamatan Kerja", "Pelayanan"
+
+  /// Wajib diikuti. Dipakai laporan kepatuhan untuk menandai siapa yang belum.
+  isMandatory Boolean @default(false)
+
+  /// Bila diisi, kewajibannya hanya berlaku untuk jabatan atau departemen ini.
+  targetPosition     Position?   @relation(fields: [targetPositionId], references: [id])
+  targetPositionId   String?
+  targetDepartment   Department? @relation(fields: [targetDepartmentId], references: [id])
+  targetDepartmentId String?
+
+  /// Nilai minimum untuk dinyatakan lulus evaluasi pasca-pelatihan.
+  /// null berarti pelatihan tanpa ujian.
+  passingScore Decimal? @db.Decimal(5, 2)
+
+  /// Berapa bulan kelulusannya berlaku. null = tidak kedaluwarsa.
+  /// Pelatihan seperti food handling memang harus diulang berkala.
+  validityMonths Int?
+
+  durationHours Decimal? @db.Decimal(5, 1)
+  isActive      Boolean  @default(true)
+
+  sessions           TrainingSession[]
+  certificationTypes CertificationType[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isMandatory, isActive])
+  @@index([targetPositionId])
+  @@index([targetDepartmentId])
+}
+
+/// Pelaksanaan sebuah program pada waktu dan tempat tertentu.
+model TrainingSession {
+  id String @id
+
+  program   TrainingProgram @relation(fields: [programId], references: [id])
+  programId String
+
+  title       String
+  description String?
+  trainer     String
+
+  startDateTime DateTime
+  endDateTime   DateTime
+  location      String?
+
+  /// Kuota peserta. Pendaftar melebihi kuota masuk daftar tunggu, bukan ditolak.
+  maxParticipants Int?
+
+  registrationDeadline DateTime?
+
+  /// Biaya penyelenggaraan, untuk analisis biaya SDM.
+  cost Decimal? @db.Decimal(15, 2)
+
+  status String @default("scheduled") // scheduled, ongoing, completed, cancelled
+
+  registrations TrainingRegistration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([programId, startDateTime])
+  @@index([status])
+}
+
+model TrainingRegistration {
+  id                String          @id
+  employee          Employee        @relation(fields: [employeeId], references: [id])
+  employeeId        String
+  trainingSession   TrainingSession @relation(fields: [trainingSessionId], references: [id])
+  trainingSessionId String
+
+  registrationDate DateTime @default(now())
+
+  /// registered, waitlisted, attended, completed, failed, no_show, cancelled
+  status String @default("registered")
+
+  attendanceStatus String? // attended, absent
+
+  evaluationScore Decimal? @db.Decimal(5, 2)
+
+  /// Hasil terhadap passingScore program. null berarti belum dievaluasi.
+  passed      Boolean?
+  completedAt DateTime?
+
+  certificateUrl String?
+
+  /// Dihitung dari validityMonths program saat dinyatakan lulus.
+  /// Disimpan, bukan dihitung ulang: masa berlaku program bisa diubah
+  /// kemudian, dan kelulusan lama tidak boleh ikut bergeser.
+  expiresAt DateTime?
+
+  note String?
+
+  /// Sertifikat yang terbit dari kelulusan ini, bila programnya bersertifikat.
+  issuedCertifications CertificationRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Satu karyawan tidak bisa mendaftar dua kali di sesi yang sama.
+  @@unique([trainingSessionId, employeeId])
+  @@index([employeeId, status])
+  @@index([trainingSessionId])
+  @@index([expiresAt])
+}
+
+/// Kamus kompetensi perusahaan.
+///
+/// Dulu nama kompetensi ditulis bebas pada tiap standar jabatan, sehingga
+/// "Food Safety" milik Waiter dan milik Cook adalah dua teks yang tak
+/// berhubungan. Dengan entitas tersendiri, pertanyaan "siapa saja yang punya
+/// kompetensi Food Safety" baru bisa dijawab.
+model Competency {
+  id          String  @id
+  code        String  @unique
+  name        String // mis. "Food Safety", "Table Service"
+  description String?
+  category    String? // mis. "Teknis", "Perilaku"
+
+  /// Tingkat tertinggi pada skala kompetensi ini.
+  maxLevel Int @default(4)
+
+  /// Label tiap tingkat, mis. {"1":"Dasar","2":"Menengah","3":"Mahir","4":"Ahli"}.
+  levelLabels Json?
+
+  isActive Boolean @default(true)
+
+  standards   CompetencyStandard[]
+  assessments EmployeeCompetency[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+/// Tingkat kompetensi yang disyaratkan sebuah jabatan.
+model CompetencyStandard {
+  id           String     @id
+  position     Position   @relation(fields: [positionId], references: [id])
+  positionId   String
+  competency   Competency @relation(fields: [competencyId], references: [id])
+  competencyId String
+
+  /// Angka, bukan teks. "Intermediate" dan "Expert" tidak bisa dibandingkan
+  /// sebagai string, padahal analisis kesenjangan justru butuh perbandingan.
+  requiredLevel Int
+
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Satu jabatan menyatakan satu syarat per kompetensi.
+  @@unique([positionId, competencyId])
+  @@index([positionId])
+  @@index([competencyId])
+}
+
+/// Tingkat kompetensi yang benar-benar dimiliki seorang karyawan.
+///
+/// Inilah yang sebelumnya tidak ada: standar menyatakan apa yang disyaratkan,
+/// tapi tanpa catatan kondisi nyata, kesenjangan kompetensi tidak bisa dihitung
+/// — padahal itulah gunanya database kompetensi.
+model EmployeeCompetency {
+  id           String     @id
+  employee     Employee   @relation("CompetencyHolder", fields: [employeeId], references: [id])
+  employeeId   String
+  competency   Competency @relation(fields: [competencyId], references: [id])
+  competencyId String
+
+  currentLevel Int
+
+  assessedBy   Employee @relation("CompetencyAssessor", fields: [assessedById], references: [id])
+  assessedById String
+  assessedAt   DateTime @default(now())
+
+  evidenceUrl String?
+  note        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, competencyId])
+  @@index([employeeId])
+  @@index([competencyId])
+}
+
+/// Jenis sertifikasi yang dikenali perusahaan.
+model CertificationType {
+  id                  String  @id
+  code                String  @unique
+  name                String // mis. "Food Handler Certificate"
+  description         String?
+  issuingOrganization String?
+
+  /// Masa berlaku dalam bulan. null = tidak kedaluwarsa.
+  validityMonths Int?
+
+  isMandatory      Boolean   @default(false)
+  targetPosition   Position? @relation(fields: [targetPositionId], references: [id])
+  targetPositionId String?
+
+  /// Program pelatihan yang kelulusannya otomatis menerbitkan sertifikat ini.
+  /// Tanpa tautan ini, HR harus menerbitkan sertifikat manual untuk tiap
+  /// peserta yang lulus — pekerjaan berulang yang mudah terlewat.
+  trainingProgram   TrainingProgram? @relation(fields: [trainingProgramId], references: [id])
+  trainingProgramId String?
+
+  isActive Boolean @default(true)
+
+  records CertificationRecord[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isMandatory, isActive])
+  @@index([targetPositionId])
+  @@index([trainingProgramId])
+}
+
+/// Sertifikat yang dimiliki seorang karyawan.
+model CertificationRecord {
+  id         String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  /// null untuk sertifikat di luar daftar resmi perusahaan.
+  certificationType   CertificationType? @relation(fields: [certificationTypeId], references: [id])
+  certificationTypeId String?
+
+  /// Nama dan penerbit disalin saat sertifikat dicatat, bukan dibaca dari
+  /// jenisnya: sertifikat yang sudah terbit tidak boleh berubah namanya
+  /// hanya karena master datanya disunting kemudian.
+  certificationName   String
+  issuingOrganization String
+
+  issueDate      DateTime
+  expiryDate     DateTime?
+  certificateUrl String?
+
+  /// Asal sertifikat bila terbit dari kelulusan pelatihan.
+  trainingRegistration   TrainingRegistration? @relation(fields: [trainingRegistrationId], references: [id])
+  trainingRegistrationId String?
+
+  /// Hanya dipakai untuk pencabutan. Status berlaku atau kedaluwarsa TIDAK
+  /// disimpan, melainkan dihitung dari expiryDate — status tersimpan akan
+  /// tetap berbunyi "valid" setelah tanggalnya lewat.
+  revokedAt     DateTime?
+  revokedReason String?
+
+  note String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([expiryDate])
+  @@index([certificationTypeId])
+}
+
+model Announcement {
+  id       String   @id
+  title    String
+  content  String
+  author   Employee @relation(fields: [authorId], references: [id])
+  authorId String
+
+  /// draft dulu, baru terbit. Sebelumnya menyimpan berarti langsung tayang,
+  /// sehingga pengumuman setengah jadi bisa terbaca seluruh karyawan.
+  status String @default("draft") // draft, published, archived
+
+  /// normal, important, urgent. Papan informasi yang semua isinya setara
+  /// membuat pengumuman penting tenggelam di antara yang rutin.
+  priority String @default("normal")
+
+  publishDate DateTime  @default(now())
+  publishedAt DateTime?
+  expiresAt   DateTime?
+
+  targetDepartment   Department? @relation(fields: [targetDepartmentId], references: [id])
+  targetDepartmentId String?
+
+  /// Pengumuman yang menuntut pernyataan sudah dibaca, misalnya perubahan
+  /// SOP keselamatan kerja.
+  requiresAcknowledgment Boolean @default(false)
+
+  reads AnnouncementRead[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetDepartmentId, publishDate])
+  @@index([authorId])
+  @@index([status, publishedAt])
+}
+
+/// Catatan siapa sudah membaca pengumuman.
+///
+/// Untuk pengumuman keselamatan atau perubahan kebijakan, "sudah diumumkan"
+/// tidak sama dengan "sudah sampai". Tanpa catatan ini, tidak ada cara
+/// mengetahui siapa yang belum membacanya.
+model AnnouncementRead {
+  id             String       @id
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  announcementId String
+  employee       Employee     @relation(fields: [employeeId], references: [id])
+  employeeId     String
+
+  readAt DateTime @default(now())
+
+  /// Diisi hanya bila pengumumannya menuntut pernyataan, dan karyawan
+  /// menyatakannya secara sadar — berbeda dari sekadar membuka.
+  acknowledgedAt DateTime?
+
+  @@unique([announcementId, employeeId])
+  @@index([employeeId])
+}
+
+// Simplified chat model, could be expanded for rooms/channels
+model ChatMessage {
+  id       String   @id
+  sender   Employee @relation(fields: [senderId], references: [id])
+  senderId String
+  room     ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId   String
+
+  message String
+
+  editedAt DateTime?
+
+  /// Pesan dihapus dengan penanda, bukan dibuang: percakapan kerja bisa
+  /// menjadi bahan audit, dan lubang di tengah riwayat lebih menyulitkan
+  /// daripada catatan bahwa ada pesan yang dihapus.
+  deletedAt DateTime?
+
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([roomId, timestamp])
+  @@index([senderId])
+}
+
+model ChatRoom {
+  id          String  @id
+  name        String
+  description String?
+
+  /// department, team, general
+  type String @default("general")
+
+  /// Ruang terbuka bisa dimasuki siapa saja; ruang tertutup hanya oleh
+  /// anggota yang ditambahkan.
+  isPrivate Boolean @default(false)
+  isActive  Boolean @default(true)
+
+  members  ChatRoomMember[]
+  messages ChatMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+/// Keanggotaan ruang obrolan.
+///
+/// Skema lama tidak punya ini — komentarnya sendiri menyebut "requires
+/// junction table". Akibatnya ruang "Kitchen" bisa dibaca seluruh perusahaan,
+/// termasuk percakapan yang tidak ditujukan untuk mereka.
+model ChatRoomMember {
+  id         String   @id
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  roomId     String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  /// member atau moderator
+  role     String   @default("member")
+  joinedAt DateTime @default(now())
+
+  @@unique([roomId, employeeId])
+  @@index([employeeId])
+}
+
+model Survey {
+  id          String  @id
+  title       String
+  description String?
+
+  /// Jawaban tidak dikaitkan ke identitas responden.
+  ///
+  /// Survei kepuasan karyawan yang HR-nya tahu siapa menjawab apa tidak akan
+  /// mendapat jawaban jujur. Siapa yang sudah mengisi tetap dicatat terpisah
+  /// di SurveyParticipation, supaya pengingat tetap bisa dikirim tanpa
+  /// membuka isi jawabannya.
+  isAnonymous Boolean @default(true)
+
+  targetDepartment   Department? @relation(fields: [targetDepartmentId], references: [id])
+  targetDepartmentId String?
+
+  startDate DateTime
+  endDate   DateTime
+
+  status String @default("draft") // draft, published, closed
+
+  createdBy   Employee @relation(fields: [createdById], references: [id])
+  createdById String
+
+  questions      SurveyQuestion[]
+  responses      SurveyResponse[]
+  participations SurveyParticipation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, startDate, endDate])
+  @@index([targetDepartmentId])
+}
+
+/// Pertanyaan survei.
+///
+/// Menggantikan kolom Json: jawaban tidak bisa divalidasi terhadap bentuk
+/// pertanyaan yang tidak terstruktur, dan hasilnya tidak bisa diagregasi
+/// per pertanyaan.
+model SurveyQuestion {
+  id       String @id
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  surveyId String
+
+  code String
+  text String
+
+  /// scale, text, choice
+  type String
+
+  /// Pilihan jawaban untuk type "choice".
+  options Json?
+
+  minScale Int?
+  maxScale Int?
+
+  isRequired Boolean @default(true)
+  sortOrder  Int     @default(0)
+
+  answers SurveyAnswer[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([surveyId, code])
+  @@index([surveyId])
+}
+
+/// Catatan siapa sudah mengisi survei — TANPA tautan ke jawabannya.
+///
+/// Inilah yang memungkinkan survei anonim sekaligus mencegah pengisian ganda:
+/// sistem tahu Budi sudah mengisi, tapi tidak tahu baris jawaban mana miliknya.
+model SurveyParticipation {
+  id         String   @id
+  survey     Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  surveyId   String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  submittedAt DateTime @default(now())
+
+  @@unique([surveyId, employeeId])
+  @@index([employeeId])
+}
+
+model SurveyResponse {
+  id       String @id
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  surveyId String
+
+  /// null pada survei anonim. Justru itu intinya: baris jawaban ini tidak
+  /// bisa ditelusuri kembali ke orangnya.
+  respondent   Employee? @relation(fields: [respondentId], references: [id])
+  respondentId String?
+
+  answers SurveyAnswer[]
+
+  submittedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([surveyId])
+  @@index([respondentId])
+}
+
+model SurveyAnswer {
+  id         String         @id
+  response   SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  responseId String
+  question   SurveyQuestion @relation(fields: [questionId], references: [id])
+  questionId String
+
+  scaleValue  Int?
+  textValue   String?
+  choiceValue String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([responseId, questionId])
+  @@index([questionId])
+}
+
+/// Nomor WhatsApp milik PERUSAHAAN yang dipantau.
+///
+/// Inilah penegak ruang lingkupnya. Tanpa daftar ini, batasan "hanya nomor
+/// perusahaan" cuma kebijakan tertulis: percakapan dari nomor pribadi karyawan
+/// akan ikut terarsip begitu saja, dan itu persoalan hukum yang berbeda sama
+/// sekali. Pesan yang tidak melibatkan salah satu nomor di sini ditolak.
+model WhatsAppAccount {
+  id String @id
+
+  /// Disimpan dalam bentuk baku E.164 tanpa tanda plus, mis. "628123456789".
+  /// Nomor yang sama bisa datang sebagai 08xx, +628xx, atau 628xx; tanpa
+  /// pembakuan, pencocokan daftar akan meleset.
+  phoneNumber String @unique
+
+  label       String // mis. "CS Outlet Kemang", "Reservasi Hotel"
+  description String?
+
+  /// Karyawan yang sedang memegang nomor ini. Bisa berpindah tangan.
+  assignedEmployee   Employee? @relation(fields: [assignedEmployeeId], references: [id])
+  assignedEmployeeId String?
+
+  department   Department? @relation(fields: [departmentId], references: [id])
+  departmentId String?
+
+  /// connected, disconnected, pending_scan
+  sessionStatus      String    @default("pending_scan")
+  lastConnectedAt    DateTime?
+  lastDisconnectedAt DateTime?
+
+  isActive Boolean @default(true)
+
+  conversations WhatsAppConversation[]
+  sessionEvents WhatsAppSessionEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([sessionStatus])
+  @@index([assignedEmployeeId])
+}
+
+/// Riwayat putus-sambung sesi WhatsApp pada platform Belly's.
+///
+/// Dokumen meminta karyawan diberi tahu saat sesinya terputus agar melakukan
+/// scan ulang. Tanpa catatan kejadian, tidak ada yang bisa dikirim ke aplikasi
+/// mobile, dan tidak ada jejak berapa sering sebuah nomor terputus.
+model WhatsAppSessionEvent {
+  id        String          @id
+  account   WhatsAppAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId String
+
+  /// connected, disconnected, scan_required
+  eventType String
+
+  occurredAt DateTime @default(now())
+
+  /// Kapan pemberitahuan ke aplikasi mobile dikirim. null = belum dikirim.
+  notifiedAt DateTime?
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([accountId, occurredAt])
+  @@index([notifiedAt])
+}
+
+/// Arsip percakapan pada nomor WhatsApp perusahaan.
+model WhatsAppConversation {
+  id String @id
+
+  /// Wajib: setiap pesan harus melekat pada nomor perusahaan yang terdaftar.
+  account   WhatsAppAccount @relation(fields: [accountId], references: [id])
+  accountId String
+
+  /// Penanda pesan dari Belly's. Unik, supaya pengiriman ulang webhook —
+  /// yang lazim terjadi pada kegagalan jaringan — tidak menggandakan arsip.
+  externalMessageId String @unique
+
+  senderWhatsappNumber   String
+  receiverWhatsappNumber String
+
+  /// Nomor lawan bicara, yaitu pihak yang bukan nomor perusahaan.
+  /// Disimpan terpisah agar pencarian per kontak tidak perlu menebak arah.
+  contactNumber String
+
+  messageBody String
+  messageType String @default("text") // text, image, document, audio, video
+
+  timestamp DateTime
+  direction String // incoming, outgoing
+
+  /// Karyawan pemegang nomor saat pesan itu terjadi. Disalin, bukan dibaca
+  /// dari akun: nomor bisa berpindah tangan, dan arsip lama harus tetap
+  /// menunjuk orang yang benar.
+  relatedEmployee Employee? @relation(fields: [employeeId], references: [id])
+  employeeId      String?
+
+  conversationTopic String?
+
+  createdAt DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([employeeId])
+  @@index([senderWhatsappNumber])
+  @@index([accountId, timestamp])
+  @@index([contactNumber])
+}
+
+model ComplaintOrDisciplinaryAction {
+  id              String    @id
+  employee        Employee  @relation(fields: [employeeId], references: [id])
+  employeeId      String
+  type            String // "complaint", "disciplinary_action"
+  description     String
+  status          String    @default("open") // open, under_review, resolved, dismissed
+  reportedBy      Employee? @relation("ReportedByRelation", fields: [reportedById], references: [id])
+  reportedById    String?
+  handledBy       Employee? @relation("HandledByRelation", fields: [handledById], references: [id])
+  handledById     String?
+  resolutionNotes String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([employeeId, status])
+}
+
+model ShiftSchedule {
+  id            String       @id
+  employee      Employee     @relation(fields: [employeeId], references: [id])
+  employeeId    String
+  date          DateTime // Date of the shift
+  startTime     String // Time in HH:mm format
+  endTime       String // Time in HH:mm format
+  breakDuration Decimal      @default(0) @db.Decimal(4, 2) // jam; ikut mengurangi jam kerja terbayar
+  status        String       @default("confirmed") // confirmed, tentative, cancelled
+  notes         String?
+  attendances   Attendance[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([employeeId, date])
+  @@index([date])
+}
+
+model Interview {
+  id            String    @id
+  candidate     Candidate @relation(fields: [candidateId], references: [id])
+  candidateId   String
+  interviewer   Employee  @relation(fields: [interviewerId], references: [id])
+  interviewerId String
+  /// Tahap wawancara: hr, user, final, dan seterusnya. Perusahaan bisa punya
+  /// alur berbeda, jadi tidak dipatok enum.
+  stage         String    @default("hr")
+  round         Int       @default(1)
+
+  scheduledDateTime DateTime
+  durationMinutes   Int      @default(60)
+  location          String?
+
+  status String @default("scheduled") // scheduled, completed, cancelled, no_show
+
+  /// Kesimpulan pewawancara. Dipisah dari status: wawancara bisa selesai
+  /// (status completed) dengan hasil apa pun.
+  result String? // pass, fail, hold
+  score  Float?
+
+  notes     String?
+  feedback  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([candidateId])
+  @@index([interviewerId])
+}
+
+model PsychometricTestResult {
+  id            String    @id
+  candidate     Candidate @relation(fields: [candidateId], references: [id])
+  candidateId   String
+  testName      String
+  score         Float
+  reportUrl     String? // URL to the full PDF report
+  status        String    @default("pending") // pending, completed, reviewed
+  evaluatedBy   Employee? @relation(name: "EvaluatorRelation", fields: [evaluatedById], references: [id])
+  evaluatedById String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([candidateId])
+}
+
+model PerformanceFormTemplate {
+  id          String  @id
+  name        String
+  description String?
+
+  /// Formulir bisa diikat ke jabatan tertentu: KPI waiter berbeda dari
+  /// KPI housekeeper (hrd_features_doc.md bagian 6).
+  position   Position? @relation(fields: [positionId], references: [id])
+  positionId String?
+
+  isActive Boolean @default(true)
+
+  criteria PerformanceCriterion[]
+  reviews  PerformanceReview[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([positionId])
+  @@index([isActive])
+}
