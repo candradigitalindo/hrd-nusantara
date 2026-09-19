@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+/*
+ * Token desain. Semua warna didefinisikan di sini dan dipakai lewat kelas
+ * Tailwind (bg-primary, text-muted, ...), supaya pergantian tema tidak
+ * menyentuh komponen. Mode gelap mengikuti sistem, dan bisa dipaksa lewat
+ * data-theme pada <html>.
+ */
+:root {
+  --background: #f7f8fb;
+  --surface: #ffffff;
+  --surface-2: #f1f3f8;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
+  --primary-soft: #eef2ff;
+  --on-primary: #ffffff;
+
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --warning: #d97706;
+  --warning-soft: #fffbeb;
+  --danger: #e11d48;
+  --danger-soft: #fff1f2;
+  --info: #0284c7;
+  --info-soft: #f0f9ff;
+
+  --ring: #6366f1;
+  --radius: 0.75rem;
+
+  /* Hue mark grafik (tervalidasi: L-band, chroma, kontras >= 3:1 vs permukaan). */
+  --chart-1: #4f46e5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #0b1020;
+    --surface: #111827;
+    --surface-2: #1a2236;
+    --foreground: #e5e7eb;
+    --muted: #94a3b8;
+    --border: #253044;
+
+    --primary: #818cf8;
+    --primary-hover: #a5b4fc;
+    --primary-soft: #1e1b4b;
+    --on-primary: #0b1020;
+
+    --success: #34d399;
+    --success-soft: #052e22;
+    --warning: #fbbf24;
+    --warning-soft: #422006;
+    --danger: #fb7185;
+    --danger-soft: #4c0519;
+    --info: #38bdf8;
+    --info-soft: #082f49;
+
+    --ring: #a5b4fc;
+    --chart-1: #6366f1;
+  }
+}
+
+:root[data-theme="dark"] {
+  --background: #0b1020;
+  --surface: #111827;
+  --surface-2: #1a2236;
+  --foreground: #e5e7eb;
+  --muted: #94a3b8;
+  --border: #253044;
+  --primary: #818cf8;
+  --primary-hover: #a5b4fc;
+  --primary-soft: #1e1b4b;
+  --on-primary: #0b1020;
+  --success: #34d399;
+  --success-soft: #052e22;
+  --warning: #fbbf24;
+  --warning-soft: #422006;
+  --danger: #fb7185;
+  --danger-soft: #4c0519;
+  --info: #38bdf8;
+  --info-soft: #082f49;
+  --ring: #a5b4fc;
+  --chart-1: #6366f1;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ring: var(--ring);
+  --radius-card: var(--radius);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fokus keyboard yang terlihat di semua tema. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Animasi masuk halus untuk kartu dan baris, dinonaktifkan bila pengguna
+   meminta gerakan dikurangi. */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-up { animation: fade-up 0.35s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up { animation: none; }
+}
+
+/* Area aman perangkat ber-notch, untuk bar navigasi bawah di mobile. */
+.pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }

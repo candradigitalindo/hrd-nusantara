@@ -1,0 +1,37 @@
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  CalendarCheck,
+  CalendarOff,
+  MessageCircle,
+  ScrollText,
+  type LucideIcon,
+} from "lucide-react";
+import type { Role } from "@/lib/types";
+
+export interface MenuNav {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /** Kosong = semua peran. */
+  roles?: Role[];
+  /** Tampil di bar bawah ponsel (maksimal 4). */
+  utama?: boolean;
+}
+
+const HR: Role[] = ["SUPER_ADMIN", "HR_ADMIN"];
+const MANAJEMEN: Role[] = ["SUPER_ADMIN", "HR_ADMIN", "MANAGER"];
+
+export const MENU: MenuNav[] = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, utama: true },
+  { href: "/karyawan", label: "Karyawan", icon: Users, roles: MANAJEMEN, utama: true },
+  { href: "/organisasi", label: "Organisasi", icon: Building2, roles: HR },
+  { href: "/presensi", label: "Presensi", icon: CalendarCheck, utama: true },
+  { href: "/cuti", label: "Cuti", icon: CalendarOff, utama: true },
+  { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: HR },
+  { href: "/audit", label: "Jejak Audit", icon: ScrollText, roles: ["SUPER_ADMIN"] },
+];
+
+export const menuUntuk = (role: Role | undefined) =>
+  MENU.filter((m) => !m.roles || (role && m.roles.includes(role)));

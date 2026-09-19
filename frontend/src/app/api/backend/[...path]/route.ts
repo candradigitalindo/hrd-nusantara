@@ -1,0 +1,71 @@
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+
+/**
+ * Proxy ke backend Express (pola backend-for-frontend).
+ *
+ * Token JWT disimpan di cookie httpOnly dan hanya ditempelkan di sini, di
+ * server Next. Browser tidak pernah melihat tokennya. Satu-satunya jalur
+ * khusus adalah login: kalau backend menjawab 200 beserta token, token itu
+ * dipindahkan ke cookie dan TIDAK diteruskan ke browser.
+ */
+const BACKEND = process.env.BACKEND_URL ?? "http://localhost:3000";
+export const NAMA_COOKIE = "hrd_sesi";
+
+const HEADER_DITERUSKAN = ["content-type", "accept", "x-bellys-signature"];
+
+const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...path]">) => {
+  const { path } = await ctx.params;
+  const tujuan = new URL(`/api/${path.join("/")}`, BACKEND);
+  tujuan.search = req.nextUrl.search;
+
+  const headers = new Headers();
+  for (const h of HEADER_DITERUSKAN) {
+    const v = req.headers.get(h);
+    if (v) headers.set(h, v);
+  }
+  // Alamat asli pengguna diteruskan supaya jejak audit di backend mencatat
+  // IP orangnya, bukan IP server Next.
+  const ip = req.headers.get("x-forwarded-for") ?? "";
+  if (ip) headers.set("x-forwarded-for", ip);
+  const ua = req.headers.get("user-agent");
+  if (ua) headers.set("user-agent", ua);
+
+  const token = (await cookies()).get(NAMA_COOKIE)?.value;
+  if (token) headers.set("authorization", `Bearer ${token}`);
+
+  const adaBody = req.method !== "GET" && req.method !== "HEAD";
+  const jawaban = await fetch(tujuan, {
+    method: req.method,
+    headers,
+    body: adaBody ? await req.arrayBuffer() : undefined,
+    redirect: "manual",
+    cache: "no-store",
+  });
+
+  const isLogin = req.method === "POST" && path.join("/") === "auth/login";
+  if (isLogin && jawaban.ok) {
+    const data = (await jawaban.json()) as { token: string; expiresIn: string; user: unknown };
+    const res = NextResponse.json({ user: data.user, expiresIn: data.expiresIn });
+    res.cookies.set(NAMA_COOKIE, data.token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      // Selaras dengan JWT_EXPIRES_IN backend (bawaan 8 jam).
+      maxAge: 8 * 60 * 60,
+    });
+    return res;
+  }
+
+  const res = new NextResponse(jawaban.body, { status: jawaban.status });
+  const ct = jawaban.headers.get("content-type");
+  if (ct) res.headers.set("content-type", ct);
+  return res;
+};
+
+export const GET = teruskan;
+export const POST = teruskan;
+export const PUT = teruskan;
+export const PATCH = teruskan;
+export const DELETE = teruskan;
