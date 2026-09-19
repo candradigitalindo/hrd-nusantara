@@ -35,6 +35,7 @@ export const makeEmployee = async (
     status?: string;
     password?: string | null;
     departmentId?: string | null;
+    positionId?: string | null;
     gender?: string | null;
   } = {}
 ) => {
@@ -51,6 +52,7 @@ export const makeEmployee = async (
       status: overrides.status ?? 'active',
       password: password === null ? null : await bcrypt.hash(password, env.BCRYPT_ROUNDS),
       departmentId: overrides.departmentId ?? null,
+      positionId: overrides.positionId ?? null,
       gender: overrides.gender ?? null,
     },
   });
