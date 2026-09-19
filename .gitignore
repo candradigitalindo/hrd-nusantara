@@ -27,6 +27,8 @@ models/
 
 # Berkas unggahan (foto pendaftaran wajah) — data biometrik, jangan di-commit
 uploads/
+# Unggahan yang dibuat test; dihapus sendiri oleh test, tidak boleh ikut repo.
+uploads-test/
 
 # Logs
 logs/
