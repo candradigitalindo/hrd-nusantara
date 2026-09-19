@@ -170,3 +170,24 @@ export interface Dashboard {
     unknownJoinDate: number;
   };
 }
+
+export type JenisDokumen =
+  | "cv" | "surat_lamaran" | "ktp" | "skck" | "ijazah" | "sertifikat"
+  | "kontrak_kerja" | "npwp" | "bpjs_kesehatan" | "bpjs_ketenagakerjaan" | "lainnya";
+
+export interface DokumenKaryawan {
+  id: string;
+  employeeId: string;
+  type: JenisDokumen;
+  title: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  notes: string | null;
+  uploadedById: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  employee?: { id: string; nik: string; name: string; department: Ref | null };
+}

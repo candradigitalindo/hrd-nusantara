@@ -59,8 +59,12 @@ const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...pa
   }
 
   const res = new NextResponse(jawaban.body, { status: jawaban.status });
-  const ct = jawaban.headers.get("content-type");
-  if (ct) res.headers.set("content-type", ct);
+  // Header yang menentukan cara browser memperlakukan isi: tanpa
+  // content-disposition, unduhan dokumen terbuka sebagai halaman kosong.
+  for (const h of ["content-type", "content-length", "content-disposition", "cache-control", "x-content-type-options"]) {
+    const v = jawaban.headers.get(h);
+    if (v) res.headers.set(h, v);
+  }
   return res;
 };
 

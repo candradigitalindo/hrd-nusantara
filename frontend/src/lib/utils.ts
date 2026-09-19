@@ -67,3 +67,24 @@ export const inisial = (nama: string) =>
     .slice(0, 2)
     .map((k) => k[0]?.toUpperCase() ?? "")
     .join("");
+
+export const LABEL_DOKUMEN: Record<string, string> = {
+  cv: "CV",
+  surat_lamaran: "Surat Lamaran",
+  ktp: "KTP",
+  skck: "SKCK",
+  ijazah: "Ijazah",
+  sertifikat: "Sertifikat",
+  kontrak_kerja: "Kontrak Kerja",
+  npwp: "NPWP",
+  bpjs_kesehatan: "BPJS Kesehatan",
+  bpjs_ketenagakerjaan: "BPJS Ketenagakerjaan",
+  lainnya: "Lainnya",
+};
+
+export const formatUkuran = (byte: number) =>
+  byte < 1024 ? `${byte} B` : byte < 1024 * 1024 ? `${(byte / 1024).toFixed(0)} KB` : `${(byte / 1024 / 1024).toFixed(1)} MB`;
+
+/** Hari menuju kedaluwarsa: negatif berarti sudah lewat, null bila tidak ada masa berlaku. */
+export const sisaHari = (tanggal: string | null | undefined) =>
+  tanggal ? Math.ceil((new Date(tanggal).getTime() - Date.now()) / 86_400_000) : null;

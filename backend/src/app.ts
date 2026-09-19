@@ -26,6 +26,7 @@ import whatsappRoutes from './routes/whatsappRoutes';
 import deviceRoutes from './routes/deviceRoutes';
 import auditRoutes from './routes/auditRoutes';
 import organizationRoutes from './routes/organizationRoutes';
+import documentRoutes from './routes/documentRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 
@@ -105,6 +106,7 @@ export const createApp = () => {
   // /face-enrollments/:id), jadi dipasang di akar /api.
   // Departemen dan jabatan memakai dua prefiks, jadi dipasang di akar /api.
   app.use('/api', organizationRoutes);
+  app.use('/api', documentRoutes);
   app.use('/api', faceEnrollmentRoutes);
   // Modul cuti memakai beberapa prefiks (/leaves, /leave-types, /holidays,
   // /leave-balances), jadi dipasang di akar /api.

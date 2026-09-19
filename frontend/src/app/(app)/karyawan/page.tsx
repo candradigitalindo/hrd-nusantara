@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Plus, Search, UserX, Users, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, bolehHr } from "@/hooks/use-sesi";
@@ -22,6 +23,7 @@ import type { Halaman, Karyawan, Departemen } from "@/lib/types";
 
 export default function HalamanKaryawan() {
   const qc = useQueryClient();
+  const router = useRouter();
   const { data: saya } = useSesi();
   const hr = bolehHr(saya?.role);
 
@@ -179,7 +181,7 @@ export default function HalamanKaryawan() {
         ) : (
           data && (
             <>
-              <ResponsiveTable columns={kolom} rows={data.data} rowKey={(k) => k.id} onRowClick={hr ? (k) => setForm({ open: true, karyawan: k }) : undefined} />
+              <ResponsiveTable columns={kolom} rows={data.data} rowKey={(k) => k.id} onRowClick={(k) => router.push(`/karyawan/${k.id}`)} />
               <Pagination pagination={data.pagination} onPage={setPage} />
             </>
           )

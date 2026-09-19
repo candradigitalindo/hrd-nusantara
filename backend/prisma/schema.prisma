@@ -107,6 +107,7 @@ model Employee {
   conductedInterviews   Interview[] // Employee yang melakukan wawancara
   evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
   deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
+  documents             EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
 
   @@index([departmentId])
   @@index([positionId])
@@ -1697,4 +1698,50 @@ model AuditLog {
   @@index([actorId, createdAt])
   @@index([action, createdAt])
   @@index([createdAt])
+}
+
+/// Dokumen digital karyawan: CV, ijazah, kontrak kerja, NPWP, BPJS, SKCK,
+/// sertifikat. Berkasnya di UPLOAD_DIR di luar direktori publik; tabel ini
+/// hanya menyimpan metadata dan lokasinya.
+///
+/// Soft delete. Kontrak kerja dan dokumen legal lain adalah bukti — yang
+/// dihapus HR harus tetap bisa ditelusuri, bukan lenyap.
+model EmployeeDocument {
+  id String @id
+
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String
+
+  /// cv, surat_lamaran, ktp, skck, ijazah, sertifikat, kontrak_kerja, npwp,
+  /// bpjs_kesehatan, bpjs_ketenagakerjaan, lainnya
+  type  String
+  title String
+
+  /// Nama asli dari pengunggah — hanya untuk ditampilkan, TIDAK PERNAH
+  /// dipakai sebagai path. Nama di penyimpanan dibuat server dari ULID.
+  originalName String
+  storagePath  String
+  mimeType     String
+  sizeBytes    Int
+  /// Sidik jari isi berkas: membuktikan dokumen yang diunduh saat audit sama
+  /// dengan yang diunggah dulu.
+  sha256       String
+
+  issuedAt  DateTime?
+  /// Untuk kontrak, SKCK, dan sertifikat yang ada masa berlakunya.
+  expiresAt DateTime?
+  notes     String?
+
+  /// Cuplikan id, tanpa relasi: siapa mengunggah tetap terbaca walau akunnya
+  /// sudah dinonaktifkan.
+  uploadedById String?
+  deletedAt    DateTime?
+  deletedById  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, type])
+  @@index([employeeId, deletedAt])
+  @@index([expiresAt])
 }

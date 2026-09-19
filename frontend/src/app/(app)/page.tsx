@@ -15,7 +15,11 @@ import { Alert } from "@/components/ui/alert";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { GrafikBatang } from "@/components/dashboard/grafik-batang";
 import { formatAngka, labelStatus, formatTanggal } from "@/lib/utils";
-import type { Dashboard, Halaman, Presensi, Cuti } from "@/lib/types";
+import type { Dashboard, Halaman, Presensi, Cuti, DokumenKaryawan } from "@/lib/types";
+import Link from "next/link";
+import { FileWarning } from "lucide-react";
+import { LABEL_DOKUMEN, sisaHari } from "@/lib/utils";
+import { bolehHr } from "@/hooks/use-sesi";
 
 const PRESET = [
   { label: "Bulan ini", bulan: 0 },
@@ -57,6 +61,12 @@ export default function HalamanDashboard() {
     queryKey: ["cuti", "menunggu"],
     queryFn: async () => (await api.get<Halaman<Cuti>>("/leaves?status=pending&limit=5")).data,
     enabled: manajemen,
+  });
+
+  const dokumenKedaluwarsa = useQuery({
+    queryKey: ["dokumen", "kedaluwarsa"],
+    queryFn: async () => (await api.get<Halaman<DokumenKaryawan>>("/documents/expiring?days=30&limit=5")).data,
+    enabled: bolehHr(saya?.role),
   });
 
   const presensiSaya = useQuery({
@@ -193,6 +203,44 @@ export default function HalamanDashboard() {
           </CardHeader>
           <CardContent>{dashboard.isLoading ? <Skeleton className="h-56" /> : <GrafikBatang data={dataTenure} tinggi={220} />}</CardContent>
         </Card>
+
+        {bolehHr(saya?.role) && (
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex-row items-start justify-between gap-3">
+              <div>
+                <CardTitle>Dokumen perlu diperbarui</CardTitle>
+                <CardDescription>Kontrak, SKCK, dan sertifikat yang kedaluwarsa dalam 30 hari</CardDescription>
+              </div>
+              {(dokumenKedaluwarsa.data?.pagination.total ?? 0) > 0 && (
+                <Badge tone="warning" dot>{dokumenKedaluwarsa.data!.pagination.total}</Badge>
+              )}
+            </CardHeader>
+            <CardContent>
+              {dokumenKedaluwarsa.isLoading ? (
+                <Skeleton className="h-24" />
+              ) : dokumenKedaluwarsa.data?.data.length ? (
+                <ul className="divide-y divide-border">
+                  {dokumenKedaluwarsa.data.data.map((d) => {
+                    const sisa = sisaHari(d.expiresAt) ?? 0;
+                    return (
+                      <li key={d.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                        <div className="min-w-0">
+                          <Link href={`/karyawan/${d.employeeId}`} className="font-medium hover:underline">{d.employee?.name}</Link>
+                          <p className="truncate text-xs text-muted">{LABEL_DOKUMEN[d.type]} · {d.title}</p>
+                        </div>
+                        <Badge tone={sisa < 0 ? "danger" : "warning"} dot className="shrink-0">
+                          {sisa < 0 ? `lewat ${Math.abs(sisa)} hari` : `${sisa} hari lagi`}
+                        </Badge>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-muted"><FileWarning className="h-4 w-4" aria-hidden /> Tidak ada dokumen yang segera kedaluwarsa.</div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

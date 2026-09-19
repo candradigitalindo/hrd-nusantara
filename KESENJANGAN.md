@@ -1,7 +1,7 @@
 # Pemetaan Dokumen ↔ Kode
 
 Pembandingan `hrd_features_doc.md` dan `step_development.md` terhadap kode
-yang ada, per 20 September 2026. Backend punya 167 endpoint dan 794 test;
+yang ada, per 20 September 2026. Backend punya 173 endpoint dan 794 test;
 frontend Next.js baru dimulai pada tanggal ini.
 
 Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan sekarang
@@ -11,7 +11,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | # | Modul (dokumen fitur) | Status | Catatan |
 |---|---|---|---|
 | 1 | Data karyawan — profil, status, struktur | ✅ | **Departemen & jabatan sebelumnya tidak punya endpoint sama sekali** — tidak ada cara membuatnya selain menulis ke database. Ditambahkan hari ini. |
-| 1 | Data karyawan — dokumen digital (CV, ijazah, kontrak, BPJS) | ❌ | Belum ada tabel maupun unggahan. Disebut dua kali di dokumen (bagian 1 dan 13). |
+| 1 | Data karyawan — dokumen digital (CV, ijazah, kontrak, BPJS) | ✅ | Unggah (HR), lihat/unduh (HR dan pemilik), masa berlaku, pelacakan kedaluwarsa. Berkas di luar direktori publik, jenis dikenali dari isi, soft delete, tiap unduhan tercatat di audit. |
 | 2 | Presensi — GPS, wajah, QR, shift, validasi, lembur, laporan | ✅ | Pengenalan wajah dan anti-spoofing berjalan di server sendiri. |
 | 3 | Cuti — tipe, pengajuan, saldo, kalender | ✅ | Potong otomatis cuti bersama dari saldo belum ada. |
 | 4 | Payroll — hitung otomatis, BPJS, PPh 21, slip digital | ✅ | PPh 21 opsional, tidak aktif secara bawaan. |
@@ -31,7 +31,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 13 | Audit trail | ✅ | Append-only, ditegakkan trigger database. |
 | 13 | Keluhan & disiplin | 🟡 | Tabel `ComplaintOrDisciplinaryAction` ada di skema, **endpoint-nya belum**. |
 | 13 | Perencanaan suksesi | ❌ | |
-| 13 | Dokumen legal | ❌ | Sama dengan dokumen digital karyawan. |
+| 13 | Dokumen legal | ✅ | Sama dengan dokumen digital karyawan (jenis kontrak_kerja, dengan masa berlaku). |
 | 13 | UI responsif | 🟡 | Lihat bagian frontend. |
 | 13 | Fitur khusus hotel (task housekeeping, interaksi tamu) | ➖ | Bergantung pada PMS. |
 
@@ -43,6 +43,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Login | ✅ |
 | Dashboard dengan grafik | ✅ |
 | Karyawan — daftar, cari, saring, tambah, sunting, nonaktifkan | ✅ |
+| Karyawan — halaman detail dengan dokumen (unggah seret-lepas, unduh, masa berlaku) | ✅ |
 | Organisasi — departemen & jabatan | ✅ |
 | Presensi — daftar, saring, setujui lembur | ✅ |
 | Cuti — antrean, setujui/tolak dengan catatan | ✅ |
@@ -65,7 +66,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Dokumen karyawan (disebut paling sering, dibutuhkan hampir semua alur HR)
-2. Keluhan & disiplin, psikotes (skema sudah ada, tinggal endpoint)
-3. Halaman frontend payroll dan cuti pengajuan (dari sisi karyawan)
-4. Enkripsi embedding wajah dan lokasi
+1. Keluhan & disiplin, psikotes (skema sudah ada, tinggal endpoint)
+2. Halaman frontend untuk karyawan biasa: ajukan cuti, slip gaji, saldo cuti
+3. Enkripsi embedding wajah dan lokasi

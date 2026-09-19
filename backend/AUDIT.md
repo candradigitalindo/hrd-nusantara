@@ -98,6 +98,7 @@ Isi `metadata` sendiri yang dipilih — jangan menempelkan `req.body`.
 | `employee.ubah` / `employee.ubah.role` | Perubahan data karyawan |
 | `payroll.run.setujui` / `payroll.run.kembalikan` | Keputusan batch penggajian |
 | `whatsapp.conversations.read` | Pembacaan arsip percakapan |
+| `employee.document.upload` / `.download` | Unggah dan unduh dokumen karyawan — unduhan dicatat walau GET, karena isinya KTP, NPWP, kontrak |
 | `whatsapp.retention.purge` | Penghapusan arsip, termasuk simulasinya |
 | `whatsapp.session.connect` / `.disconnect` | Membuka dan menutup sesi WhatsApp |
 

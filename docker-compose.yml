@@ -67,6 +67,7 @@ services:
       FACE_RECOGNITION_ENABLED: ${FACE_RECOGNITION_ENABLED:-true}
       FACE_STORE_CHECKIN_IMAGES: ${FACE_STORE_CHECKIN_IMAGES:-false}
       UPLOAD_DIR: /app/uploads
+      DOCUMENT_MAX_BYTES: ${DOCUMENT_MAX_BYTES:-5000000}
       FACE_ANTISPOOF_MODEL: /app/models/antispoof/minifasnet_v2.onnx
       FACE_LIVENESS_THRESHOLD: ${FACE_LIVENESS_THRESHOLD:-0.6}
       FACE_LIVENESS_ENABLED: ${FACE_LIVENESS_ENABLED:-true}
@@ -83,7 +84,8 @@ services:
       PUSH_NOTIFICATIONS_ENABLED: ${PUSH_NOTIFICATIONS_ENABLED:-false}
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/secrets/firebase-service-account.json}
     volumes:
-      # Foto pendaftaran wajah harus tetap ada walau container dibuat ulang.
+      # Foto pendaftaran wajah DAN dokumen karyawan (CV, kontrak, BPJS) ada
+      # di sini; keduanya harus tetap ada walau container dibuat ulang.
       - faceuploads:/app/uploads
       # Kredensial sesi WhatsApp harus bertahan walau container dibuat ulang,
       # kalau tidak semua nomor harus discan QR ulang tiap deploy.

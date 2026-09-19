@@ -149,6 +149,11 @@ const envSchema = z.object({
 
   UPLOAD_DIR: z.string().default('./uploads'),
 
+  // Batas ukuran dokumen karyawan (CV, ijazah, kontrak). Dikirim sebagai
+  // base64 di body JSON yang dibatasi 10 MB, jadi batas ini harus muat di
+  // bawah 7,5 MB setelah dikembangkan 4/3.
+  DOCUMENT_MAX_BYTES: z.coerce.number().int().min(100_000).max(7_000_000).default(5_000_000),
+
   // Foto selfie tiap check-in TIDAK disimpan secara bawaan.
   // Menyimpannya berarti menumpuk data biometrik harian seluruh karyawan —
   // beban kepatuhan UU PDP yang besar demi manfaat yang kecil, karena skor
