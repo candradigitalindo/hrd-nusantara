@@ -27,6 +27,8 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "published":
     case "attended":
     case "compliant":
+    case "finalized":
+    case "praise":
     case "paid":
       return "success";
     case "late":
@@ -44,6 +46,7 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "important":
     case "waitlisted":
     case "expiring_soon":
+    case "improvement":
       return "warning";
     case "absent":
     case "rejected":
@@ -69,6 +72,8 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "scheduled":
     case "ongoing":
     case "registered":
+    case "submitted":
+    case "acknowledged":
       return "info";
     default:
       return "neutral";

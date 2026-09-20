@@ -136,6 +136,19 @@ export const createApp = () => {
   app.use((err: Error, _req: Request, res: Response, next: NextFunction) => {
     if (res.headersSent) return next(err);
 
+    // Galat dari body-parser (JSON rusak, badan terlalu besar) adalah salah
+    // klien, bukan server: kembalikan 4xx tanpa membocorkan detail internal.
+    const http = err as Error & { status?: number; type?: string };
+    if (typeof http.status === 'number' && http.status >= 400 && http.status < 500) {
+      const pesan =
+        http.type === 'entity.parse.failed'
+          ? 'Badan permintaan bukan JSON yang sah'
+          : http.type === 'entity.too.large'
+            ? 'Badan permintaan terlalu besar'
+            : 'Permintaan tidak bisa diproses';
+      return res.status(http.status).json({ error: pesan });
+    }
+
     if (env.NODE_ENV !== 'test') console.error(err);
 
     // Di produksi pesan error asli tidak dikirim ke klien — isinya bisa

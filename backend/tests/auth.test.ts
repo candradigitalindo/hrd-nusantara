@@ -188,3 +188,15 @@ describe('POST /api/auth/change-password', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('Badan permintaan rusak', () => {
+  it('JSON yang tidak sah dibalas 400, bukan 500', async () => {
+    const res = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'application/json')
+      .send('{"email":"rusak');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/JSON/);
+  });
+});

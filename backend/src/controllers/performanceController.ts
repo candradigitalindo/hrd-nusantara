@@ -128,13 +128,25 @@ export const changeCycleStatus = async (req: Request, res: Response) => {
     return res.status(409).json({ error: 'Siklus yang sudah ditutup tidak bisa dibuka lagi' });
   }
 
-  const diperbarui = await prisma.performanceCycle.update({
-    where: { id: siklus.id },
-    data: {
-      status,
-      note: note ?? siklus.note,
-      ...(status === 'closed' ? { closedAt: new Date() } : {}),
-    },
+  // Menutup siklus memfinalkan penilaian yang sudah terkirim atau diakui —
+  // setelah ini tidak ada lagi yang bisa diubah. Draf yang belum diisi
+  // dibiarkan sebagai draf: tidak ada skornya, jadi tidak ada yang final.
+  const diperbarui = await prisma.$transaction(async (tx) => {
+    if (status === 'closed') {
+      await tx.performanceReview.updateMany({
+        where: { cycleId: siklus.id, status: { in: ['submitted', 'acknowledged'] } },
+        data: { status: 'finalized' },
+      });
+    }
+    return tx.performanceCycle.update({
+      where: { id: siklus.id },
+      data: {
+        status,
+        note: note ?? siklus.note,
+        ...(status === 'closed' ? { closedAt: new Date() } : {}),
+      },
+      include: { _count: { select: { reviews: true } } },
+    });
   });
 
   res.json(diperbarui);
@@ -441,7 +453,17 @@ export const getReviewById = async (req: Request, res: Response) => {
     return res.status(403).json({ error: 'Anda tidak punya akses ke penilaian ini' });
   }
 
-  res.json(reviewDTO(review));
+  // Kriteria ikut dikirim karena penilai bukan HR tidak boleh membuka daftar
+  // formulir — tanpa ini draf yang belum berskor tidak punya apa-apa untuk diisi.
+  const kriteria = await prisma.performanceCriterion.findMany({
+    where: { templateId: review.formTemplateId! },
+    orderBy: { sortOrder: 'asc' },
+  });
+
+  res.json({
+    ...reviewDTO(review),
+    criteria: kriteria.map((k) => ({ ...k, weight: k.weight.toNumber() })),
+  });
 };
 
 export const addDiscussion = async (req: Request, res: Response) => {

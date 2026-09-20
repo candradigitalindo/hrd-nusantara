@@ -12,6 +12,7 @@ import {
   UserSearch,
   Megaphone,
   GraduationCap,
+  Target,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -38,6 +39,7 @@ export const MENU: MenuNav[] = [
   { href: "/cuti", label: "Cuti", icon: CalendarOff, utama: true },
   { href: "/gaji", label: "Gaji", icon: Wallet },
   { href: "/pelatihan", label: "Pelatihan", icon: GraduationCap },
+  { href: "/kinerja", label: "Kinerja", icon: Target },
   { href: "/payroll", label: "Payroll", icon: Banknote, roles: HR },
   { href: "/rekrutmen", label: "Rekrutmen", icon: UserSearch, roles: MANAJEMEN },
   { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert },

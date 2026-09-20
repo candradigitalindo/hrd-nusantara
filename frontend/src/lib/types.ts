@@ -578,3 +578,89 @@ export interface KepatuhanPelatihan {
     needsAction: { employee: { id: string; nik: string; name: string; departmentId: string | null }; state: StatusKepatuhan; validUntil: string | null }[];
   }[];
 }
+
+export type JenisPenilai = "self" | "manager" | "peer" | "subordinate";
+
+export interface KriteriaKinerja {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  weight: number;
+  maxScore: number;
+  sortOrder: number;
+}
+
+export interface TemplatePenilaian {
+  id: string;
+  name: string;
+  description: string | null;
+  positionId: string | null;
+  isActive?: boolean;
+  createdAt: string;
+  criteria: KriteriaKinerja[];
+}
+
+export interface SiklusPenilaian {
+  id: string;
+  code: string;
+  name: string;
+  periodType: "quarterly" | "semester" | "annual";
+  periodStart: string;
+  periodEnd: string;
+  status: "draft" | "open" | "closed";
+  note: string | null;
+  createdAt: string;
+  _count?: { reviews: number };
+}
+
+export interface SkorKriteria {
+  criterionId: string;
+  score: number;
+  comment: string | null;
+  criterion: { code: string; name: string; weight: number; maxScore: number };
+}
+
+export interface Penilaian {
+  id: string;
+  cycleId: string;
+  revieweeId: string;
+  reviewerId: string;
+  reviewerType: JenisPenilai;
+  period: string | null;
+  formTemplateId: string;
+  totalScore: number | null;
+  rating: number | null;
+  feedback: string | null;
+  status: "draft" | "submitted" | "acknowledged" | "finalized";
+  submittedAt: string | null;
+  createdAt: string;
+  reviewee: { id: string; nik: string; name: string; departmentId: string | null };
+  reviewer: { id: string; nik: string; name: string };
+  scores: SkorKriteria[];
+  discussions: { id: string; authorId: string; note: string; createdAt: string }[];
+  /** Hanya pada detail (GET /performance/reviews/:id): kriteria formulirnya, agar penilai bukan HR bisa mengisi draf. */
+  criteria?: KriteriaKinerja[];
+}
+
+export interface UmpanBalik {
+  id: string;
+  recipientId: string;
+  authorId: string | null;
+  type: "praise" | "improvement" | "note";
+  message: string;
+  isPrivate: boolean;
+  createdAt: string;
+  recipient?: { id: string; nik: string; name: string };
+  author?: { id: string; nik: string; name: string } | null;
+}
+
+export interface RingkasanKinerja {
+  employeeId: string;
+  cycleId: string;
+  submittedReviews: number;
+  pendingReviews: number;
+  overall: number | null;
+  byReviewerType: { reviewerType: JenisPenilai; count: number; averageScore: number }[];
+}

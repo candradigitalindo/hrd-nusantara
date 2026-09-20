@@ -67,6 +67,9 @@ export const LABEL_STATUS: Record<string, string> = {
   expiring_soon: "Segera Kedaluwarsa",
   expired: "Kedaluwarsa",
   never_completed: "Belum Pernah",
+  submitted: "Terkirim",
+  acknowledged: "Dikonfirmasi",
+  finalized: "Final",
   resolved: "Selesai",
   dismissed: "Ditolak",
 };
@@ -161,3 +164,7 @@ export const LABEL_PRIORITAS: Record<string, string> = {
   important: "Penting",
   urgent: "Mendesak",
 };
+
+export const LABEL_PERIODE: Record<string, string> = { quarterly: "Triwulan", semester: "Semester", annual: "Tahunan" };
+export const LABEL_PENILAI: Record<string, string> = { self: "Diri sendiri", manager: "Atasan", peer: "Rekan kerja", subordinate: "Bawahan" };
+export const LABEL_UMPAN: Record<string, string> = { praise: "Apresiasi", improvement: "Perbaikan", note: "Catatan" };

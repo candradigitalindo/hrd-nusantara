@@ -393,6 +393,42 @@ describe('Akses dan pengakuan', () => {
     expect(res.body.status).toBe('acknowledged');
   });
 
+  it('menutup siklus memfinalkan penilaian yang terkirim, draf tetap draf', async () => {
+    const { reviewId, criteria, cycleId, templateId } = await siapkanPenugasan();
+    await request(app)
+      .post(`/api/performance/reviews/${reviewId}/submit`)
+      .set(auth(sitiToken))
+      .send({ scores: [{ criterionId: criteria[0].id, score: 4 }, { criterionId: criteria[1].id, score: 3 }] });
+
+    // Penilaian diri yang belum sempat diisi.
+    const draf = await request(app)
+      .post('/api/performance/reviews')
+      .set(auth(hrToken))
+      .send({ cycleId, revieweeId: budi.id, reviewerId: budi.id, reviewerType: 'self', formTemplateId: templateId });
+    expect(draf.status).toBe(201);
+
+    const tutup = await request(app)
+      .patch(`/api/performance/cycles/${cycleId}/status`)
+      .set(auth(hrToken))
+      .send({ status: 'closed' });
+    expect(tutup.status).toBe(200);
+    expect(tutup.body.status).toBe('closed');
+
+    const daftar = await request(app)
+      .get(`/api/performance/reviews?cycleId=${cycleId}`)
+      .set(auth(hrToken));
+    const status = Object.fromEntries(
+      daftar.body.data.map((r: { reviewerType: string; status: string }) => [r.reviewerType, r.status])
+    );
+    expect(status).toEqual({ manager: 'finalized', self: 'draft' });
+
+    // Yang sudah final tidak bisa diakui lagi — tidak ada lagi yang berubah.
+    const akui = await request(app)
+      .post(`/api/performance/reviews/${reviewId}/acknowledge`)
+      .set(auth(budiToken));
+    expect(akui.status).toBe(409);
+  });
+
   it('penilai tidak bisa mengakui atas nama yang dinilai', async () => {
     const { reviewId } = await isiPenilaian();
 
@@ -401,6 +437,21 @@ describe('Akses dan pengakuan', () => {
       .set(auth(sitiToken));
 
     expect(res.status).toBe(403);
+  });
+
+  it('penilai bukan HR mendapat kriteria formulir dari detail penilaian draf', async () => {
+    const { reviewId } = await siapkanPenugasan();
+
+    const res = await request(app)
+      .get(`/api/performance/reviews/${reviewId}`)
+      .set(auth(sitiToken));
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('draft');
+    expect(res.body.scores).toHaveLength(0);
+    expect(res.body.criteria).toHaveLength(2);
+    expect(res.body.criteria[0]).toMatchObject({ code: expect.any(String), maxScore: expect.any(Number) });
+    expect(typeof res.body.criteria[0].weight).toBe('number');
   });
 
   it('pihak ketiga tidak bisa membuka penilaian orang lain', async () => {
