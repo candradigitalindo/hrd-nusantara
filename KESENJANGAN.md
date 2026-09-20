@@ -53,10 +53,11 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Rekrutmen — lowongan (buat/sunting/tayangkan/tutup), pelamar (tahap, penolakan beralasan, jadwal wawancara, psikotes, terima → karyawan), wawancara & umpan balik pewawancara, corong seleksi | ✅ |
 | Komunikasi — pengumuman (prioritas, sasaran departemen, konfirmasi wajib, laporan siapa belum membaca), survei (pembuat pertanyaan skala/pilihan/teks, anonim, pengisian, hasil agregat) | ✅ |
 | Komunikasi — forum/chat | ❌ | Endpoint chat ada; halaman belum. |
+| Pelatihan — program (wajib/opsional, masa berlaku, nilai lulus), jadwal sesi & kuota/daftar tunggu, pendaftaran & pembatalan, kehadiran, evaluasi & sertifikat, riwayat karyawan, laporan kepatuhan (siapa yang belum/kedaluwarsa) | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
-| Kinerja, pelatihan, kompetensi, laporan kustom | ❌ |
+| Kinerja, kompetensi, laporan kustom | ❌ |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
@@ -73,6 +74,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Halaman pelatihan, kinerja, kompetensi
+1. Halaman kinerja, kompetensi
 2. Laporan kustom, halaman chat
 3. Mobile Flutter (belum dimulai)

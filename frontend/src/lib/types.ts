@@ -513,3 +513,68 @@ export interface HasilSurvei {
   questions: { questionId: string; code: string; text: string; type: JenisPertanyaan; responseCount: number; average: number | null; distribution: Record<string, number> }[];
   textAnswers: { questionId: string; text: string; answers: (string | null)[] }[];
 }
+
+export interface ProgramPelatihan {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  isMandatory: boolean;
+  targetPositionId: string | null;
+  targetDepartmentId: string | null;
+  passingScore: number | null;
+  validityMonths: number | null;
+  durationHours: number | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface SesiPelatihan {
+  id: string;
+  programId: string;
+  title: string;
+  description: string | null;
+  trainer: string;
+  startDateTime: string;
+  endDateTime: string;
+  location: string | null;
+  maxParticipants: number | null;
+  registrationDeadline: string | null;
+  cost: number | null;
+  status: "scheduled" | "ongoing" | "completed" | "cancelled";
+  createdAt: string;
+  program: { id: string; code: string; name: string; isMandatory: boolean; passingScore: number | null };
+  registrationCount: number;
+}
+
+export type StatusPendaftaran = "registered" | "waitlisted" | "attended" | "completed" | "failed" | "no_show" | "cancelled";
+
+export interface PendaftaranPelatihan {
+  id: string;
+  employeeId: string;
+  trainingSessionId: string;
+  registrationDate: string;
+  status: StatusPendaftaran;
+  attendanceStatus: string | null;
+  evaluationScore: number | null;
+  passed: boolean | null;
+  completedAt: string | null;
+  certificateUrl: string | null;
+  expiresAt: string | null;
+  note: string | null;
+  employee: { id: string; nik: string; name: string; departmentId: string | null };
+  trainingSession: { id: string; title: string; startDateTime: string; status: string; program: { id: string; code: string; name: string } };
+}
+
+export type StatusKepatuhan = "compliant" | "expiring_soon" | "expired" | "never_completed";
+
+export interface KepatuhanPelatihan {
+  warningDays: number;
+  programs: {
+    program: { id: string; code: string; name: string };
+    requiredFor: number;
+    summary: { compliant: number; expiringSoon: number; expired: number; neverCompleted: number };
+    needsAction: { employee: { id: string; nik: string; name: string; departmentId: string | null }; state: StatusKepatuhan; validUntil: string | null }[];
+  }[];
+}
