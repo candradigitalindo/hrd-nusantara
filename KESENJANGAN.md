@@ -50,10 +50,11 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Slip gaji karyawan — daftar periode, rincian tunjangan/potongan, cetak | ✅ |
 | Payroll HR — batch (buat, hitung, setujui/kembalikan), rincian slip per batch, yang dilewati beserta alasannya | ✅ |
 | Struktur gaji per karyawan (HR) — gaji pokok & riwayat, komponen tunjangan/potongan | ✅ |
+| Rekrutmen — lowongan (buat/sunting/tayangkan/tutup), pelamar (tahap, penolakan beralasan, jadwal wawancara, psikotes, terima → karyawan), wawancara & umpan balik pewawancara, corong seleksi | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
-| Rekrutmen, kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
+| Kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
@@ -70,6 +71,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)
-2. Potong otomatis cuti bersama dari saldo
-3. Halaman kinerja, pelatihan, kompetensi, komunikasi
+1. Potong otomatis cuti bersama dari saldo
+2. Halaman kinerja, pelatihan, kompetensi, komunikasi
+3. Laporan kustom

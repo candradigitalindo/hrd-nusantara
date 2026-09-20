@@ -51,6 +51,11 @@ export const LABEL_STATUS: Record<string, string> = {
   paid: "Dibayar",
   open: "Terbuka",
   under_review: "Ditinjau",
+  closed: "Ditutup",
+  filled: "Terisi",
+  scheduled: "Terjadwal",
+  completed: "Selesai",
+  no_show: "Tidak Hadir",
   resolved: "Selesai",
   dismissed: "Ditolak",
 };
@@ -114,4 +119,28 @@ export const namaPeriode = (mulai: string, selesai: string) => {
     return formatTanggal(mulai, "MMMM yyyy");
   }
   return `${formatTanggal(mulai, "d MMM")} – ${formatTanggal(selesai, "d MMM yyyy")}`;
+};
+
+export const LABEL_TAHAP: Record<string, string> = {
+  applied: "Melamar",
+  screening: "Seleksi Berkas",
+  interview: "Wawancara",
+  offer: "Penawaran",
+  hired: "Diterima",
+  rejected: "Ditolak",
+  withdrawn: "Mengundurkan Diri",
+};
+
+export const LABEL_EMPLOYMENT: Record<string, string> = {
+  fulltime: "Penuh waktu",
+  contract: "Kontrak",
+  parttime: "Paruh waktu",
+  internship: "Magang",
+  daily: "Harian",
+};
+
+export const LABEL_HASIL_WAWANCARA: Record<string, string> = {
+  pass: "Lolos",
+  fail: "Tidak lolos",
+  hold: "Ditahan",
 };

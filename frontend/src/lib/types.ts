@@ -338,3 +338,111 @@ export interface HasilHitung {
   calculated: number;
   skipped: { employeeId: string; nik: string; name: string; reason: string }[];
 }
+
+export type TahapKandidat = "applied" | "screening" | "interview" | "offer" | "hired" | "rejected" | "withdrawn";
+export type StatusLowongan = "draft" | "open" | "closed" | "filled" | "cancelled";
+
+export interface Lowongan {
+  id: string;
+  title: string;
+  description: string;
+  requirements: string;
+  positionId: string;
+  openings: number;
+  employmentType: string | null;
+  salaryRangeMin: number | null;
+  salaryRangeMax: number | null;
+  location: string | null;
+  recruitmentCost: number | null;
+  postedDate: string | null;
+  deadline: string | null;
+  publishedAt: string | null;
+  closedAt: string | null;
+  status: StatusLowongan;
+  createdAt: string;
+  position: { id: string; name: string; departmentId: string | null };
+  _count?: { candidates: number };
+}
+
+export interface RiwayatTahap {
+  fromStage: string | null;
+  toStage: string;
+  changedById: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface WawancaraRingkas {
+  id: string;
+  stage: string;
+  round: number;
+  scheduledDateTime: string;
+  status: string;
+  result: string | null;
+  score: number | null;
+  interviewerId: string;
+}
+
+export interface Kandidat {
+  id: string;
+  name: string;
+  email: string;
+  phoneNumber: string | null;
+  status: TahapKandidat;
+  appliedPositionId: string;
+  applicationDate: string;
+  cvUrl: string | null;
+  coverLetterUrl: string | null;
+  source: string | null;
+  expectedSalary: number | null;
+  notes: string | null;
+  rejectionReason: string | null;
+  hiredEmployeeId: string | null;
+  createdAt: string;
+  appliedPosition: { id: string; title: string; status: string };
+  stageHistory: RiwayatTahap[];
+  interviews: WawancaraRingkas[];
+}
+
+export interface Wawancara {
+  id: string;
+  candidateId: string;
+  interviewerId: string;
+  stage: string;
+  round: number;
+  scheduledDateTime: string;
+  durationMinutes: number;
+  location: string | null;
+  status: "scheduled" | "completed" | "cancelled" | "no_show";
+  result: "pass" | "fail" | "hold" | null;
+  score: number | null;
+  notes: string | null;
+  feedback: Record<string, unknown> | null;
+  createdAt: string;
+  candidate: { id: string; name: string; status: string };
+  interviewer: { id: string; nik: string; name: string };
+}
+
+export interface HasilPsikotes {
+  id: string;
+  candidateId: string;
+  testName: string;
+  score: number;
+  maxScore: number | null;
+  testDate: string | null;
+  interpretation: string | null;
+  reportUrl: string | null;
+  status: string;
+  evaluatedBy: { id: string; nik: string; name: string } | null;
+  createdAt: string;
+}
+
+export interface CorongRekrutmen {
+  period: { startDate: string; endDate: string };
+  totalCandidates: number;
+  funnel: Record<string, number> | { stage: string; count: number }[];
+  rejected: number;
+  withdrawn: number;
+  averageDaysToHire: number | null;
+  bySource: { source: string; total?: number; hired?: number; [k: string]: unknown }[];
+}
