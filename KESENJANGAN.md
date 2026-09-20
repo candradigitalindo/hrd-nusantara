@@ -58,6 +58,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Kompetensi & sertifikasi — kamus kompetensi berskala tingkat, standar per jabatan, penilaian tingkat karyawan, kesenjangan (kesiapan %) per karyawan & laporan lintas departemen, jenis sertifikasi (wajib, masa berlaku, tautan pelatihan), catatan sertifikat dengan status berlaku/segera/kedaluwarsa/dicabut | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
+| Mobile Flutter (`mobile/`) — login & profil, presensi GPS/wajah/QR + riwayat, cuti (saldo, ajukan, batalkan), slip gaji, jadwal shift, pengumuman & konfirmasi, survei, chat tim, status sesi WhatsApp + QR scan ulang, push FCM | 🟡 | Analyzer bersih, 23 tes lulus. Push butuh `flutterfire configure` (proyek hrd-app-635cb). iOS belum diverifikasi: simulator belum terpasang di mesin ini. |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
 
@@ -76,5 +77,5 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Mobile Flutter (belum dimulai)
+1. Mobile: hubungkan Firebase, uji di ponsel sungguhan (wajah & QR), verifikasi iOS
 2. Suksesi dan onboarding — menunggu keputusan
