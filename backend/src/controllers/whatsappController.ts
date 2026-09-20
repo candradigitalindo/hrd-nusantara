@@ -8,6 +8,7 @@ import { decryptField, tokenizeText, blindIndex } from '../utils/fieldCrypto';
 import { retentionCutoff } from '../utils/whatsappRetention';
 import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
 import { connectAccount, disconnectAccount, getSession, getQrString } from '../services/whatsapp/session';
+import { kirimKeKaryawan } from '../services/notification/push';
 import { toDataURL } from 'qrcode';
 import { env } from '../config/env';
 import type {
@@ -20,6 +21,8 @@ import type {
   MarkNotifiedInput,
   PurgeInput,
   DisconnectInput,
+  ComplianceQuery,
+  RemindInput,
 } from '../schemas/whatsappSchema';
 
 const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
@@ -29,6 +32,7 @@ const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN
 const accountSelect = {
   id: true,
   phoneNumber: true,
+  kind: true,
   label: true,
   description: true,
   assignedEmployeeId: true,
@@ -78,12 +82,13 @@ export const createAccount = async (req: Request, res: Response) => {
 };
 
 export const getAllAccounts = async (req: Request, res: Response) => {
-  const { page, limit, sessionStatus, includeInactive } =
+  const { page, limit, sessionStatus, includeInactive, kind } =
     req.query as unknown as ListAccountQuery;
 
   const where: Prisma.WhatsAppAccountWhereInput = {
     ...(includeInactive ? {} : { isActive: true }),
     ...(sessionStatus ? { sessionStatus } : {}),
+    ...(kind ? { kind } : {}),
   };
 
   const [total, rows] = await Promise.all([
@@ -531,4 +536,177 @@ export const disconnectWhatsAppAccount = async (req: Request, res: Response) => 
   };
 
   res.json({ ...sesi, label: akun.label });
+};
+
+// ============ WhatsApp pribadi karyawan (wajib) ============
+//
+// Dokumen fitur: "semua pesan teks WhatsApp dari karyawan yang terdaftar
+// disinkronkan ke sistem pusat", dan bila sesinya putus karyawan wajib scan
+// ulang di aplikasi. Karyawan menautkan nomornya sendiri dari aplikasi
+// mobile; akunnya dibuat otomatis, nomornya diketahui setelah QR dipindai.
+
+const STATUS_AKTIF_KARYAWAN = { notIn: ['resign', 'terminated', 'inactive'] };
+
+const akunPribadi = (employeeId: string) =>
+  prisma.whatsAppAccount.findFirst({
+    where: { kind: 'personal', assignedEmployeeId: employeeId },
+    orderBy: { createdAt: 'desc' },
+  });
+
+type AkunPribadi = NonNullable<Awaited<ReturnType<typeof akunPribadi>>>;
+
+const ringkasSaya = async (akun: AkunPribadi | null) => {
+  const driverAktif = env.WHATSAPP_BAILEYS_ENABLED;
+  if (!akun) return { status: 'never_linked', driverAktif, account: null, session: null, qr: null, catatan: null };
+
+  const sesi = driverAktif ? getSession(akun.id) : null;
+  const qr = sesi?.qrTersedia ? getQrString(akun.id) : null;
+  return {
+    // Keadaan di memori lebih segar daripada kolom tersimpan; kolomnya
+    // dipakai saat proses baru restart dan sesinya belum dibuka lagi.
+    status: !akun.isActive ? 'inactive' : (sesi?.status ?? akun.sessionStatus),
+    driverAktif,
+    account: {
+      id: akun.id,
+      kind: akun.kind,
+      label: akun.label,
+      phoneNumber: akun.phoneNumber,
+      sessionStatus: akun.sessionStatus,
+      lastConnectedAt: akun.lastConnectedAt,
+      lastDisconnectedAt: akun.lastDisconnectedAt,
+      isActive: akun.isActive,
+    },
+    session: sesi,
+    qr: qr ? await toDataURL(qr) : null,
+    catatan: sesi?.catatan ?? null,
+  };
+};
+
+/** Keadaan tautan WhatsApp milik pengguna yang login. */
+export const getMyWhatsApp = async (req: Request, res: Response) => {
+  res.json(await ringkasSaya(await akunPribadi(req.user!.id)));
+};
+
+/**
+ * Karyawan menautkan (atau menautkan ulang) WhatsApp-nya sendiri.
+ * Setelah 202, klien mem-poll GET /whatsapp/me sampai `qr` terisi, lalu
+ * sampai status menjadi connected.
+ */
+export const connectMyWhatsApp = async (req: Request, res: Response) => {
+  if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+  const actor = req.user!;
+
+  let akun = await akunPribadi(actor.id);
+  if (akun && !akun.isActive) {
+    return res.status(409).json({ error: 'Tautan WhatsApp Anda dinonaktifkan oleh HR. Hubungi HR.' });
+  }
+
+  if (!akun) {
+    const karyawan = await prisma.employee.findUnique({
+      where: { id: actor.id },
+      select: { name: true, departmentId: true },
+    });
+    akun = await prisma.whatsAppAccount.create({
+      data: {
+        id: generateULID(),
+        kind: 'personal',
+        label: karyawan?.name ?? 'Karyawan',
+        phoneNumber: null,
+        assignedEmployeeId: actor.id,
+        departmentId: karyawan?.departmentId ?? null,
+      },
+    });
+  }
+
+  await connectAccount(akun.id, akun.phoneNumber);
+
+  res.locals.audit = {
+    action: 'whatsapp.session.connect',
+    entity: 'WhatsAppAccount',
+    entityId: akun.id,
+    summary: `${akun.label} menautkan WhatsApp pribadinya`,
+    metadata: { kind: 'personal', phoneNumber: akun.phoneNumber },
+  };
+
+  res.status(202).json(await ringkasSaya(akun));
+};
+
+const daftarKepatuhan = async (departmentId?: string) => {
+  const karyawan = await prisma.employee.findMany({
+    where: { status: STATUS_AKTIF_KARYAWAN, ...(departmentId ? { departmentId } : {}) },
+    select: {
+      id: true,
+      nik: true,
+      name: true,
+      department: { select: { id: true, name: true } },
+      whatsappAccounts: {
+        where: { kind: 'personal', isActive: true },
+        select: { id: true, phoneNumber: true, sessionStatus: true, lastConnectedAt: true, lastDisconnectedAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  return karyawan.map((k) => {
+    const a = k.whatsappAccounts[0];
+    return {
+      employee: { id: k.id, nik: k.nik, name: k.name, department: k.department },
+      status: a ? a.sessionStatus : 'never_linked',
+      accountId: a?.id ?? null,
+      phoneNumber: a?.phoneNumber ?? null,
+      lastConnectedAt: a?.lastConnectedAt ?? null,
+      lastDisconnectedAt: a?.lastDisconnectedAt ?? null,
+    };
+  });
+};
+
+/** HR: siapa yang sudah, belum, atau putus — kewajiban ini harus terlihat, bukan diasumsikan. */
+export const getCompliance = async (req: Request, res: Response) => {
+  const { departmentId } = req.query as unknown as ComplianceQuery;
+  const data = await daftarKepatuhan(departmentId);
+  const hitung = (status: string) => data.filter((d) => d.status === status).length;
+
+  res.json({
+    data,
+    summary: {
+      total: data.length,
+      connected: hitung('connected'),
+      disconnected: hitung('disconnected'),
+      pendingScan: hitung('pending_scan'),
+      neverLinked: hitung('never_linked'),
+    },
+  });
+};
+
+/** HR: kirim pengingat push ke karyawan yang WhatsApp-nya belum tersambung. */
+export const remindCompliance = async (req: Request, res: Response) => {
+  const { employeeIds } = req.body as RemindInput;
+  const semua = await daftarKepatuhan();
+  const sasaran = semua.filter(
+    (d) => d.status !== 'connected' && (!employeeIds || employeeIds.includes(d.employee.id))
+  );
+
+  let terkirim = 0;
+  for (const d of sasaran) {
+    const hasil = await kirimKeKaryawan(d.employee.id, {
+      title: 'Sambungkan WhatsApp Anda',
+      body:
+        d.status === 'never_linked'
+          ? 'Perusahaan mewajibkan WhatsApp tersambung ke aplikasi HRD. Buka menu WhatsApp dan pindai QR.'
+          : 'Sesi WhatsApp Anda terputus. Buka menu WhatsApp dan pindai ulang QR.',
+      data: { jenis: 'whatsapp_session', eventType: 'link_required' },
+    });
+    if (hasil.terkirim > 0) terkirim += 1;
+  }
+
+  res.locals.audit = {
+    action: 'whatsapp.compliance.remind',
+    entity: 'WhatsAppAccount',
+    summary: `Mengingatkan ${sasaran.length} karyawan untuk menautkan WhatsApp`,
+    metadata: { diminta: sasaran.length, terkirim },
+  };
+
+  res.json({ diminta: sasaran.length, terkirim });
 };

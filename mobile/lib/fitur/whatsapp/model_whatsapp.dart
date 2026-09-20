@@ -46,3 +46,36 @@ class SesiWhatsApp {
         catatan: j['catatan'] as String?,
       );
 }
+
+/// Keadaan tautan WhatsApp pribadi pengguna yang login (GET /whatsapp/me).
+class TautanWhatsApp {
+  const TautanWhatsApp({required this.status, required this.driverAktif, this.phoneNumber, this.label, this.qrDataUrl, this.catatan, this.tersambungPada, this.terputusPada});
+  /// never_linked · connecting · pending_scan · connected · disconnected · inactive
+  final String status;
+  final bool driverAktif;
+  final String? phoneNumber;
+  final String? label;
+  final String? qrDataUrl;
+  final String? catatan;
+  final DateTime? tersambungPada;
+  final DateTime? terputusPada;
+
+  bool get tersambung => status == 'connected';
+  bool get belumPernah => status == 'never_linked';
+  bool get menungguScan => status == 'pending_scan' || status == 'connecting';
+  bool get perluTindakan => !tersambung && status != 'inactive';
+
+  factory TautanWhatsApp.dariJson(Map<String, dynamic> j) {
+    final akun = j['account'] as Map?;
+    return TautanWhatsApp(
+      status: (j['status'] ?? 'never_linked') as String,
+      driverAktif: j['driverAktif'] != false,
+      phoneNumber: akun?['phoneNumber'] as String?,
+      label: akun?['label'] as String?,
+      qrDataUrl: j['qr'] as String?,
+      catatan: j['catatan'] as String?,
+      tersambungPada: parseTanggal(akun?['lastConnectedAt']),
+      terputusPada: parseTanggal(akun?['lastDisconnectedAt']),
+    );
+  }
+}

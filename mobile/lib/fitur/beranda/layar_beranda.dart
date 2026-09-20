@@ -11,6 +11,7 @@ import '../pengumuman/layar_pengumuman.dart';
 import '../pengumuman/repo_pengumuman.dart';
 import '../presensi/layar_absen.dart';
 import '../presensi/repo_presensi.dart';
+import '../whatsapp/repo_whatsapp.dart';
 
 class LayarBeranda extends ConsumerWidget {
   const LayarBeranda({super.key});
@@ -30,6 +31,7 @@ class LayarBeranda extends ConsumerWidget {
     final shift = ref.watch(shiftHariIniProvider);
     final saldo = ref.watch(saldoCutiProvider);
     final pengumuman = ref.watch(pengumumanProvider);
+    final tautanWa = ref.watch(tautanWhatsAppProvider).value;
     final skema = Theme.of(context).colorScheme;
 
     Future<void> segarkan() async {
@@ -37,6 +39,7 @@ class LayarBeranda extends ConsumerWidget {
       ref.invalidate(shiftHariIniProvider);
       ref.invalidate(saldoCutiProvider);
       ref.invalidate(pengumumanProvider);
+      ref.invalidate(tautanWhatsAppProvider);
       await Future.wait([ref.read(presensiHariIniProvider.future), ref.read(pengumumanProvider.future)]);
     }
 
@@ -63,6 +66,19 @@ class LayarBeranda extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 16),
+              // Kewajiban dari dokumen fitur: WhatsApp tiap karyawan harus tersambung.
+              if (tautanWa != null && tautanWa.perluTindakan && tautanWa.driverAktif)
+                Card(
+                  color: warnaNada(Nada.peringatan, skema).withValues(alpha: 0.12),
+                  child: ListTile(
+                    onTap: () => context.push('/whatsapp'),
+                    leading: Icon(Icons.link_off, color: warnaNada(Nada.peringatan, skema)),
+                    title: Text(tautanWa.belumPernah ? 'WhatsApp belum tersambung — wajib' : 'Sesi WhatsApp terputus — pindai ulang', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(tautanWa.belumPernah ? 'Ketuk untuk menautkan, butuh satu menit.' : 'Ketuk untuk memindai ulang kode QR.'),
+                    trailing: const Icon(Icons.chevron_right),
+                  ),
+                ),
+              if (tautanWa != null && tautanWa.perluTindakan && tautanWa.driverAktif) const SizedBox(height: 12),
               // Kartu presensi hari ini — tindakan utama karyawan tiap hari.
               Card(
                 color: skema.primary,

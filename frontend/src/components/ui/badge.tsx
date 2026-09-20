@@ -63,6 +63,7 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "failed":
     case "expired":
     case "revoked":
+    case "never_linked":
     case "never_completed":
       return "danger";
     case "contract":

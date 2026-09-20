@@ -407,7 +407,7 @@ describe('Enkripsi isi pesan di database', () => {
 
     // Dibaca langsung dari database, melewati controller — ini yang akan
     // dilihat siapa pun yang punya akses ke dump database.
-    const baris = await prisma.whatsAppConversation.findUniqueOrThrow({
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({
       where: { externalMessageId: 'enc-1' },
       select: { messageBody: true, searchTokens: true },
     });

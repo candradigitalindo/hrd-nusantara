@@ -5,6 +5,7 @@ import 'package:hrd_nusantara/fitur/jadwal/model_shift.dart';
 import 'package:hrd_nusantara/fitur/notifikasi/layanan_push.dart';
 import 'package:hrd_nusantara/fitur/pengumuman/model_pengumuman.dart';
 import 'package:hrd_nusantara/fitur/presensi/model_presensi.dart';
+import 'package:hrd_nusantara/fitur/whatsapp/model_whatsapp.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 void main() {
@@ -63,5 +64,18 @@ void main() {
     expect(ruteUntukPesan({'jenis': 'whatsapp_session', 'eventType': 'logged_out'}), '/whatsapp');
     expect(ruteUntukPesan({'jenis': 'cuti'}), '/cuti');
     expect(ruteUntukPesan({}), isNull);
+  });
+  test('tautan WhatsApp: belum pernah → wajib; menunggu scan membawa QR; tersambung tidak perlu tindakan', () {
+    final belum = TautanWhatsApp.dariJson({'status': 'never_linked', 'driverAktif': true, 'account': null, 'qr': null});
+    expect(belum.belumPernah, isTrue);
+    expect(belum.perluTindakan, isTrue);
+    final scan = TautanWhatsApp.dariJson({'status': 'pending_scan', 'driverAktif': true, 'account': {'phoneNumber': null}, 'qr': 'data:image/png;base64,AAAA'});
+    expect(scan.menungguScan, isTrue);
+    expect(scan.qrDataUrl, startsWith('data:image'));
+    final ok = TautanWhatsApp.dariJson({'status': 'connected', 'driverAktif': true, 'account': {'phoneNumber': '628111111111', 'lastConnectedAt': '2026-09-21T01:00:00.000Z'}});
+    expect(ok.tersambung, isTrue);
+    expect(ok.perluTindakan, isFalse);
+    expect(ok.phoneNumber, '628111111111');
+    expect(TautanWhatsApp.dariJson({'status': 'inactive', 'driverAktif': true}).perluTindakan, isFalse);
   });
 }

@@ -31,7 +31,10 @@ export const updateAccountSchema = z
   .strict()
   .refine((d) => Object.keys(d).length > 0, { message: 'Tidak ada field yang diubah' });
 
+export const ACCOUNT_KINDS = ['company', 'personal'] as const;
+
 export const listAccountQuerySchema = z.object({
+  kind: z.enum(ACCOUNT_KINDS).optional(),
   ...paginationFields,
   sessionStatus: z.enum(SESSION_STATUSES).optional(),
   includeInactive: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
@@ -114,3 +117,19 @@ export type ListSessionEventQuery = z.infer<typeof listSessionEventQuerySchema>;
 export type MarkNotifiedInput = z.infer<typeof markNotifiedSchema>;
 export type PurgeInput = z.infer<typeof purgeSchema>;
 export type DisconnectInput = z.infer<typeof disconnectSchema>;
+
+// --- Kepatuhan: setiap karyawan wajib menautkan WhatsApp-nya ---
+
+export const complianceQuerySchema = z.object({
+  departmentId: ulidField.optional(),
+});
+
+export const remindSchema = z
+  .object({
+    /// Kosong = semua karyawan aktif yang WhatsApp-nya belum tersambung.
+    employeeIds: z.array(ulidField).max(500).optional(),
+  })
+  .strict();
+
+export type ComplianceQuery = z.infer<typeof complianceQuerySchema>;
+export type RemindInput = z.infer<typeof remindSchema>;

@@ -12,6 +12,10 @@ import {
   connectWhatsAppAccount,
   getWhatsAppSession,
   disconnectWhatsAppAccount,
+  getMyWhatsApp,
+  connectMyWhatsApp,
+  getCompliance,
+  remindCompliance,
 } from '../controllers/whatsappController';
 import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -25,6 +29,8 @@ import {
   markNotifiedSchema,
   purgeSchema,
   disconnectSchema,
+  complianceQuerySchema,
+  remindSchema,
 } from '../schemas/whatsappSchema';
 
 const router = express.Router();
@@ -34,6 +40,25 @@ const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 // Webhook Belly's ada di src/routes/webhookRoutes.ts, dipasang lebih dulu
 // karena tidak memakai token JWT.
 router.use(authenticateToken);
+
+// --- WhatsApp pribadi karyawan (wajib, sesuai dokumen fitur) ---
+// Tanpa requireRole: setiap karyawan menautkan nomornya sendiri.
+router.get('/whatsapp/me', asyncHandler(getMyWhatsApp));
+router.post('/whatsapp/me/connect', asyncHandler(connectMyWhatsApp));
+
+// Kepatuhan hanya untuk HR: daftar siapa yang belum/putus, plus pengingat.
+router.get(
+  '/whatsapp/compliance',
+  requireRole(...HR),
+  validate(complianceQuerySchema, 'query'),
+  asyncHandler(getCompliance)
+);
+router.post(
+  '/whatsapp/compliance/remind',
+  requireRole(...HR),
+  validate(remindSchema),
+  asyncHandler(remindCompliance)
+);
 
 // --- Nomor perusahaan ---
 router.get(

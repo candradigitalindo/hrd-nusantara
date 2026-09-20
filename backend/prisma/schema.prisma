@@ -1400,7 +1400,10 @@ model SurveyAnswer {
   @@index([questionId])
 }
 
-/// Nomor WhatsApp milik PERUSAHAAN yang dipantau.
+/// Nomor WhatsApp yang dipantau: nomor PERUSAHAAN yang didaftarkan HR, atau
+/// nomor PRIBADI karyawan yang ditautkan sendiri lewat aplikasi mobile —
+/// dokumen fitur mewajibkan setiap karyawan terdaftar menyambungkan
+/// WhatsApp-nya agar seluruh pesannya tersinkron ke arsip pusat.
 ///
 /// Inilah penegak ruang lingkupnya. Tanpa daftar ini, batasan "hanya nomor
 /// perusahaan" cuma kebijakan tertulis: percakapan dari nomor pribadi karyawan
@@ -1412,7 +1415,12 @@ model WhatsAppAccount {
   /// Disimpan dalam bentuk baku E.164 tanpa tanda plus, mis. "628123456789".
   /// Nomor yang sama bisa datang sebagai 08xx, +628xx, atau 628xx; tanpa
   /// pembakuan, pencocokan daftar akan meleset.
-  phoneNumber String @unique
+  /// Kosong untuk nomor pribadi yang belum selesai dipindai: nomornya baru
+  /// diketahui dari WhatsApp setelah QR ditautkan.
+  phoneNumber String? @unique
+  /// company = didaftarkan HR; personal = ditautkan karyawan sendiri (satu
+  /// per karyawan).
+  kind        String  @default("company")
 
   label       String // mis. "CS Outlet Kemang", "Reservasi Hotel"
   description String?
@@ -1440,6 +1448,7 @@ model WhatsAppAccount {
   @@index([isActive])
   @@index([sessionStatus])
   @@index([assignedEmployeeId])
+  @@index([kind, assignedEmployeeId])
 }
 
 /// Riwayat putus-sambung sesi WhatsApp pada platform Belly's.
@@ -1478,7 +1487,10 @@ model WhatsAppConversation {
 
   /// Penanda pesan dari Belly's. Unik, supaya pengiriman ulang webhook —
   /// yang lazim terjadi pada kegagalan jaringan — tidak menggandakan arsip.
-  externalMessageId String @unique
+  /// Unik PER AKUN: pengiriman ulang webhook tidak menggandakan arsip, tapi
+  /// dua karyawan yang saling berkirim pesan (id yang sama di kedua sisi)
+  /// tetap punya salinan di arsip masing-masing.
+  externalMessageId String
 
   senderWhatsappNumber   String
   receiverWhatsappNumber String
@@ -1516,6 +1528,7 @@ model WhatsAppConversation {
   @@index([senderWhatsappNumber])
   @@index([accountId, timestamp])
   @@index([contactNumber])
+  @@unique([accountId, externalMessageId])
   /// GIN: pencarian memakai hasEvery pada array token.
   @@index([searchTokens], type: Gin)
 }

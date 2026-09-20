@@ -75,6 +75,8 @@ export const LABEL_STATUS: Record<string, string> = {
   valid: "Berlaku",
   revoked: "Dicabut",
   not_assessed: "Belum Dinilai",
+  never_linked: "Belum Ditautkan",
+  connecting: "Menyiapkan",
 };
 
 export const LABEL_SP: Record<string, string> = {

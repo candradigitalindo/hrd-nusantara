@@ -19,14 +19,17 @@
 // WhatsApp.
 import path from 'path';
 import { env } from '../../config/env';
-import { ingestMessage, applySessionEvent } from './ingest';
-import { normalizeBaileysMessage, type PesanBaileys } from './baileysMessage';
+import { ingestMessage, applySessionEvent, claimPhoneNumber } from './ingest';
+import { normalizeBaileysMessage, nomorDariJid, type PesanBaileys } from './baileysMessage';
+import { normalizePhoneNumber } from '../../utils/whatsappRules';
 import { putuskanReconnect } from './reconnect';
 
 export interface SoketWhatsApp {
   ev: { on: (nama: string, penangan: (data: unknown) => void) => void };
   logout: () => Promise<void>;
   end: (error?: Error) => void;
+  /** Identitas akun WhatsApp yang tertaut, terisi setelah koneksi terbuka: "628…:12@s.whatsapp.net". */
+  user?: { id?: string } | null;
 }
 
 export interface SesiDibuat {
@@ -43,7 +46,8 @@ export type StatusSesi = 'connecting' | 'pending_scan' | 'connected' | 'disconne
 
 interface Sesi {
   accountId: string;
-  phoneNumber: string;
+  /** null untuk nomor pribadi yang belum selesai dipindai. */
+  phoneNumber: string | null;
   sock: SoketWhatsApp | null;
   status: StatusSesi;
   qr: string | null;
@@ -114,6 +118,13 @@ const tanganiPesanMasuk = async (sesi: Sesi, muatan: unknown) => {
   // ruang lingkup pemantauan kanal kerja, jadi sengaja diabaikan.
   if (type !== 'notify' || !Array.isArray(messages)) return;
 
+  // Tanpa nomor sendiri, arah pesan tidak bisa ditentukan. Ini hanya terjadi
+  // bila pesan datang sebelum koneksi dilaporkan terbuka — sangat jarang.
+  if (!sesi.phoneNumber) {
+    catat(`pesan untuk akun ${sesi.accountId} datang sebelum nomornya diketahui; dilewati`);
+    return;
+  }
+
   for (const mentah of messages) {
     const hasil = normalizeBaileysMessage(mentah, sesi.phoneNumber);
     if (hasil.status === 'dilewati') continue;
@@ -123,7 +134,7 @@ const tanganiPesanMasuk = async (sesi: Sesi, muatan: unknown) => {
     // dan WhatsApp tidak mengirim ulang pesan yang sudah diterima, jadi
     // yang hilang hilang untuk selamanya.
     try {
-      const disimpan = await ingestMessage(hasil.pesan);
+      const disimpan = await ingestMessage(hasil.pesan, { accountId: sesi.accountId });
       if (disimpan.status === 'ditolak') {
         catat(`pesan di luar lingkup dilewati (${disimpan.alasan})`);
       }
@@ -151,7 +162,7 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     // satu keadaan yang sama.
     if (pertamaKali) {
       await applySessionEvent({
-        phoneNumber: sesi.phoneNumber,
+        accountId: sesi.accountId,
         status: 'scan_required',
         note: 'Menunggu scan QR untuk menyambungkan nomor.',
       });
@@ -159,13 +170,31 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   }
 
   if (pembaruan.connection === 'open') {
+    // WhatsApp melaporkan nomor yang benar-benar tertaut. Untuk nomor pribadi
+    // inilah saat nomornya diketahui; untuk nomor perusahaan ini pemeriksaan
+    // bahwa yang memindai memang ponsel nomor itu.
+    const idPengguna = sesi.sock?.user?.id;
+    const nomorTertaut = idPengguna ? nomorDariJid(idPengguna) : null;
+    if (nomorTertaut) {
+      const klaim = await claimPhoneNumber(sesi.accountId, nomorTertaut);
+      if (klaim.status === 'konflik' || klaim.status === 'salah_nomor') {
+        const catatan =
+          klaim.status === 'konflik'
+            ? `Nomor +${normalizePhoneNumber(nomorTertaut)} sudah terdaftar sebagai "${klaim.label}". Tautan dibatalkan.`
+            : `Ponsel yang memindai bernomor +${normalizePhoneNumber(nomorTertaut)}, bukan nomor terdaftar +${klaim.diharapkan}. Tautan dibatalkan.`;
+        await lepasTautan(sesi, catatan);
+        return;
+      }
+      sesi.phoneNumber = normalizePhoneNumber(nomorTertaut);
+    }
+
     sesi.status = 'connected';
     sesi.qr = null;
     sesi.qrDibuatPada = null;
     sesi.percobaan = 0;
     sesi.catatanTerakhir = null;
-    await applySessionEvent({ phoneNumber: sesi.phoneNumber, status: 'connected' });
-    catat(`${sesi.phoneNumber} tersambung`);
+    await applySessionEvent({ accountId: sesi.accountId, status: 'connected' });
+    catat(`${sesi.phoneNumber ?? sesi.accountId} tersambung`);
     return;
   }
 
@@ -174,7 +203,8 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   sesi.sock = null;
 
   if (sesi.ditutupSengaja) {
-    sesi.status = 'disconnected';
+    // Tautan yang dibatalkan (lepasTautan) sudah berstatus pending_scan; jangan ditimpa.
+    if (sesi.status !== 'pending_scan') sesi.status = 'disconnected';
     return;
   }
 
@@ -183,7 +213,7 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   sesi.catatanTerakhir = keputusan.catatan;
 
   await applySessionEvent({
-    phoneNumber: sesi.phoneNumber,
+    accountId: sesi.accountId,
     status: keputusan.perluScanUlang ? 'scan_required' : 'disconnected',
     note: keputusan.catatan,
   });
@@ -194,7 +224,7 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     // menyisakannya membuat percobaan berikutnya gagal dengan alasan yang
     // membingungkan.
     if (keputusan.perluScanUlang) sesi.qr = null;
-    catat(`${sesi.phoneNumber} berhenti: ${keputusan.catatan}`);
+    catat(`${sesi.phoneNumber ?? sesi.accountId} berhenti: ${keputusan.catatan}`);
     return;
   }
 
@@ -207,6 +237,24 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   // Timer sambung ulang tidak boleh menahan proses tetap hidup saat backend
   // diminta berhenti.
   sesi.timer.unref?.();
+};
+
+/** Melepas pairing yang salah nomor: logout supaya WhatsApp di ponsel itu ikut terputus. */
+const lepasTautan = async (sesi: Sesi, catatan: string) => {
+  sesi.ditutupSengaja = true;
+  bersihkanTimer(sesi);
+  const sock = sesi.sock;
+  sesi.sock = null;
+  try {
+    await sock?.logout();
+  } catch (error) {
+    catat(`gagal melepas tautan ${sesi.accountId}`, error);
+  }
+  sesi.status = 'pending_scan';
+  sesi.qr = null;
+  sesi.qrDibuatPada = null;
+  sesi.catatanTerakhir = catatan;
+  await applySessionEvent({ accountId: sesi.accountId, status: 'scan_required', note: catatan });
 };
 
 const bukaSoket = async (sesi: Sesi) => {
@@ -235,7 +283,7 @@ const bukaSoket = async (sesi: Sesi) => {
 
 export interface RingkasanSesi {
   accountId: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   status: StatusSesi;
   qrTersedia: boolean;
   qrDibuatPada: Date | null;
@@ -255,7 +303,7 @@ const ringkas = (sesi: Sesi): RingkasanSesi => ({
 
 export const connectAccount = async (
   accountId: string,
-  phoneNumber: string
+  phoneNumber: string | null
 ): Promise<RingkasanSesi> => {
   const adaSebelumnya = sesiAktif.get(accountId);
   if (adaSebelumnya && (adaSebelumnya.status === 'connected' || adaSebelumnya.status === 'connecting')) {
@@ -313,7 +361,7 @@ export const disconnectAccount = async (
       if (opsi.logout) await sock.logout();
       else sock.end();
     } catch (error) {
-      catat(`gagal menutup sesi ${sesi.phoneNumber}`, error);
+      catat(`gagal menutup sesi ${sesi.phoneNumber ?? sesi.accountId}`, error);
     }
   }
 
@@ -322,7 +370,7 @@ export const disconnectAccount = async (
   sesi.qrDibuatPada = null;
 
   await applySessionEvent({
-    phoneNumber: sesi.phoneNumber,
+    accountId: sesi.accountId,
     status: opsi.logout ? 'scan_required' : 'disconnected',
     note: opsi.logout ? 'Sesi di-logout oleh HR. Perlu scan QR ulang.' : 'Sesi dihentikan oleh HR.',
   });

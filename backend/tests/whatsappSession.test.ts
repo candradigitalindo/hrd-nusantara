@@ -352,7 +352,7 @@ describe('Pesan masuk lewat Baileys', () => {
     soketTerakhir!.pancarkan('messages.upsert', { type: 'notify', messages: [pesanBaileys()] });
     await tungguEventSelesai();
 
-    const baris = await prisma.whatsAppConversation.findUniqueOrThrow({
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({
       where: { externalMessageId: 'WA-1' },
     });
     expect(baris.accountId).toBe(id);
@@ -404,7 +404,7 @@ describe('Pesan masuk lewat Baileys', () => {
     });
     await tungguEventSelesai();
 
-    const baris = await prisma.whatsAppConversation.findUniqueOrThrow({
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({
       where: { externalMessageId: 'WA-2' },
     });
     expect(baris.direction).toBe('outgoing');

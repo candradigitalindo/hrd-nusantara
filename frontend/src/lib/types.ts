@@ -103,7 +103,9 @@ export interface Cuti {
 
 export interface AkunWhatsApp {
   id: string;
-  phoneNumber: string;
+  /** null untuk nomor pribadi yang belum selesai dipindai. */
+  phoneNumber: string | null;
+  kind: "company" | "personal";
   label: string;
   description: string | null;
   assignedEmployeeId: string | null;
@@ -866,4 +868,21 @@ export interface PesanChat {
   deletedAt: string | null;
   timestamp: string;
   sender: { id: string; name: string };
+}
+
+/** Kepatuhan: setiap karyawan aktif wajib menautkan WhatsApp-nya. */
+export type StatusTautanWa = "connected" | "disconnected" | "pending_scan" | "never_linked";
+
+export interface BarisKepatuhanWa {
+  employee: { id: string; nik: string; name: string; department: Ref | null };
+  status: StatusTautanWa;
+  accountId: string | null;
+  phoneNumber: string | null;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+}
+
+export interface KepatuhanWa {
+  data: BarisKepatuhanWa[];
+  summary: { total: number; connected: number; disconnected: number; pendingScan: number; neverLinked: number };
 }

@@ -22,7 +22,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 7 | Pelatihan — program, jadwal, pendaftaran, evaluasi, riwayat | ✅ | |
 | 8 | Kompetensi & sertifikasi | ✅ | |
 | 9 | Komunikasi — pengumuman, chat, survei | ✅ | |
-| 10 | WhatsApp — sinkron, arsip, pelacakan isu, notifikasi putus sesi, scan ulang | ✅ | Memakai **Baileys**, bukan Belly's. Jalur webhook lama tetap ada. |
+| 10 | WhatsApp — setiap karyawan terdaftar menautkan nomor pribadinya lewat aplikasi mobile (QR), seluruh pesan teksnya tersinkron; arsip sentral & pencarian (HR); notifikasi putus sesi ke ponsel; wajib scan ulang; laporan kepatuhan & pengingat (HR); nomor perusahaan tetap didukung | ✅ | Baileys, bukan Belly's. Keputusan 21 September 2026: menyesuaikan ke dokumen — sebelumnya hanya nomor perusahaan. Dasar hukum persetujuan karyawan (UU PDP) adalah urusan perusahaan. |
 | 11 | Analisis — dashboard, turnover, biaya, produktivitas, data mentah | ✅ | |
 | 12 | Integrasi POS / PMS / akuntansi | ➖ | Tidak ada sistem luar yang ditentukan untuk diintegrasikan. |
 | 13 | Enkripsi — percakapan | ✅ | AES-256-GCM + indeks buta. |
@@ -56,7 +56,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Pelatihan — program (wajib/opsional, masa berlaku, nilai lulus), jadwal sesi & kuota/daftar tunggu, pendaftaran & pembatalan, kehadiran, evaluasi & sertifikat, riwayat karyawan, laporan kepatuhan (siapa yang belum/kedaluwarsa) | ✅ |
 | Kinerja — siklus (triwulan/semester/tahunan), form KPI per jabatan dengan bobot, penugasan penilai 360° (diri/atasan/rekan/bawahan), pengisian skor per kriteria, akui hasil, catatan diskusi, ringkasan per jenis penilai, umpan balik berkelanjutan | ✅ |
 | Kompetensi & sertifikasi — kamus kompetensi berskala tingkat, standar per jabatan, penilaian tingkat karyawan, kesenjangan (kesiapan %) per karyawan & laporan lintas departemen, jenis sertifikasi (wajib, masa berlaku, tautan pelatihan), catatan sertifikat dengan status berlaku/segera/kedaluwarsa/dicabut | ✅ |
-| WhatsApp — nomor, QR, arsip & pencarian | ✅ |
+| WhatsApp — kepatuhan per karyawan & pengingat, nomor perusahaan, QR, arsip & pencarian; mobile: WhatsApp Saya (tautkan, QR, scan ulang) + spanduk kewajiban di beranda | ✅ |
 | Jejak audit | ✅ |
 | Mobile Flutter (`mobile/`) — login & profil, presensi GPS/wajah/QR + riwayat, cuti (saldo, ajukan, batalkan), slip gaji, jadwal shift, pengumuman & konfirmasi, survei, chat tim, status sesi WhatsApp + QR scan ulang, push FCM | 🟡 | Analyzer bersih, 23 tes lulus. Push butuh `flutterfire configure` (proyek hrd-app-635cb). iOS belum diverifikasi: simulator belum terpasang di mesin ini. |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |

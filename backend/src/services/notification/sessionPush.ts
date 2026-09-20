@@ -16,10 +16,16 @@ const PERLU_DIBERITAHU = new Set(['disconnected', 'scan_required']);
 const judulUntuk = (eventType: string) =>
   eventType === 'scan_required' ? 'WhatsApp perlu discan ulang' : 'Sesi WhatsApp terputus';
 
-const isiUntuk = (eventType: string, label: string) =>
-  eventType === 'scan_required'
+const isiUntuk = (eventType: string, label: string, kind: string) => {
+  if (kind === 'personal') {
+    return eventType === 'scan_required'
+      ? 'WhatsApp Anda perlu dipindai ulang di aplikasi agar pesan kembali tersinkron ke sistem.'
+      : 'Sesi WhatsApp Anda terputus. Sistem sedang mencoba menyambungkan kembali.';
+  }
+  return eventType === 'scan_required'
     ? `Nomor ${label} perlu Anda scan ulang agar pesan kembali tersinkron.`
     : `Sesi nomor ${label} terputus. Sistem sedang mencoba menyambungkan kembali.`;
+};
 
 /**
  * @returns true bila kejadian benar-benar terkirim ke setidaknya satu perangkat.
@@ -31,7 +37,7 @@ export const beriTahuKejadianSesi = async (eventId: string): Promise<boolean> =>
       id: true,
       eventType: true,
       notifiedAt: true,
-      account: { select: { label: true, phoneNumber: true, assignedEmployeeId: true } },
+      account: { select: { label: true, kind: true, phoneNumber: true, assignedEmployeeId: true } },
     },
   });
 
@@ -47,7 +53,7 @@ export const beriTahuKejadianSesi = async (eventId: string): Promise<boolean> =>
     title: judulUntuk(kejadian.eventType),
     // Isi percakapan TIDAK pernah masuk ke notifikasi: muatan push melewati
     // server Google dan tampil di layar terkunci.
-    body: isiUntuk(kejadian.eventType, kejadian.account.label),
+    body: isiUntuk(kejadian.eventType, kejadian.account.label, kejadian.account.kind),
     data: { jenis: 'whatsapp_session', eventType: kejadian.eventType, eventId: kejadian.id },
   });
 

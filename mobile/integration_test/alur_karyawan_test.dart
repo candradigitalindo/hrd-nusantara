@@ -4,7 +4,7 @@ import 'package:hrd_nusantara/main.dart' as app;
 import 'package:integration_test/integration_test.dart';
 
 /// Alur karyawan terhadap backend sungguhan. Jalankan dengan:
-///   flutter test integration_test/alur_karyawan_test.dart -d <emulator> \
+///   flutter test integration_test/alur_karyawan_test.dart -d emulator-5554 \
 ///     --dart-define=API_URL=http://10.0.2.2:3000/api \
 ///     --dart-define=UJI_EMAIL=m-emp@uji.local --dart-define=UJI_PASSWORD=UjiMobile#2026
 void main() {

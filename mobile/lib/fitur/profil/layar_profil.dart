@@ -79,7 +79,7 @@ class LayarProfil extends ConsumerWidget {
                 const Divider(),
                 ListTile(leading: const Icon(Icons.forum_outlined), title: const Text('Chat tim'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/chat')),
                 const Divider(),
-                ListTile(leading: const Icon(Icons.phone_android_outlined), title: const Text('WhatsApp perusahaan'), subtitle: const Text('Status sesi & scan ulang'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/whatsapp')),
+                ListTile(leading: const Icon(Icons.phone_android_outlined), title: const Text('WhatsApp saya'), subtitle: const Text('Wajib tersambung · status & scan ulang'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/whatsapp')),
                 const Divider(),
                 ListTile(leading: const Icon(Icons.lock_reset), title: const Text('Ganti password'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LayarGantiPassword()))),
               ],

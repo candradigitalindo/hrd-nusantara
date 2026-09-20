@@ -1,8 +1,22 @@
 # Pemantauan WhatsApp
 
-Modul ini mengarsipkan percakapan **nomor WhatsApp perusahaan** — nomor CS
-outlet, nomor reservasi hotel, nomor operasional. Bukan nomor pribadi
-karyawan.
+Modul ini mengarsipkan percakapan WhatsApp dua jenis nomor:
+
+| Jenis (`kind`) | Siapa yang menautkan | Contoh |
+|---|---|---|
+| `personal` | **Setiap karyawan terdaftar**, sendiri, lewat aplikasi mobile | nomor pribadi Budi, Siti, … |
+| `company` | HR mendaftarkan, pemegang nomornya memindai QR | CS Outlet Kemang, Reservasi Hotel |
+
+Sesuai dokumen fitur (§10): *semua pesan teks WhatsApp dari karyawan yang
+terdaftar disinkronkan ke sistem pusat*; bila sesinya putus, karyawan
+menerima notifikasi di ponsel dan **wajib memindai ulang** agar sinkronisasi
+aktif kembali. HR melihat siapa yang belum/putus lewat laporan kepatuhan.
+
+> Ini pemrosesan data pribadi berskala luas. Aplikasi menampilkan pernyataan
+> persetujuan sebelum karyawan menautkan nomornya; dasar hukum (persetujuan
+> atau kebijakan internal yang ditandatangani) adalah urusan perusahaan,
+> bukan kode. Isi pesan terenkripsi, hanya HR yang bisa membaca arsip, tiap
+> pembacaan tercatat di jejak audit, dan masa simpannya bisa dibatasi.
 
 Koneksi ke WhatsApp dibuka oleh backend sendiri memakai
 [Baileys](https://github.com/WhiskeySockets/Baileys), tanpa layanan pihak
@@ -35,7 +49,37 @@ tidak akan terbaca lagi.
 > hanya di salah satunya. Dua proses yang memegang nomor sama akan saling
 > menendang sesi tanpa henti.
 
-## Menyambungkan sebuah nomor
+## Nomor pribadi karyawan (wajib)
+
+Karyawan membuka menu **WhatsApp Saya** di aplikasi mobile:
+
+```
+GET  /api/whatsapp/me            -> { status: "never_linked" | "connecting" | "pending_scan"
+                                     | "connected" | "disconnected" | "inactive",
+                                     account, session, qr, catatan, driverAktif }
+POST /api/whatsapp/me/connect    -> 202, akun personal dibuat bila belum ada
+```
+
+Nomornya **tidak diminta di awal**: akun dibuat tanpa nomor, dan nomor diisi
+dari laporan WhatsApp saat QR tertaut (`sock.user.id`). Kalau nomor itu
+ternyata sudah terdaftar sebagai akun lain (mis. nomor perusahaan), tautan
+dibatalkan dengan logout dan tercatat sebagai `scan_required` beserta
+alasannya. Karyawan yang ganti nomor cukup memindai ulang; akunnya sama,
+nomornya diperbarui.
+
+Dua karyawan yang saling berkirim pesan masing-masing punya salinan di
+arsipnya sendiri (`externalMessageId` unik **per akun**).
+
+### Kepatuhan (HR)
+
+```
+GET  /api/whatsapp/compliance?departmentId=   -> per karyawan aktif: status
+                                                 connected | disconnected | pending_scan | never_linked
+POST /api/whatsapp/compliance/remind          -> { employeeIds?: [] }  push pengingat
+                                                 ke yang belum tersambung
+```
+
+## Nomor perusahaan
 
 1. **HR mendaftarkan nomor**
 
@@ -51,7 +95,9 @@ tidak akan terbaca lagi.
    POST /api/whatsapp/accounts/:id/connect     -> 202
    ```
 
-3. **Pemegang nomor memindai QR.** QR baru muncul beberapa detik setelah
+3. **Pemegang nomor memindai QR.** Ponsel yang memindai harus bernomor sama
+   dengan yang didaftarkan; kalau berbeda, tautan dibatalkan (logout) dan
+   tercatat sebagai `scan_required`. QR baru muncul beberapa detik setelah
    langkah 2, jadi endpoint ini di-poll sampai `qr` terisi:
 
    ```
@@ -85,8 +131,10 @@ POST /api/whatsapp/accounts/:id/disconnect
 | Nama berkas dokumen | Status, siaran, stiker, reaksi |
 | Pesan suara (sebagai kejadian, tanpa teks) | Riwayat lama saat perangkat ditautkan |
 
-Pesan yang tidak melibatkan nomor perusahaan terdaftar **tidak pernah
-disimpan**, bahkan kalau dikirim ke webhook dengan tanda tangan sah.
+Pesan yang tidak melibatkan nomor terdaftar (perusahaan maupun pribadi)
+**tidak pernah disimpan**, bahkan kalau dikirim ke webhook dengan tanda
+tangan sah. Pada jalur Baileys, pesan dikaitkan ke akun sesi yang
+menerimanya, bukan ditebak dari nomornya.
 
 Berkas media sengaja tidak diunduh: menumpuk foto dan dokumen kiriman
 pelanggan adalah beban UU PDP 27/2022 yang jauh lebih berat daripada
