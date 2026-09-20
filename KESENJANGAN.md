@@ -48,10 +48,12 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Presensi — daftar, saring, setujui lembur | ✅ |
 | Cuti — saldo per jenis, ajukan (dengan sisa saldo & syarat lampiran), batalkan, antrean persetujuan | ✅ |
 | Slip gaji karyawan — daftar periode, rincian tunjangan/potongan, cetak | ✅ |
+| Payroll HR — batch (buat, hitung, setujui/kembalikan), rincian slip per batch, yang dilewati beserta alasannya | ✅ |
+| Struktur gaji per karyawan (HR) — gaji pokok & riwayat, komponen tunjangan/potongan | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
-| Payroll (sisi HR: batch, hitung, setujui), rekrutmen, kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
+| Rekrutmen, kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
@@ -68,6 +70,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Halaman payroll sisi HR (batch, hitung, setujui) — pasangan dari slip gaji karyawan
-2. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)
-3. Potong otomatis cuti bersama dari saldo
+1. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)
+2. Potong otomatis cuti bersama dari saldo
+3. Halaman kinerja, pelatihan, kompetensi, komunikasi

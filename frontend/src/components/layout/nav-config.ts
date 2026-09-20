@@ -8,6 +8,7 @@ import {
   ScrollText,
   ShieldAlert,
   Wallet,
+  Banknote,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -32,6 +33,7 @@ export const MENU: MenuNav[] = [
   { href: "/presensi", label: "Presensi", icon: CalendarCheck, utama: true },
   { href: "/cuti", label: "Cuti", icon: CalendarOff, utama: true },
   { href: "/gaji", label: "Gaji", icon: Wallet },
+  { href: "/payroll", label: "Payroll", icon: Banknote, roles: HR },
   { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: HR },
   { href: "/audit", label: "Jejak Audit", icon: ScrollText, roles: ["SUPER_ADMIN"] },

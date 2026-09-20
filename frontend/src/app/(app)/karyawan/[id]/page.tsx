@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { PanelDokumen } from "@/components/karyawan/dokumen-karyawan";
+import { PanelGaji } from "@/components/karyawan/panel-gaji";
 import { formatTanggal, labelStatus, LABEL_ROLE, inisial } from "@/lib/utils";
 import type { Karyawan } from "@/lib/types";
 
@@ -79,7 +80,8 @@ export default function HalamanDetailKaryawan() {
               )}
             </Card>
 
-            <div className="lg:col-span-2">
+            <div className="space-y-4 lg:col-span-2">
+              {hr && <PanelGaji employeeId={k.id} />}
               <PanelDokumen employeeId={k.id} hr={hr} />
             </div>
           </div>

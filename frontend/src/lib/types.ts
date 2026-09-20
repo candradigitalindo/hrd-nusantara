@@ -276,3 +276,65 @@ export interface SlipGaji {
   employee: { id: string; nik: string; name: string; departmentId: string | null };
   items: ItemSlip[];
 }
+
+export interface KomponenGaji {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  type: "allowance" | "deduction";
+  calculation: "fixed" | "percentage";
+  percentageBase: "basic" | "gross" | null;
+  defaultAmount: number | null;
+  defaultPercentage: number | null;
+  capAmount: number | null;
+  isTaxable: boolean;
+  isStatutory: boolean;
+  isActive: boolean;
+}
+
+export interface GajiPokok {
+  id: string;
+  employeeId: string;
+  salaryType: "monthly" | "daily" | "hourly";
+  baseAmount: number;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  note: string | null;
+}
+
+export interface KomponenKaryawan {
+  id: string;
+  employeeId: string;
+  componentId: string;
+  amount: number | null;
+  percentage: number | null;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  note: string | null;
+  component: { id: string; code: string; name: string; type: "allowance" | "deduction" };
+}
+
+export type StatusBatch = "draft" | "calculated" | "approved" | "paid" | "cancelled";
+
+export interface BatchGaji {
+  id: string;
+  code: string;
+  name: string;
+  periodStart: string;
+  periodEnd: string;
+  status: StatusBatch;
+  note: string | null;
+  calculatedAt: string | null;
+  approvedAt: string | null;
+  paidAt: string | null;
+  approvedById: string | null;
+  createdAt: string;
+  _count?: { payrolls: number };
+}
+
+export interface HasilHitung {
+  payrollRun: BatchGaji;
+  calculated: number;
+  skipped: { employeeId: string; nik: string; name: string; reason: string }[];
+}
