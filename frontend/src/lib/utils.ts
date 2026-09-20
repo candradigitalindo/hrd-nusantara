@@ -56,6 +56,8 @@ export const LABEL_STATUS: Record<string, string> = {
   scheduled: "Terjadwal",
   completed: "Selesai",
   no_show: "Tidak Hadir",
+  published: "Tayang",
+  archived: "Diarsipkan",
   resolved: "Selesai",
   dismissed: "Ditolak",
 };
@@ -143,4 +145,10 @@ export const LABEL_HASIL_WAWANCARA: Record<string, string> = {
   pass: "Lolos",
   fail: "Tidak lolos",
   hold: "Ditahan",
+};
+
+export const LABEL_PRIORITAS: Record<string, string> = {
+  normal: "Biasa",
+  important: "Penting",
+  urgent: "Mendesak",
 };

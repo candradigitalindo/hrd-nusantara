@@ -24,6 +24,7 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "pass":
     case "filled":
     case "completed":
+    case "published":
     case "paid":
       return "success";
     case "late":
@@ -38,6 +39,7 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "offer":
     case "hold":
     case "withdrawn":
+    case "important":
       return "warning";
     case "absent":
     case "rejected":
@@ -49,6 +51,7 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "fail":
     case "cancelled":
     case "no_show":
+    case "urgent":
       return "danger";
     case "contract":
     case "internship":

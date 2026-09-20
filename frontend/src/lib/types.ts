@@ -447,3 +447,69 @@ export interface CorongRekrutmen {
   averageDaysToHire: number | null;
   bySource: { source: string; total?: number; hired?: number; [k: string]: unknown }[];
 }
+
+export type Prioritas = "normal" | "important" | "urgent";
+
+export interface Pengumuman {
+  id: string;
+  title: string;
+  content: string;
+  authorId: string | null;
+  status: "draft" | "published" | "archived";
+  priority: Prioritas;
+  publishDate: string | null;
+  publishedAt: string | null;
+  expiresAt: string | null;
+  targetDepartmentId: string | null;
+  requiresAcknowledgment: boolean;
+  createdAt: string;
+  author: { id: string; name: string } | null;
+  readCount: number;
+  isRead: boolean;
+  acknowledgedAt: string | null;
+}
+
+export interface PembacaPengumuman {
+  employee: { id: string; nik: string; name: string };
+  readAt: string;
+  acknowledgedAt: string | null;
+}
+
+export type JenisPertanyaan = "scale" | "text" | "choice";
+
+export interface PertanyaanSurvei {
+  id: string;
+  code: string;
+  text: string;
+  type: JenisPertanyaan;
+  options: string[] | null;
+  minScale: number | null;
+  maxScale: number | null;
+  isRequired: boolean;
+  sortOrder: number;
+}
+
+export interface Survei {
+  id: string;
+  title: string;
+  description: string | null;
+  isAnonymous: boolean;
+  targetDepartmentId: string | null;
+  startDate: string;
+  endDate: string;
+  status: "draft" | "published" | "closed";
+  createdById: string | null;
+  createdAt: string;
+  questions: PertanyaanSurvei[];
+  participationCount: number;
+  hasSubmitted: boolean;
+}
+
+export interface HasilSurvei {
+  survey: { id: string; title: string; isAnonymous: boolean; status: string };
+  targetCount: number;
+  responseCount: number;
+  responseRate: number;
+  questions: { questionId: string; code: string; text: string; type: JenisPertanyaan; responseCount: number; average: number | null; distribution: Record<string, number> }[];
+  textAnswers: { questionId: string; text: string; answers: (string | null)[] }[];
+}

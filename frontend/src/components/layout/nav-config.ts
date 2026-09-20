@@ -10,6 +10,7 @@ import {
   Wallet,
   Banknote,
   UserSearch,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -29,6 +30,7 @@ const MANAJEMEN: Role[] = ["SUPER_ADMIN", "HR_ADMIN", "MANAGER"];
 
 export const MENU: MenuNav[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, utama: true },
+  { href: "/pengumuman", label: "Pengumuman", icon: Megaphone },
   { href: "/karyawan", label: "Karyawan", icon: Users, roles: MANAJEMEN, utama: true },
   { href: "/organisasi", label: "Organisasi", icon: Building2, roles: HR },
   { href: "/presensi", label: "Presensi", icon: CalendarCheck, utama: true },
