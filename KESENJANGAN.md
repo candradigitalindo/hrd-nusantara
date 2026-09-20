@@ -55,10 +55,11 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Komunikasi — forum/chat | ❌ | Endpoint chat ada; halaman belum. |
 | Pelatihan — program (wajib/opsional, masa berlaku, nilai lulus), jadwal sesi & kuota/daftar tunggu, pendaftaran & pembatalan, kehadiran, evaluasi & sertifikat, riwayat karyawan, laporan kepatuhan (siapa yang belum/kedaluwarsa) | ✅ |
 | Kinerja — siklus (triwulan/semester/tahunan), form KPI per jabatan dengan bobot, penugasan penilai 360° (diri/atasan/rekan/bawahan), pengisian skor per kriteria, akui hasil, catatan diskusi, ringkasan per jenis penilai, umpan balik berkelanjutan | ✅ |
+| Kompetensi & sertifikasi — kamus kompetensi berskala tingkat, standar per jabatan, penilaian tingkat karyawan, kesenjangan (kesiapan %) per karyawan & laporan lintas departemen, jenis sertifikasi (wajib, masa berlaku, tautan pelatihan), catatan sertifikat dengan status berlaku/segera/kedaluwarsa/dicabut | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
-| Kompetensi, laporan kustom | ❌ |
+| Laporan kustom | ❌ |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
@@ -75,6 +76,5 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Halaman kompetensi
-2. Laporan kustom, halaman chat
-3. Mobile Flutter (belum dimulai)
+1. Laporan kustom, halaman chat
+2. Mobile Flutter (belum dimulai)

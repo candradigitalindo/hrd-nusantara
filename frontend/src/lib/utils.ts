@@ -72,6 +72,9 @@ export const LABEL_STATUS: Record<string, string> = {
   finalized: "Final",
   resolved: "Selesai",
   dismissed: "Ditolak",
+  valid: "Berlaku",
+  revoked: "Dicabut",
+  not_assessed: "Belum Dinilai",
 };
 
 export const LABEL_SP: Record<string, string> = {
@@ -168,3 +171,7 @@ export const LABEL_PRIORITAS: Record<string, string> = {
 export const LABEL_PERIODE: Record<string, string> = { quarterly: "Triwulan", semester: "Semester", annual: "Tahunan" };
 export const LABEL_PENILAI: Record<string, string> = { self: "Diri sendiri", manager: "Atasan", peer: "Rekan kerja", subordinate: "Bawahan" };
 export const LABEL_UMPAN: Record<string, string> = { praise: "Apresiasi", improvement: "Perbaikan", note: "Catatan" };
+
+/** Nama tingkat kompetensi: pakai label kustom bila ada, kalau tidak "Tingkat N". */
+export const labelTingkat = (tingkat: number, labels?: Record<string, string> | null) =>
+  labels?.[String(tingkat)] ?? (tingkat === 0 ? "Belum ada" : `Tingkat ${tingkat}`);

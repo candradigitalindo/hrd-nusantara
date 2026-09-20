@@ -664,3 +664,107 @@ export interface RingkasanKinerja {
   overall: number | null;
   byReviewerType: { reviewerType: JenisPenilai; count: number; averageScore: number }[];
 }
+
+// ===== Kompetensi & sertifikasi =====
+
+export interface Kompetensi {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  maxLevel: number;
+  /** Label tiap tingkat, mis. {"1":"Dasar","4":"Ahli"}. */
+  levelLabels: Record<string, string> | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface StandarKompetensi {
+  id: string;
+  positionId: string;
+  competencyId: string;
+  requiredLevel: number;
+  description: string | null;
+  competency: { id: string; code: string; name: string; maxLevel: number };
+}
+
+export interface ButirKesenjangan {
+  competencyId: string;
+  competencyCode: string;
+  competencyName: string;
+  requiredLevel: number;
+  /** null = belum pernah dinilai. */
+  currentLevel: number | null;
+  gap: number;
+  meets: boolean;
+  notAssessed: boolean;
+}
+
+export interface AnalisisKesenjangan {
+  employee: { id: string; nik: string; name: string; positionId: string | null };
+  gaps: ButirKesenjangan[];
+  totalRequired: number;
+  totalMet: number;
+  readinessPercent: number;
+}
+
+export interface BarisLaporanKesenjangan {
+  employee: { id: string; nik: string; name: string; positionId: string | null };
+  totalRequired: number;
+  totalMet: number;
+  readinessPercent: number;
+  unmetCompetencies: ButirKesenjangan[];
+}
+
+export interface PenilaianKompetensi {
+  id: string;
+  employeeId: string;
+  competencyId: string;
+  currentLevel: number;
+  assessedById: string;
+  assessedAt: string;
+  evidenceUrl: string | null;
+  note: string | null;
+  competency: { id: string; code: string; name: string; maxLevel: number };
+}
+
+export interface JenisSertifikasi {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  issuingOrganization: string | null;
+  /** null = tidak kedaluwarsa. */
+  validityMonths: number | null;
+  isMandatory: boolean;
+  targetPositionId: string | null;
+  trainingProgramId: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export type StatusSertifikat = "valid" | "expiring_soon" | "expired" | "revoked";
+
+export interface Sertifikat {
+  id: string;
+  employeeId: string;
+  certificationTypeId: string | null;
+  certificationName: string;
+  issuingOrganization: string;
+  issueDate: string;
+  expiryDate: string | null;
+  certificateUrl: string | null;
+  trainingRegistrationId: string | null;
+  revokedAt: string | null;
+  revokedReason: string | null;
+  note: string | null;
+  createdAt: string;
+  employee: { id: string; nik: string; name: string; departmentId: string | null };
+  /** Dihitung server dari expiryDate/revokedAt, bukan kolom tersimpan. */
+  state: StatusSertifikat;
+}
+
+export interface DaftarSertifikat extends Halaman<Sertifikat> {
+  summary: { valid: number; expiringSoon: number; expired: number; revoked: number };
+}
