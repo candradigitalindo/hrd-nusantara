@@ -26,7 +26,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 11 | Analisis — dashboard, turnover, biaya, produktivitas, data mentah | ✅ | |
 | 12 | Integrasi POS / PMS / akuntansi | ➖ | Tidak ada sistem luar yang ditentukan untuk diintegrasikan. |
 | 13 | Enkripsi — percakapan | ✅ | AES-256-GCM + indeks buta. |
-| 13 | Enkripsi — wajah, lokasi | ❌ | Embedding wajah dan `locationGps` masih tersimpan terbuka. |
+| 13 | Enkripsi — wajah, lokasi | ✅ | Embedding wajah AES-256-GCM sebagai biner bertanda; koordinat presensi sebagai JSON terenkripsi, kolom terbuka dihapus. Kunci enkripsi kini wajib. |
 | 13 | Akses berjenjang | ✅ | |
 | 13 | Audit trail | ✅ | Append-only, ditegakkan trigger database. |
 | 13 | Keluhan & disiplin | ✅ | Keluhan (siapa pun; subjeknya tidak melihat), tindakan disiplin bertingkat SP1–SP3 (UU 13/2003 ps. 161; subjek berhak melihat), alur status, peringatan SP3 tanpa SP1/SP2, pembacaan tercatat di audit. |
@@ -68,6 +68,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Enkripsi embedding wajah dan lokasi
-2. Halaman payroll sisi HR (batch, hitung, setujui) — pasangan dari slip gaji karyawan
-3. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)
+1. Halaman payroll sisi HR (batch, hitung, setujui) — pasangan dari slip gaji karyawan
+2. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)
+3. Potong otomatis cuti bersama dari saldo

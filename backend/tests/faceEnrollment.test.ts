@@ -67,8 +67,13 @@ describeModel('POST /api/employees/:id/face-enrollments', () => {
       where: { employeeId: karyawan.id },
     });
 
-    // 512 dimensi x 4 byte.
-    expect(tersimpan.embedding.length).toBe(2048);
+    const { decryptBytes, isEncryptedBytes } = await import('../src/utils/fieldCrypto');
+    const diDisk = Buffer.from(tersimpan.embedding);
+    // Yang di database adalah ciphertext bertanda, bukan Float32 mentah:
+    // embedding adalah data biometrik yang tidak bisa "diganti" kalau bocor.
+    expect(isEncryptedBytes(diDisk)).toBe(true);
+    // Setelah didekripsi: 512 dimensi x 4 byte.
+    expect(decryptBytes(diDisk).length).toBe(2048);
     expect(tersimpan.dimensions).toBe(512);
   });
 
@@ -339,3 +344,4 @@ describeModel('DELETE /api/face-enrollments/:id', () => {
     expect(res.status).toBe(403);
   });
 });
+

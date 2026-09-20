@@ -81,6 +81,15 @@ registry.
 belum tentu melayani: migrasi dijalankan lebih dulu saat start, dan kalau
 gagal prosesnya berhenti tanpa pernah mendengarkan.
 
+## Catatan: FIELD_ENCRYPTION_KEY wajib
+
+Sejak koordinat presensi dan embedding wajah ikut dienkripsi, kunci ini
+wajib — compose menolak start tanpa itu (`:?`). Generate sekali dengan
+`openssl rand -base64 32`, simpan di tempat yang aman, dan **jangan pernah
+diganti** tanpa `npm run sensitive:reencrypt`: baris lama tidak akan terbaca
+lagi, dan untuk embedding wajah itu berarti seluruh karyawan harus mendaftar
+ulang wajahnya.
+
 ## Catatan: izin berkas kredensial Firebase
 
 `./backend/secrets` dipasang read-only ke `/app/secrets`. Di dalam container

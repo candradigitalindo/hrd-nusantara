@@ -137,15 +137,16 @@ const envSchema = z.object({
   FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
 
   // --- Enkripsi kolom ---
-  // Kunci induk untuk data pribadi yang tersimpan di database (mulai dari
-  // isi pesan WhatsApp). Sekali diisi JANGAN diganti tanpa mengenkripsi
-  // ulang seluruh baris lama: baris lama tidak akan terbaca lagi.
+  // Kunci induk untuk data pribadi yang tersimpan di database: isi pesan
+  // WhatsApp, embedding wajah (biometrik), dan koordinat presensi. WAJIB —
+  // presensi dengan GPS dan wajah adalah fitur inti, jadi tidak ada mode
+  // "tanpa enkripsi" yang masuk akal. Sekali diisi JANGAN diganti tanpa
+  // npm run sensitive:reencrypt: baris lama tidak akan terbaca lagi.
   FIELD_ENCRYPTION_KEY: z
-    .string()
+    .string({ error: 'FIELD_ENCRYPTION_KEY wajib diisi. Generate: openssl rand -base64 32' })
     .refine((v) => Buffer.from(v, 'base64').length === 32, {
       message: 'FIELD_ENCRYPTION_KEY harus 32 byte dalam base64. Generate: openssl rand -base64 32',
-    })
-    .optional(),
+    }),
 
   UPLOAD_DIR: z.string().default('./uploads'),
 

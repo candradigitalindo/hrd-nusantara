@@ -126,3 +126,45 @@ export const blindIndex = (kata: string): string =>
 
 /** Token yang disimpan bersama ciphertext, untuk dicari belakangan. */
 export const buildSearchTokens = (teks: string): string[] => tokenizeText(teks).map(blindIndex);
+
+// --- Enkripsi biner (embedding wajah) dan objek kecil (koordinat) ---
+
+/// Empat byte penanda di awal ciphertext biner. Embedding lama tersimpan
+/// sebagai Float32 mentah yang panjangnya kelipatan 4 dan isinya acak —
+/// penanda ini yang membedakan "sudah terenkripsi" dari "masih terbuka".
+const PENANDA_BINER = Buffer.from('HRD1');
+
+export const isEncryptedBytes = (data: Buffer) =>
+  data.length > PENANDA_BINER.length + IV_BYTES + 16 && data.subarray(0, 4).equals(PENANDA_BINER);
+
+/** AES-256-GCM atas buffer. Tata letak: HRD1 | iv(12) | tag(16) | ciphertext. */
+export const encryptBytes = (data: Buffer): Buffer => {
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv(ALGO, kunci().enkripsi, iv);
+  const ct = Buffer.concat([cipher.update(data), cipher.final()]);
+  return Buffer.concat([PENANDA_BINER, iv, cipher.getAuthTag(), ct]);
+};
+
+export const decryptBytes = (tersimpan: Buffer): Buffer => {
+  if (!isEncryptedBytes(tersimpan)) return tersimpan; // baris lama, masih terbuka
+  const iv = tersimpan.subarray(4, 4 + IV_BYTES);
+  const tag = tersimpan.subarray(4 + IV_BYTES, 4 + IV_BYTES + 16);
+  const ct = tersimpan.subarray(4 + IV_BYTES + 16);
+  const decipher = createDecipheriv(ALGO, kunci().enkripsi, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
+};
+
+/** Objek kecil (mis. koordinat) sebagai satu string ciphertext. */
+export const encryptJson = (nilai: unknown): string => encryptField(JSON.stringify(nilai));
+
+export const decryptJson = <T>(tersimpan: string | null | undefined): T | null => {
+  if (!tersimpan) return null;
+  try {
+    return JSON.parse(decryptField(tersimpan)) as T;
+  } catch {
+    // Kunci diganti tanpa enkripsi ulang, atau data rusak: lebih baik
+    // koordinatnya kosong daripada seluruh daftar presensi gagal dimuat.
+    return null;
+  }
+};

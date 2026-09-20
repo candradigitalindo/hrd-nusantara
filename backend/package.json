@@ -17,7 +17,8 @@
     "test:watch": "jest --watch --runInBand",
     "models:download": "bash scripts/download-models.sh",
     "whatsapp:reencrypt": "ts-node src/whatsappReencrypt.ts",
-    "push:test": "ts-node scripts/uji-push.ts"
+    "push:test": "ts-node scripts/uji-push.ts",
+    "sensitive:reencrypt": "ts-node src/reencryptSensitive.ts"
   },
   "keywords": [],
   "author": "",

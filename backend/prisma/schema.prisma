@@ -155,13 +155,11 @@ model Attendance {
   checkInTime  DateTime
   checkOutTime DateTime?
 
-  // Lat/long disimpan terpisah, bukan satu string. Komentar skema lama sudah
-  // menyarankan ini, dan memang perlu: jarak ke geofence tidak bisa dihitung
-  // dari string bebas.
-  checkInLatitude   Decimal? @db.Decimal(10, 7)
-  checkInLongitude  Decimal? @db.Decimal(10, 7)
-  checkOutLatitude  Decimal? @db.Decimal(10, 7)
-  checkOutLongitude Decimal? @db.Decimal(10, 7)
+  /// Koordinat terenkripsi (AES-256-GCM, lihat fieldCrypto.encryptJson).
+  /// Geofence dihitung saat check-in dari nilai masukan, sebelum disimpan —
+  /// jadi ciphertext di sini tidak menghalangi apa pun.
+  checkInLocation  String?
+  checkOutLocation String?
 
   checkInMethod  String // gps, qr, face
   checkOutMethod String?
@@ -219,7 +217,10 @@ model FaceEnrollment {
   employeeId String
 
   /// Float32 512 dimensi dalam bentuk biner: separuh ukuran array float64
-  /// dan presisinya persis sama dengan keluaran model.
+  /// dan presisinya persis sama dengan keluaran model — lalu dienkripsi
+  /// AES-256-GCM (fieldCrypto.encryptBytes). Embedding adalah data biometrik:
+  /// dari sinilah wajah seseorang bisa dikenali ulang, dan tidak bisa
+  /// "diganti" seperti kata sandi kalau bocor.
   embedding  Bytes
   dimensions Int
 

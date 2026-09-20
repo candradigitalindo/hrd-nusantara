@@ -2,6 +2,13 @@
 import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { decryptBytes, encryptJson, decryptJson } from '../utils/fieldCrypto';
+
+type Koordinat = { lat: number; lng: number };
+
+/** null bila salah satu tidak ada: setengah koordinat tidak berarti apa-apa. */
+const koordinatTerenkripsi = (lat?: number, lng?: number): string | null =>
+  lat !== undefined && lng !== undefined ? encryptJson({ lat, lng } satisfies Koordinat) : null;
 import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { decodeBase64Image, saveImage } from '../utils/imageUpload';
@@ -33,10 +40,8 @@ const attendanceSelect = {
   employeeId: true,
   checkInTime: true,
   checkOutTime: true,
-  checkInLatitude: true,
-  checkInLongitude: true,
-  checkOutLatitude: true,
-  checkOutLongitude: true,
+  checkInLocation: true,
+  checkOutLocation: true,
   checkInMethod: true,
   checkOutMethod: true,
   faceImageUrl: true,
@@ -69,10 +74,11 @@ const num = (value: Prisma.Decimal | null) => (value === null ? null : value.toN
 // dan membocorkannya lewat riwayat presensi sama saja membagikan kunci absen.
 const toDTO = (row: AttendanceRow) => ({
   ...row,
-  checkInLatitude: num(row.checkInLatitude),
-  checkInLongitude: num(row.checkInLongitude),
-  checkOutLatitude: num(row.checkOutLatitude),
-  checkOutLongitude: num(row.checkOutLongitude),
+  // Bentuk respons tidak berubah: klien tetap menerima lat/long sebagai angka.
+  checkInLatitude: decryptJson<Koordinat>(row.checkInLocation)?.lat ?? null,
+  checkInLongitude: decryptJson<Koordinat>(row.checkInLocation)?.lng ?? null,
+  checkOutLatitude: decryptJson<Koordinat>(row.checkOutLocation)?.lat ?? null,
+  checkOutLongitude: decryptJson<Koordinat>(row.checkOutLocation)?.lng ?? null,
   overtimeHours: row.overtimeHours.toNumber(),
 });
 
@@ -240,7 +246,7 @@ const verifikasiWajah = async (
 
   const hasil = verifyAgainstEnrollments(
     probe.embedding,
-    terdaftar.map((e) => ({ id: e.id, embedding: bufferToEmbedding(e.embedding) }))
+    terdaftar.map((e) => ({ id: e.id, embedding: bufferToEmbedding(decryptBytes(e.embedding)) }))
   );
 
   if (!hasil.matched) {
@@ -321,8 +327,9 @@ export const checkIn = async (req: Request, res: Response) => {
       employeeId,
       checkInTime: now,
       checkInMethod: input.method,
-      checkInLatitude: input.latitude !== undefined ? new Prisma.Decimal(input.latitude) : null,
-      checkInLongitude: input.longitude !== undefined ? new Prisma.Decimal(input.longitude) : null,
+      // Koordinat disimpan terenkripsi; geofence sudah dihitung dari nilai
+      // masukan di atas, jadi tidak ada yang membutuhkannya dalam bentuk terbuka.
+      checkInLocation: koordinatTerenkripsi(input.latitude, input.longitude),
       faceImageUrl: wajah.imageUrl,
       faceVerified: wajah.faceVerified,
       faceMatchScore: input.method === 'face' ? wajah.faceMatchScore : null,
@@ -391,8 +398,7 @@ export const checkOut = async (req: Request, res: Response) => {
     data: {
       checkOutTime: now,
       checkOutMethod: input.method,
-      checkOutLatitude: input.latitude !== undefined ? new Prisma.Decimal(input.latitude) : null,
-      checkOutLongitude: input.longitude !== undefined ? new Prisma.Decimal(input.longitude) : null,
+      checkOutLocation: koordinatTerenkripsi(input.latitude, input.longitude),
       workedMinutes: penilaian.workedMinutes,
       earlyLeaveMinutes: penilaian.earlyLeaveMinutes,
       // Lembur tercatat, tapi belum disetujui — payroll hanya menghitung

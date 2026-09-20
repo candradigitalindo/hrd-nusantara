@@ -119,3 +119,46 @@ describe('Batas masa simpan arsip', () => {
     expect(retentionCutoff(sekarang, NaN)).toBeNull();
   });
 });
+
+describe('Enkripsi biner (embedding wajah)', () => {
+  const { encryptBytes, decryptBytes, isEncryptedBytes } = require('../src/utils/fieldCrypto') as typeof import('../src/utils/fieldCrypto');
+  const embedding = Buffer.from(new Float32Array(512).map(() => Math.random() - 0.5).buffer);
+
+  it('mengembalikan byte yang persis sama', () => {
+    expect(Buffer.compare(decryptBytes(encryptBytes(embedding)), embedding)).toBe(0);
+  });
+
+  it('ciphertext tidak memuat byte aslinya dan dikenali sebagai terenkripsi', () => {
+    const sandi = encryptBytes(embedding);
+    expect(isEncryptedBytes(sandi)).toBe(true);
+    expect(isEncryptedBytes(embedding)).toBe(false);
+    expect(sandi.indexOf(embedding.subarray(0, 16))).toBe(-1);
+  });
+
+  it('melewatkan embedding lama yang masih terbuka', () => {
+    // Baris yang ditulis sebelum enkripsi ada harus tetap bisa dipakai
+    // verifikasi, bukan menjatuhkan check-in seluruh karyawan.
+    expect(Buffer.compare(decryptBytes(embedding), embedding)).toBe(0);
+  });
+
+  it('menolak ciphertext yang diubah', () => {
+    const sandi = encryptBytes(embedding);
+    sandi[sandi.length - 1] ^= 0xff;
+    expect(() => decryptBytes(sandi)).toThrow();
+  });
+});
+
+describe('Enkripsi koordinat', () => {
+  const { encryptJson, decryptJson } = require('../src/utils/fieldCrypto') as typeof import('../src/utils/fieldCrypto');
+
+  it('mengembalikan angka yang sama persis', () => {
+    expect(decryptJson(encryptJson({ lat: -6.1753924, lng: 106.8271528 }))).toEqual({ lat: -6.1753924, lng: 106.8271528 });
+  });
+
+  it('null untuk kosong atau rusak, bukan melempar', () => {
+    // Kunci diganti tanpa enkripsi ulang tidak boleh membuat seluruh daftar
+    // presensi gagal dimuat.
+    expect(decryptJson(null)).toBeNull();
+    expect(decryptJson('v1.rusak.rusak.rusak')).toBeNull();
+  });
+});

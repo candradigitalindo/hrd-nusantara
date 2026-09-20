@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { encryptBytes } from '../utils/fieldCrypto';
 import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { decodeBase64Image, saveImage, InvalidImageError } from '../utils/imageUpload';
@@ -86,7 +87,8 @@ export const enrollFace = async (req: Request, res: Response) => {
         data: {
           id: generateULID(),
           employeeId,
-          embedding: embeddingToBuffer(hasil.embedding),
+          // Data biometrik tidak pernah menyentuh database dalam bentuk terbuka.
+          embedding: encryptBytes(embeddingToBuffer(hasil.embedding)),
           dimensions: hasil.embedding.length,
           modelName: hasil.modelName,
           detectionScore: hasil.detectionScore,

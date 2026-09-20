@@ -584,3 +584,31 @@ describe('GET /api/attendance/reports/summary', () => {
     expect(baris.approvedOvertimeHours).toBe(0);
   });
 });
+
+describe('Koordinat tersimpan terenkripsi', () => {
+  it('database hanya menyimpan ciphertext, respons API tetap angka', async () => {
+    const { isCiphertext } = await import('../src/utils/fieldCrypto');
+
+    const res = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS });
+    expect(res.status).toBe(201);
+    // Klien tidak perlu tahu ada enkripsi: lat/long tetap angka seperti semula.
+    expect(res.body.checkInLatitude).toBeCloseTo(MONAS.latitude, 6);
+    expect(res.body.checkInLongitude).toBeCloseTo(MONAS.longitude, 6);
+
+    const baris = await prisma.attendance.findUniqueOrThrow({
+      where: { id: res.body.id },
+      select: { checkInLocation: true },
+    });
+    expect(isCiphertext(baris.checkInLocation!)).toBe(true);
+    expect(baris.checkInLocation).not.toContain(String(MONAS.latitude));
+
+    // Tidak ada lagi kolom koordinat terbuka di tabel ini sama sekali.
+    const kolom = await prisma.$queryRaw<{ column_name: string }[]>`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'Attendance' AND column_name ILIKE '%latitude%'`;
+    expect(kolom).toEqual([]);
+  });
+});

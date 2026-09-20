@@ -76,7 +76,7 @@ services:
       BELLYS_WEBHOOK_SECRET: ${BELLYS_WEBHOOK_SECRET:-}
       WHATSAPP_MONITORING_ENABLED: ${WHATSAPP_MONITORING_ENABLED:-false}
       WHATSAPP_RETENTION_DAYS: ${WHATSAPP_RETENTION_DAYS:-0}
-      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:-}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY wajib diisi (openssl rand -base64 32)}
       # Satu nomor WhatsApp hanya boleh dipegang satu proses; kalau backend
       # discale lebih dari satu replika, nyalakan hanya di salah satunya.
       WHATSAPP_BAILEYS_ENABLED: ${WHATSAPP_BAILEYS_ENABLED:-false}
