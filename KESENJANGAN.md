@@ -1,7 +1,7 @@
 # Pemetaan Dokumen ↔ Kode
 
 Pembandingan `hrd_features_doc.md` dan `step_development.md` terhadap kode
-yang ada, per 20 September 2026. Backend punya 173 endpoint dan 794 test;
+yang ada, per 20 September 2026. Backend punya 181 endpoint dan 794 test;
 frontend Next.js baru dimulai pada tanggal ini.
 
 Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan sekarang
@@ -16,7 +16,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 3 | Cuti — tipe, pengajuan, saldo, kalender | ✅ | Potong otomatis cuti bersama dari saldo belum ada. |
 | 4 | Payroll — hitung otomatis, BPJS, PPh 21, slip digital | ✅ | PPh 21 opsional, tidak aktif secara bawaan. |
 | 5 | Rekrutmen — lowongan, pelamar, wawancara, hire | ✅ | |
-| 5 | Rekrutmen — psikotes | 🟡 | Tabel `PsychometricTestResult` ada di skema, **endpoint-nya belum**. |
+| 5 | Rekrutmen — psikotes | ✅ | Hasil per kandidat dengan skor/maksimal, interpretasi naratif, penilai. Hanya HR. |
 | 5 | Rekrutmen — onboarding digital | 🟡 | Hire membuat karyawan; orientasi/pelatihan dasar lewat modul pelatihan. Tidak ada alur onboarding tersendiri. |
 | 6 | Kinerja — form kustom, berkala, 360°, diskusi, umpan balik | ✅ | |
 | 7 | Pelatihan — program, jadwal, pendaftaran, evaluasi, riwayat | ✅ | |
@@ -29,7 +29,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 13 | Enkripsi — wajah, lokasi | ❌ | Embedding wajah dan `locationGps` masih tersimpan terbuka. |
 | 13 | Akses berjenjang | ✅ | |
 | 13 | Audit trail | ✅ | Append-only, ditegakkan trigger database. |
-| 13 | Keluhan & disiplin | 🟡 | Tabel `ComplaintOrDisciplinaryAction` ada di skema, **endpoint-nya belum**. |
+| 13 | Keluhan & disiplin | ✅ | Keluhan (siapa pun; subjeknya tidak melihat), tindakan disiplin bertingkat SP1–SP3 (UU 13/2003 ps. 161; subjek berhak melihat), alur status, peringatan SP3 tanpa SP1/SP2, pembacaan tercatat di audit. |
 | 13 | Perencanaan suksesi | ❌ | |
 | 13 | Dokumen legal | ✅ | Sama dengan dokumen digital karyawan (jenis kontrak_kerja, dengan masa berlaku). |
 | 13 | UI responsif | 🟡 | Lihat bagian frontend. |
@@ -49,6 +49,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Cuti — antrean, setujui/tolak dengan catatan | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
+| Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Payroll, rekrutmen, kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
@@ -66,6 +67,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Keluhan & disiplin, psikotes (skema sudah ada, tinggal endpoint)
-2. Halaman frontend untuk karyawan biasa: ajukan cuti, slip gaji, saldo cuti
-3. Enkripsi embedding wajah dan lokasi
+1. Halaman frontend untuk karyawan biasa: ajukan cuti, slip gaji, saldo cuti
+2. Enkripsi embedding wajah dan lokasi
+3. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)

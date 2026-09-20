@@ -27,6 +27,8 @@ import deviceRoutes from './routes/deviceRoutes';
 import auditRoutes from './routes/auditRoutes';
 import organizationRoutes from './routes/organizationRoutes';
 import documentRoutes from './routes/documentRoutes';
+import disciplineRoutes from './routes/disciplineRoutes';
+import psychometricRoutes from './routes/psychometricRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 
@@ -107,6 +109,8 @@ export const createApp = () => {
   // Departemen dan jabatan memakai dua prefiks, jadi dipasang di akar /api.
   app.use('/api', organizationRoutes);
   app.use('/api', documentRoutes);
+  app.use('/api', disciplineRoutes);
+  app.use('/api', psychometricRoutes);
   app.use('/api', faceEnrollmentRoutes);
   // Modul cuti memakai beberapa prefiks (/leaves, /leave-types, /holidays,
   // /leave-balances), jadi dipasang di akar /api.

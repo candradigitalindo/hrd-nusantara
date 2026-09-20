@@ -49,6 +49,17 @@ export const LABEL_STATUS: Record<string, string> = {
   draft: "Draft",
   calculated: "Terhitung",
   paid: "Dibayar",
+  open: "Terbuka",
+  under_review: "Ditinjau",
+  resolved: "Selesai",
+  dismissed: "Ditolak",
+};
+
+export const LABEL_SP: Record<string, string> = {
+  teguran_lisan: "Teguran Lisan",
+  sp1: "SP 1",
+  sp2: "SP 2",
+  sp3: "SP 3",
 };
 
 export const labelStatus = (kode: string | null | undefined) =>

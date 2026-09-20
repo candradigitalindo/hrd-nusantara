@@ -1516,8 +1516,15 @@ model ComplaintOrDisciplinaryAction {
   employee        Employee  @relation(fields: [employeeId], references: [id])
   employeeId      String
   type            String // "complaint", "disciplinary_action"
+  /// Judul singkat untuk daftar; rinciannya di description.
+  title           String    @default("")
   description     String
   status          String    @default("open") // open, under_review, resolved, dismissed
+  /// Khusus tindakan disiplin, mengikuti UU 13/2003 pasal 161:
+  /// teguran_lisan, sp1, sp2, sp3.
+  severity        String?
+  incidentDate    DateTime?
+  resolvedAt      DateTime?
   reportedBy      Employee? @relation("ReportedByRelation", fields: [reportedById], references: [id])
   reportedById    String?
   handledBy       Employee? @relation("HandledByRelation", fields: [handledById], references: [id])
@@ -1527,6 +1534,8 @@ model ComplaintOrDisciplinaryAction {
   updatedAt       DateTime  @updatedAt
 
   @@index([employeeId, status])
+  @@index([type, status])
+  @@index([reportedById])
 }
 
 model ShiftSchedule {
@@ -1579,17 +1588,22 @@ model Interview {
 }
 
 model PsychometricTestResult {
-  id            String    @id
-  candidate     Candidate @relation(fields: [candidateId], references: [id])
-  candidateId   String
-  testName      String
-  score         Float
-  reportUrl     String? // URL to the full PDF report
-  status        String    @default("pending") // pending, completed, reviewed
-  evaluatedBy   Employee? @relation(name: "EvaluatorRelation", fields: [evaluatedById], references: [id])
-  evaluatedById String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id
+  candidate      Candidate @relation(fields: [candidateId], references: [id])
+  candidateId    String
+  testName       String
+  score          Float
+  /// Skor maksimal alat tesnya; tanpa ini angka 72 tidak berarti apa-apa.
+  maxScore       Float?
+  testDate       DateTime?
+  /// Ringkasan naratif dari psikolog/penguji: kepribadian, sikap, potensi.
+  interpretation String?
+  reportUrl      String? // URL to the full PDF report
+  status         String    @default("pending") // pending, completed, reviewed
+  evaluatedBy    Employee? @relation(name: "EvaluatorRelation", fields: [evaluatedById], references: [id])
+  evaluatedById  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([candidateId])
 }

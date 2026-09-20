@@ -1,0 +1,39 @@
+// src/routes/disciplineRoutes.ts
+import express from 'express';
+import { Role } from '@prisma/client';
+import {
+  createComplaint,
+  createDisciplinaryAction,
+  listCases,
+  getCase,
+  updateCaseStatus,
+} from '../controllers/disciplineController';
+import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { idParamSchema } from '../schemas/common';
+import {
+  createComplaintSchema,
+  createDisciplinarySchema,
+  updateCaseStatusSchema,
+  listCaseQuerySchema,
+} from '../schemas/disciplineSchema';
+
+const router = express.Router();
+const MANAJEMEN = [Role.SUPER_ADMIN, Role.HR_ADMIN, Role.MANAGER] as const;
+
+router.use(authenticateToken);
+
+// Keluhan boleh diajukan siapa pun — itulah gunanya.
+router.post('/complaints', validate(createComplaintSchema), asyncHandler(createComplaint));
+
+// Tindakan disiplin: HR dan manajer. Batas departemen manajer di controller.
+router.post('/disciplinary-actions', requireRole(...MANAJEMEN), validate(createDisciplinarySchema), asyncHandler(createDisciplinaryAction));
+
+// Daftar dan detail: semua peran, disaring ketat di controller (lihat
+// lingkupLihat). Yang tidak berhak mendapat 404, bukan 403.
+router.get('/cases', validate(listCaseQuerySchema, 'query'), asyncHandler(listCases));
+router.get('/cases/:id', validate(idParamSchema, 'params'), asyncHandler(getCase));
+
+router.patch('/cases/:id/status', requireRole(...MANAJEMEN), validate(idParamSchema, 'params'), validate(updateCaseStatusSchema), asyncHandler(updateCaseStatus));
+
+export default router;

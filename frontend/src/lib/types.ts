@@ -191,3 +191,27 @@ export interface DokumenKaryawan {
   createdAt: string;
   employee?: { id: string; nik: string; name: string; department: Ref | null };
 }
+
+export type JenisKasus = "complaint" | "disciplinary_action";
+export type StatusKasus = "open" | "under_review" | "resolved" | "dismissed";
+export type TingkatSP = "teguran_lisan" | "sp1" | "sp2" | "sp3";
+
+export interface Kasus {
+  id: string;
+  employeeId: string;
+  type: JenisKasus;
+  title: string;
+  description: string;
+  status: StatusKasus;
+  severity: TingkatSP | null;
+  incidentDate: string | null;
+  resolvedAt: string | null;
+  resolutionNotes: string | null;
+  reportedById: string | null;
+  handledById: string | null;
+  createdAt: string;
+  employee: { id: string; nik: string; name: string; departmentId: string | null; department: Ref | null };
+  reportedBy: { id: string; nik: string; name: string } | null;
+  handledBy: { id: string; nik: string; name: string } | null;
+  warning?: string;
+}

@@ -18,6 +18,7 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "active":
     case "present":
     case "approved":
+    case "resolved":
     case "connected":
     case "paid":
       return "success";
@@ -27,16 +28,22 @@ export const nadaStatus = (kode: string | null | undefined): Nada => {
     case "pending_scan":
     case "calculated":
     case "on_leave":
+    case "under_review":
+    case "sp1":
       return "warning";
     case "absent":
     case "rejected":
     case "terminated":
     case "disconnected":
     case "scan_required":
+    case "sp2":
+    case "sp3":
       return "danger";
     case "contract":
     case "internship":
     case "no_checkout":
+    case "open":
+    case "teguran_lisan":
       return "info";
     default:
       return "neutral";
