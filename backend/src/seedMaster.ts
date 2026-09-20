@@ -45,6 +45,7 @@ const LEAVE_TYPES = [
   {
     code: 'annual',
     name: 'Cuti Tahunan',
+    absorbsCollectiveLeave: true,
     description: '12 hari kerja setelah 12 bulan masa kerja (UU 13/2003 Pasal 79).',
     defaultQuotaDays: 12,
     isPaid: true,

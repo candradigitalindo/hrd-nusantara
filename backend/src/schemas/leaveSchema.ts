@@ -24,6 +24,8 @@ export const createLeaveTypeSchema = z
     maxConsecutiveDays: z.coerce.number().int().min(1).max(365).nullable().optional(),
     genderRestriction: z.enum(GENDERS).nullable().optional(),
     countsCalendarDays: z.boolean().default(false),
+    /// Kuota jenis ini dipotong cuti bersama. Lazimnya hanya cuti tahunan.
+    absorbsCollectiveLeave: z.boolean().default(false),
   })
   .strict();
 

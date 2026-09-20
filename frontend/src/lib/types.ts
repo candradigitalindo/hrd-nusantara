@@ -238,6 +238,7 @@ export interface SaldoCuti {
   entitledDays: number;
   carriedOverDays: number;
   usedDays: number;
+  collectiveLeaveDays: number;
   remainingDays: number;
   note: string | null;
 }

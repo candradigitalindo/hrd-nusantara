@@ -4,13 +4,22 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
 import type { CreateHolidayInput, ListHolidayQuery } from '../schemas/leaveSchema';
+import {
+  applyHolidayDeductions,
+  revertHolidayDeductions,
+  type RingkasanPotongan,
+} from '../services/collectiveLeave';
 
 export const createHoliday = async (req: Request, res: Response) => {
   const input = req.body as CreateHolidayInput;
 
   try {
     const libur = await prisma.holiday.create({ data: { id: generateULID(), ...input } });
-    res.status(201).json(libur);
+    // Cuti bersama memotong saldo begitu ditetapkan; ringkasannya dikembalikan
+    // supaya HR langsung tahu berapa orang yang terpotong dan berapa yang
+    // dilewati karena bekerja shift.
+    const collectiveLeave = await applyHolidayDeductions(libur.id);
+    res.status(201).json({ ...libur, collectiveLeave });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return res.status(409).json({ error: 'Tanggal tersebut sudah terdaftar sebagai hari libur' });
@@ -45,11 +54,19 @@ export const bulkCreateHolidays = async (req: Request, res: Response) => {
     });
   }
 
-  const dibuat = await prisma.holiday.createMany({
-    data: holidays.map((h) => ({ id: generateULID(), ...h })),
-  });
+  const data = holidays.map((h) => ({ id: generateULID(), ...h }));
+  const dibuat = await prisma.holiday.createMany({ data });
 
-  res.status(201).json({ created: dibuat.count });
+  const collectiveLeave: RingkasanPotongan = { deducted: 0, skippedShift: 0, skippedNoBalance: 0 };
+  for (const h of data) {
+    if (!h.isCollectiveLeave) continue;
+    const r = await applyHolidayDeductions(h.id);
+    collectiveLeave.deducted += r.deducted;
+    collectiveLeave.skippedShift += r.skippedShift;
+    collectiveLeave.skippedNoBalance += r.skippedNoBalance;
+  }
+
+  res.status(201).json({ created: dibuat.count, collectiveLeave });
 };
 
 export const getAllHolidays = async (req: Request, res: Response) => {
@@ -87,8 +104,11 @@ export const getAllHolidays = async (req: Request, res: Response) => {
 
 export const deleteHoliday = async (req: Request, res: Response) => {
   try {
+    // Dipulihkan DULU: FK cascade akan menghapus jejak potongannya, tapi tidak
+    // mengembalikan angka collectiveLeaveDays di saldo.
+    const restored = await revertHolidayDeductions(req.params.id);
     await prisma.holiday.delete({ where: { id: req.params.id } });
-    res.json({ message: 'Hari libur dihapus' });
+    res.json({ message: 'Hari libur dihapus', restoredBalances: restored });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return res.status(404).json({ error: 'Hari libur tidak ditemukan' });

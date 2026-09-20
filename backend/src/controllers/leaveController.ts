@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { applyDeclaredCollectiveLeaveToBalance } from '../services/collectiveLeave';
 import { generateULID } from '../utils/generateULID';
 import { calculateLeaveDays } from '../utils/leaveDays';
 import { resolveWorkPattern, buildResolver } from '../services/workPattern';
@@ -50,8 +51,12 @@ const hitungSisaSaldo = (balance: {
   entitledDays: Prisma.Decimal;
   carriedOverDays: Prisma.Decimal;
   usedDays: Prisma.Decimal;
+  collectiveLeaveDays: Prisma.Decimal;
 }) =>
-  balance.entitledDays.toNumber() + balance.carriedOverDays.toNumber() - balance.usedDays.toNumber();
+  balance.entitledDays.toNumber() +
+  balance.carriedOverDays.toNumber() -
+  balance.usedDays.toNumber() -
+  balance.collectiveLeaveDays.toNumber();
 
 // --- Pengajuan ---
 
@@ -500,6 +505,7 @@ const balanceDTO = (b: Prisma.LeaveBalanceGetPayload<{
   entitledDays: b.entitledDays.toNumber(),
   carriedOverDays: b.carriedOverDays.toNumber(),
   usedDays: b.usedDays.toNumber(),
+  collectiveLeaveDays: b.collectiveLeaveDays.toNumber(),
   remainingDays: hitungSisaSaldo(b),
   note: b.note,
 });
@@ -515,7 +521,7 @@ export const upsertLeaveBalance = async (req: Request, res: Response) => {
   if (!karyawan) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
   if (!tipe) return res.status(404).json({ error: 'Jenis cuti tidak ditemukan' });
 
-  const saldo = await prisma.leaveBalance.upsert({
+  const disimpan = await prisma.leaveBalance.upsert({
     where: {
       employeeId_leaveTypeId_year: {
         employeeId: input.employeeId,
@@ -539,6 +545,17 @@ export const upsertLeaveBalance = async (req: Request, res: Response) => {
       carriedOverDays: new Prisma.Decimal(input.carriedOverDays),
       note: input.note,
     },
+  });
+
+  // Saldo ikut menanggung cuti bersama yang sudah ditetapkan tahun itu.
+  // Dipanggil setiap kali, bukan hanya saat saldo baru dibuat: potongannya
+  // idempoten (satu hari libur memotong satu saldo paling banyak sekali,
+  // ditegakkan constraint unik), jadi saldo yang karena pergantian pola kerja
+  // sempat terlewat akan tersusul di sini tanpa pernah terpotong dua kali.
+  await applyDeclaredCollectiveLeaveToBalance(disimpan.id);
+
+  const saldo = await prisma.leaveBalance.findUniqueOrThrow({
+    where: { id: disimpan.id },
     include: { leaveType: { select: { id: true, code: true, name: true } } },
   });
 

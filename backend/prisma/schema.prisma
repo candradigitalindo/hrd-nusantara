@@ -317,9 +317,12 @@ model LeaveType {
   isPaid           Boolean @default(true)
 
   /// Apakah pengajuan memotong saldo. Cuti sakit bersurat dokter lazimnya tidak.
-  deductsBalance     Boolean @default(true)
-  requiresAttachment Boolean @default(false)
-  maxConsecutiveDays Int?
+  deductsBalance         Boolean @default(true)
+  /// Kuota jenis ini yang dipotong cuti bersama (SKB 3 Menteri). Lazimnya
+  /// hanya cuti tahunan; cuti sakit atau melahirkan tidak.
+  absorbsCollectiveLeave Boolean @default(false)
+  requiresAttachment     Boolean @default(false)
+  maxConsecutiveDays     Int?
 
   /// "female" | "male" | null. Cuti haid dan melahirkan dibatasi undang-undang.
   genderRestriction String?
@@ -347,9 +350,13 @@ model LeaveBalance {
   year        Int
 
   /// Decimal, bukan Int: setengah hari cuti itu lazim.
-  entitledDays    Decimal @default(0) @db.Decimal(5, 1)
-  carriedOverDays Decimal @default(0) @db.Decimal(5, 1)
-  usedDays        Decimal @default(0) @db.Decimal(5, 1)
+  entitledDays              Decimal                    @default(0) @db.Decimal(5, 1)
+  carriedOverDays           Decimal                    @default(0) @db.Decimal(5, 1)
+  usedDays                  Decimal                    @default(0) @db.Decimal(5, 1)
+  /// Potongan cuti bersama, dipisah dari usedDays supaya terlihat di slip
+  /// saldo dan bisa dipulihkan bila hari liburnya dibatalkan.
+  collectiveLeaveDays       Decimal                    @default(0) @db.Decimal(5, 1)
+  collectiveLeaveDeductions CollectiveLeaveDeduction[]
 
   note      String?
   createdAt DateTime @default(now())
@@ -407,7 +414,8 @@ model Holiday {
 
   /// Cuti bersama memotong kuota cuti tahunan karyawan; libur nasional tidak.
   /// Keduanya sama-sama bukan hari kerja.
-  isCollectiveLeave Boolean @default(false)
+  isCollectiveLeave         Boolean                    @default(false)
+  collectiveLeaveDeductions CollectiveLeaveDeduction[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1759,4 +1767,26 @@ model EmployeeDocument {
   @@index([employeeId, type])
   @@index([employeeId, deletedAt])
   @@index([expiresAt])
+}
+
+/// Jejak potongan cuti bersama: hari libur mana memotong saldo siapa.
+///
+/// Tanpa tabel ini, membatalkan hari libur tidak tahu saldo mana yang harus
+/// dipulihkan, dan mendaftarkan saldo di tengah tahun tidak tahu potongan
+/// mana yang sudah pernah diterapkan.
+model CollectiveLeaveDeduction {
+  id String @id
+
+  holiday   Holiday @relation(fields: [holidayId], references: [id], onDelete: Cascade)
+  holidayId String
+
+  leaveBalance   LeaveBalance @relation(fields: [leaveBalanceId], references: [id], onDelete: Cascade)
+  leaveBalanceId String
+
+  days      Decimal  @default(1) @db.Decimal(5, 1)
+  createdAt DateTime @default(now())
+
+  /// Satu hari libur memotong satu saldo paling banyak sekali.
+  @@unique([holidayId, leaveBalanceId])
+  @@index([leaveBalanceId])
 }

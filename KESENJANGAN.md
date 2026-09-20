@@ -13,7 +13,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 1 | Data karyawan — profil, status, struktur | ✅ | **Departemen & jabatan sebelumnya tidak punya endpoint sama sekali** — tidak ada cara membuatnya selain menulis ke database. Ditambahkan hari ini. |
 | 1 | Data karyawan — dokumen digital (CV, ijazah, kontrak, BPJS) | ✅ | Unggah (HR), lihat/unduh (HR dan pemilik), masa berlaku, pelacakan kedaluwarsa. Berkas di luar direktori publik, jenis dikenali dari isi, soft delete, tiap unduhan tercatat di audit. |
 | 2 | Presensi — GPS, wajah, QR, shift, validasi, lembur, laporan | ✅ | Pengenalan wajah dan anti-spoofing berjalan di server sendiri. |
-| 3 | Cuti — tipe, pengajuan, saldo, kalender | ✅ | Potong otomatis cuti bersama dari saldo belum ada. |
+| 3 | Cuti — tipe, pengajuan, saldo, kalender | ✅ | Cuti bersama memotong kuota tahunan otomatis — hanya karyawan pola kerja tetap yang libur; staf shift outlet/hotel tidak dipotong. Dipulihkan bila hari liburnya dibatalkan; saldo yang dibuat belakangan ikut menanggung. |
 | 4 | Payroll — hitung otomatis, BPJS, PPh 21, slip digital | ✅ | PPh 21 opsional, tidak aktif secara bawaan. |
 | 5 | Rekrutmen — lowongan, pelamar, wawancara, hire | ✅ | |
 | 5 | Rekrutmen — psikotes | ✅ | Hasil per kandidat dengan skor/maksimal, interpretasi naratif, penilai. Hanya HR. |
@@ -71,6 +71,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Potong otomatis cuti bersama dari saldo
-2. Halaman kinerja, pelatihan, kompetensi, komunikasi
-3. Laporan kustom
+1. Halaman kinerja, pelatihan, kompetensi, komunikasi
+2. Laporan kustom
+3. Mobile Flutter (belum dimulai)

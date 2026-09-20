@@ -27,7 +27,10 @@ type FormAjukan = { leaveTypeId: string; startDate: string; endDate: string; rea
 /** Saldo per jenis cuti, dengan angka sisa yang menonjol — itu yang dicari orang. */
 const KartuSaldo = ({ saldo }: { saldo: SaldoCuti }) => {
   const total = saldo.entitledDays + saldo.carriedOverDays;
-  const persen = total > 0 ? Math.min(100, Math.round((saldo.usedDays / total) * 100)) : 0;
+  // Cuti bersama ikut dihitung sebagai terpakai di bilah — itu memang kuota
+  // yang hilang — tapi disebut terpisah supaya orang tahu ke mana perginya.
+  const terpakai = saldo.usedDays + (saldo.collectiveLeaveDays ?? 0);
+  const persen = total > 0 ? Math.min(100, Math.round((terpakai / total) * 100)) : 0;
   return (
     <Card className="p-4 animate-fade-up">
       <p className="text-sm text-muted truncate">{saldo.leaveType.name}</p>
@@ -38,7 +41,8 @@ const KartuSaldo = ({ saldo }: { saldo: SaldoCuti }) => {
         <div className="h-full rounded-full bg-primary" style={{ width: `${persen}%` }} />
       </div>
       <p className="mt-1.5 text-xs text-muted">
-        {saldo.usedDays} dari {total} terpakai{saldo.carriedOverDays > 0 ? ` · ${saldo.carriedOverDays} sisa tahun lalu` : ""}
+        {saldo.usedDays} dipakai{saldo.collectiveLeaveDays > 0 ? ` · ${saldo.collectiveLeaveDays} cuti bersama` : ""} dari {total}
+        {saldo.carriedOverDays > 0 ? ` · ${saldo.carriedOverDays} sisa tahun lalu` : ""}
       </p>
     </Card>
   );
