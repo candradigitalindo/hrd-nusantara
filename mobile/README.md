@@ -1,8 +1,8 @@
 # HRD Nusantara — Aplikasi Mobile (Flutter)
 
 Aplikasi karyawan untuk Android dan iOS: presensi (GPS, wajah, QR), cuti,
-slip gaji, jadwal shift, pengumuman, survei, chat tim, status sesi WhatsApp
-perusahaan, dan notifikasi push. Memakai API backend yang sama dengan web.
+slip gaji, jadwal shift, pengumuman, survei, chat tim, pemeriksaan tautan
+WhatsApp (pemindaian QR dilakukan di web), dan notifikasi push. Memakai API backend yang sama dengan web.
 
 ## Menjalankan
 
@@ -41,7 +41,7 @@ lib/
     pengumuman/    daftar, baca, konfirmasi
     survei/        daftar, isi (skala / pilihan / teks)
     chat/          ruang, pesan (penyegaran 5 detik), hapus
-    whatsapp/      kejadian sesi, QR scan ulang
+    whatsapp/      status tautan (hanya memeriksa; QR dipindai lewat web), riwayat sesi
     profil/        data diri, ganti password, keluar
     notifikasi/    FCM + notifikasi lokal, rute saat diketuk
   router.dart      go_router: redirect berdasarkan sesi

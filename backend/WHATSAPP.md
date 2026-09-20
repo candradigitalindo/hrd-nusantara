@@ -4,7 +4,7 @@ Modul ini mengarsipkan percakapan WhatsApp dua jenis nomor:
 
 | Jenis (`kind`) | Siapa yang menautkan | Contoh |
 |---|---|---|
-| `personal` | **Setiap karyawan terdaftar**, sendiri, lewat aplikasi mobile | nomor pribadi Budi, Siti, … |
+| `personal` | **Setiap karyawan terdaftar**, sendiri, lewat halaman *WhatsApp Saya* di web | nomor pribadi Budi, Siti, … |
 | `company` | HR mendaftarkan, pemegang nomornya memindai QR | CS Outlet Kemang, Reservasi Hotel |
 
 Sesuai dokumen fitur (§10): *semua pesan teks WhatsApp dari karyawan yang
@@ -51,7 +51,11 @@ tidak akan terbaca lagi.
 
 ## Nomor pribadi karyawan (wajib)
 
-Karyawan membuka menu **WhatsApp Saya** di aplikasi mobile:
+Pemindaian QR dilakukan **lewat login di web** (menu *WhatsApp Saya*), bukan
+di aplikasi mobile: ponsel yang sama tidak bisa memindai QR yang tampil di
+layarnya sendiri. Aplikasi mobile hanya **memeriksa** apakah tautan masih
+hidup dan menampilkan peringatan "Tautan WhatsApp terputus" di beranda bila
+tidak; dashboard web menampilkan peringatan yang sama.
 
 ```
 GET  /api/whatsapp/me            -> { status: "never_linked" | "connecting" | "pending_scan"

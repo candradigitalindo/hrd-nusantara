@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +8,8 @@ import '../../core/widget/widget_umum.dart';
 import 'model_whatsapp.dart';
 import 'repo_whatsapp.dart';
 
-/// Karyawan menautkan WhatsApp pribadinya: wajib, supaya seluruh pesannya
-/// tersinkron ke arsip perusahaan. Kalau sesi putus, layar ini pula tempat
-/// memindai ulang.
+/// Status tautan WhatsApp pribadi — hanya memeriksa. Menautkan dan memindai
+/// ulang QR dilakukan lewat aplikasi web HRD.
 class LayarWhatsApp extends ConsumerStatefulWidget {
   const LayarWhatsApp({super.key});
   @override
@@ -20,17 +18,12 @@ class LayarWhatsApp extends ConsumerStatefulWidget {
 
 class _LayarWhatsAppState extends ConsumerState<LayarWhatsApp> {
   Timer? _penyegar;
-  bool _menyambung = false;
 
   @override
   void initState() {
     super.initState();
-    // QR berganti tiap ±20 detik dan status berubah begitu ponsel memindai;
-    // selama menunggu, tanya server tiap 3 detik.
-    _penyegar = Timer.periodic(const Duration(seconds: 3), (_) {
-      final t = ref.read(tautanWhatsAppProvider).value;
-      if (t == null || t.menungguScan) ref.invalidate(tautanWhatsAppProvider);
-    });
+    // Status berubah begitu karyawan memindai QR di web; segarkan tiap 10 detik.
+    _penyegar = Timer.periodic(const Duration(seconds: 10), (_) => ref.invalidate(tautanWhatsAppProvider));
   }
 
   @override
@@ -39,27 +32,13 @@ class _LayarWhatsAppState extends ConsumerState<LayarWhatsApp> {
     super.dispose();
   }
 
-  Future<void> _sambungkan() async {
-    setState(() => _menyambung = true);
-    try {
-      await ref.read(repoWhatsAppProvider).sambungkan();
-      ref.invalidate(tautanWhatsAppProvider);
-      ref.invalidate(kejadianSesiProvider);
-      if (mounted) tampilkanPesan(context, 'Menyiapkan kode QR', rincian: 'Siapkan WhatsApp di ponsel ini; kode muncul beberapa detik lagi.', nada: Nada.info);
-    } catch (e) {
-      if (mounted) tampilkanGalat(context, e, 'Belum bisa menautkan');
-    } finally {
-      if (mounted) setState(() => _menyambung = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final tautan = ref.watch(tautanWhatsAppProvider);
     final kejadian = ref.watch(kejadianSesiProvider);
     final skema = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('WhatsApp Saya')),
+      appBar: AppBar(title: const Text('Tautan WhatsApp')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(tautanWhatsAppProvider);
@@ -70,19 +49,22 @@ class _LayarWhatsAppState extends ConsumerState<LayarWhatsApp> {
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           children: [
             tautan.when(
-              loading: () => const Card(child: SizedBox(height: 160, child: Center(child: CircularProgressIndicator()))),
+              loading: () => const Card(child: SizedBox(height: 140, child: Center(child: CircularProgressIndicator()))),
               error: (e, _) => PanelGalat(galat: e, cobaLagi: () => ref.invalidate(tautanWhatsAppProvider)),
-              data: (t) => _KartuTautan(t: t, menyambung: _menyambung, onSambungkan: _sambungkan),
+              data: (t) => _KartuStatus(t),
             ),
-            const JudulBagian('Mengapa wajib'),
+            const JudulBagian('Cara menautkan / memindai ulang'),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(14),
-                child: Text(
-                  'Percakapan WhatsApp karyawan diarsipkan ke sistem perusahaan untuk audit, pelacakan isu, dan analisis komunikasi internal. '
-                  'Dengan menautkan nomor ini Anda menyetujui bahwa seluruh pesan teks (bukan berkas media, bukan grup) disinkronkan secara terenkripsi '
-                  'dan hanya bisa dibaca HR yang berwenang. Percakapan grup dan status tidak diarsipkan.',
-                  style: TextStyle(fontSize: 13, height: 1.5, color: skema.onSurfaceVariant),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    _Langkah(nomor: 1, teks: 'Masuk ke aplikasi web HRD di komputer atau browser (bukan dari ponsel ini).'),
+                    _Langkah(nomor: 2, teks: 'Buka menu WhatsApp Saya, tekan Tautkan / Pindai Ulang. Kode QR tampil di layar komputer.'),
+                    _Langkah(nomor: 3, teks: 'Di ponsel ini: WhatsApp → Perangkat Tertaut → Tautkan perangkat → pindai kode di layar komputer.'),
+                    _Langkah(nomor: 4, teks: 'Kembali ke sini; status berubah menjadi Tersambung dalam beberapa detik.'),
+                  ],
                 ),
               ),
             ),
@@ -114,23 +96,13 @@ class _LayarWhatsAppState extends ConsumerState<LayarWhatsApp> {
   }
 }
 
-class _KartuTautan extends StatelessWidget {
-  const _KartuTautan({required this.t, required this.menyambung, required this.onSambungkan});
+class _KartuStatus extends StatelessWidget {
+  const _KartuStatus(this.t);
   final TautanWhatsApp t;
-  final bool menyambung;
-  final VoidCallback onSambungkan;
 
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
-    Widget? qr;
-    final data = t.qrDataUrl;
-    if (t.status == 'pending_scan' && data != null && data.startsWith('data:image')) {
-      try {
-        qr = Image.memory(base64Decode(data.split(',').last), width: 240, height: 240, gaplessPlayback: true);
-      } catch (_) {}
-    }
-
     if (!t.driverAktif) {
       return Card(
         child: ListTile(
@@ -140,86 +112,50 @@ class _KartuTautan extends StatelessWidget {
         ),
       );
     }
-
-    final tombolSambung = FilledButton.icon(
-      onPressed: menyambung ? null : onSambungkan,
-      icon: menyambung ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.qr_code_2),
-      label: Text(t.belumPernah ? 'Sambungkan WhatsApp' : 'Sambungkan Ulang'),
-    );
-
+    final nada = t.tersambung ? Nada.sukses : t.menungguScan ? Nada.info : t.status == 'inactive' ? Nada.netral : Nada.bahaya;
+    final judul = switch (t.status) {
+      'connected' => 'WhatsApp tersambung',
+      'connecting' || 'pending_scan' => 'Menunggu pemindaian QR di web',
+      'disconnected' => 'Tautan WhatsApp terputus',
+      'inactive' => 'Tautan dinonaktifkan HR',
+      _ => 'WhatsApp belum ditautkan',
+    };
+    final keterangan = switch (t.status) {
+      'connected' => 'Pesan Anda tersinkron ke sistem perusahaan${t.tersambungPada != null ? ' sejak ${formatTanggalWaktu(t.tersambungPada)}' : ''}. Jangan hapus perangkat tertaut "HRD Nusantara" di WhatsApp.',
+      'connecting' || 'pending_scan' => 'Kode QR sedang tampil di aplikasi web. Pindai dengan WhatsApp di ponsel ini; status di sini berubah otomatis.',
+      'disconnected' => 'Pesan Anda tidak lagi tersinkron${t.terputusPada != null ? ' sejak ${formatRelatif(t.terputusPada)}' : ''}. Masuk ke aplikasi web HRD untuk memindai ulang.',
+      'inactive' => 'Hubungi HR untuk mengaktifkannya kembali.',
+      _ => 'Perusahaan mewajibkan WhatsApp setiap karyawan tersambung. Tautkan lewat aplikasi web HRD — langkahnya di bawah.',
+    };
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: warnaNada(t.tersambung ? Nada.sukses : t.menungguScan ? Nada.info : Nada.peringatan, skema).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-                  child: Icon(t.tersambung ? Icons.check_circle : t.menungguScan ? Icons.qr_code_scanner : Icons.link_off, color: warnaNada(t.tersambung ? Nada.sukses : t.menungguScan ? Nada.info : Nada.peringatan, skema)),
+                  decoration: BoxDecoration(color: warnaNada(nada, skema).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+                  child: Icon(t.tersambung ? Icons.check_circle : t.menungguScan ? Icons.qr_code_scanner : Icons.link_off, color: warnaNada(nada, skema)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        switch (t.status) {
-                          'connected' => 'WhatsApp tersambung',
-                          'connecting' => 'Menyiapkan tautan…',
-                          'pending_scan' => 'Pindai kode QR',
-                          'disconnected' => 'Sesi terputus',
-                          'inactive' => 'Tautan dinonaktifkan HR',
-                          _ => 'WhatsApp belum tersambung',
-                        },
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                      ),
-                      Text(
-                        t.phoneNumber != null ? '+${t.phoneNumber}' : 'Nomor terisi otomatis setelah dipindai',
-                        style: TextStyle(color: skema.onSurfaceVariant, fontSize: 13),
-                      ),
+                      Text(judul, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                      Text(t.phoneNumber != null ? '+${t.phoneNumber}' : 'Nomor terisi otomatis setelah dipindai', style: TextStyle(color: skema.onSurfaceVariant, fontSize: 13)),
                     ],
                   ),
                 ),
-                LencanaStatus(t.status, label: switch (t.status) {
-                  'never_linked' => 'Wajib',
-                  'connecting' => 'Menyiapkan',
-                  'inactive' => 'Nonaktif',
-                  _ => labelUntuk(t.status),
-                }, nada: t.tersambung ? Nada.sukses : t.menungguScan ? Nada.info : Nada.bahaya),
+                LencanaStatus(t.status, label: switch (t.status) { 'never_linked' => 'Wajib', 'connecting' || 'pending_scan' => 'Menunggu', 'inactive' => 'Nonaktif', _ => labelUntuk(t.status) }, nada: nada),
               ],
             ),
-            const SizedBox(height: 14),
-            if (t.tersambung) ...[
-              Text('Pesan Anda tersinkron ke sistem perusahaan${t.tersambungPada != null ? ' sejak ${formatTanggalWaktu(t.tersambungPada)}' : ''}. Jangan keluar dari "Perangkat Tertaut" di WhatsApp, atau sesi akan putus.', style: TextStyle(fontSize: 13, color: skema.onSurfaceVariant)),
-            ] else if (t.status == 'connecting') ...[
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              Text('Kode QR muncul beberapa detik lagi.', style: TextStyle(fontSize: 13, color: skema.onSurfaceVariant)),
-            ] else if (qr != null) ...[
-              Center(child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Container(color: Colors.white, padding: const EdgeInsets.all(8), child: qr))),
-              const SizedBox(height: 12),
-              const _Langkah(nomor: 1, teks: 'Buka WhatsApp di ponsel ini, ketuk menu ⋮ (Android) atau Pengaturan (iPhone).'),
-              const _Langkah(nomor: 2, teks: 'Pilih Perangkat Tertaut → Tautkan perangkat.'),
-              const _Langkah(nomor: 3, teks: 'Arahkan kamera ke kode di atas. Kode berganti otomatis; layar ini memperbarui sendiri.'),
-              if (t.catatan != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.catatan!, style: TextStyle(fontSize: 12, color: skema.error))),
-            ] else ...[
-              if (t.catatan != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(t.catatan!, style: TextStyle(fontSize: 13, color: skema.error))),
-              if (t.status == 'inactive')
-                Text('HR menonaktifkan tautan WhatsApp Anda. Hubungi HR untuk mengaktifkannya kembali.', style: TextStyle(fontSize: 13, color: skema.onSurfaceVariant))
-              else ...[
-                Text(
-                  t.belumPernah
-                      ? 'Perusahaan mewajibkan WhatsApp setiap karyawan tersambung ke aplikasi ini. Prosesnya satu menit: tekan tombol, lalu pindai kode QR dengan WhatsApp di ponsel ini.'
-                      : 'Sesi terputus${t.terputusPada != null ? ' ${formatRelatif(t.terputusPada)}' : ''}. Sistem mencoba menyambung kembali; bila tidak berhasil, pindai ulang di sini.',
-                  style: TextStyle(fontSize: 13, height: 1.5, color: skema.onSurfaceVariant),
-                ),
-                const SizedBox(height: 12),
-                tombolSambung,
-              ],
-            ],
+            const SizedBox(height: 12),
+            Text(keterangan, style: TextStyle(fontSize: 13, height: 1.5, color: skema.onSurfaceVariant)),
+            if (t.catatan != null && !t.tersambung) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.catatan!, style: TextStyle(fontSize: 12, color: skema.error))),
           ],
         ),
       ),
@@ -235,7 +171,7 @@ class _Langkah extends StatelessWidget {
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

@@ -886,3 +886,12 @@ export interface KepatuhanWa {
   data: BarisKepatuhanWa[];
   summary: { total: number; connected: number; disconnected: number; pendingScan: number; neverLinked: number };
 }
+
+/** Tautan WhatsApp pribadi pengguna yang login (GET /whatsapp/me). */
+export interface TautanWhatsApp {
+  status: "never_linked" | "connecting" | "pending_scan" | "connected" | "disconnected" | "inactive";
+  driverAktif: boolean;
+  account: { id: string; kind: string; label: string; phoneNumber: string | null; sessionStatus: string; lastConnectedAt: string | null; lastDisconnectedAt: string | null; isActive: boolean } | null;
+  qr: string | null;
+  catatan: string | null;
+}

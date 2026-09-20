@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
+import { PeringatanTautanWhatsApp } from "@/components/whatsapp/peringatan-tautan";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { GrafikBatang } from "@/components/dashboard/grafik-batang";
 import { formatAngka, labelStatus, formatTanggal } from "@/lib/utils";
@@ -81,6 +82,7 @@ export default function HalamanDashboard() {
     return (
       <>
         <PageHeader title={`Halo, ${saya?.name ?? ""}`} description="Ringkasan aktivitas Anda" />
+        <PeringatanTautanWhatsApp />
         <Card>
           <CardHeader>
             <CardTitle>Presensi 7 hari terakhir</CardTitle>
@@ -119,6 +121,8 @@ export default function HalamanDashboard() {
           </Select>
         }
       />
+
+      <PeringatanTautanWhatsApp />
 
       {dashboard.isError && (
         <Alert tone="danger" title="Ringkasan tidak bisa dimuat">

@@ -69,12 +69,12 @@ class LayarBeranda extends ConsumerWidget {
               // Kewajiban dari dokumen fitur: WhatsApp tiap karyawan harus tersambung.
               if (tautanWa != null && tautanWa.perluTindakan && tautanWa.driverAktif)
                 Card(
-                  color: warnaNada(Nada.peringatan, skema).withValues(alpha: 0.12),
+                  color: warnaNada(tautanWa.belumPernah ? Nada.peringatan : Nada.bahaya, skema).withValues(alpha: 0.12),
                   child: ListTile(
                     onTap: () => context.push('/whatsapp'),
-                    leading: Icon(Icons.link_off, color: warnaNada(Nada.peringatan, skema)),
-                    title: Text(tautanWa.belumPernah ? 'WhatsApp belum tersambung — wajib' : 'Sesi WhatsApp terputus — pindai ulang', style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(tautanWa.belumPernah ? 'Ketuk untuk menautkan, butuh satu menit.' : 'Ketuk untuk memindai ulang kode QR.'),
+                    leading: Icon(Icons.link_off, color: warnaNada(tautanWa.belumPernah ? Nada.peringatan : Nada.bahaya, skema)),
+                    title: Text(tautanWa.belumPernah ? 'WhatsApp belum ditautkan' : 'Tautan WhatsApp terputus', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(tautanWa.belumPernah ? 'Wajib. Tautkan lewat aplikasi web HRD; ketuk untuk melihat caranya.' : 'Pesan tidak tersinkron. Masuk ke aplikasi web HRD untuk memindai ulang QR.'),
                     trailing: const Icon(Icons.chevron_right),
                   ),
                 ),
