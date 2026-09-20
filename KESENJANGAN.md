@@ -46,11 +46,12 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Karyawan — halaman detail dengan dokumen (unggah seret-lepas, unduh, masa berlaku) | ✅ |
 | Organisasi — departemen & jabatan | ✅ |
 | Presensi — daftar, saring, setujui lembur | ✅ |
-| Cuti — antrean, setujui/tolak dengan catatan | ✅ |
+| Cuti — saldo per jenis, ajukan (dengan sisa saldo & syarat lampiran), batalkan, antrean persetujuan | ✅ |
+| Slip gaji karyawan — daftar periode, rincian tunjangan/potongan, cetak | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
-| Payroll, rekrutmen, kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
+| Payroll (sisi HR: batch, hitung, setujui), rekrutmen, kinerja, pelatihan, kompetensi, komunikasi, laporan kustom | ❌ |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
@@ -67,6 +68,6 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Halaman frontend untuk karyawan biasa: ajukan cuti, slip gaji, saldo cuti
-2. Enkripsi embedding wajah dan lokasi
+1. Enkripsi embedding wajah dan lokasi
+2. Halaman payroll sisi HR (batch, hitung, setujui) — pasangan dari slip gaji karyawan
 3. Halaman rekrutmen (lowongan, pelamar, wawancara, psikotes)

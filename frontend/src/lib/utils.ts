@@ -99,3 +99,19 @@ export const formatUkuran = (byte: number) =>
 /** Hari menuju kedaluwarsa: negatif berarti sudah lewat, null bila tidak ada masa berlaku. */
 export const sisaHari = (tanggal: string | null | undefined) =>
   tanggal ? Math.ceil((new Date(tanggal).getTime() - Date.now()) / 86_400_000) : null;
+
+export const LABEL_SALARY_TYPE: Record<string, string> = {
+  monthly: "Bulanan",
+  daily: "Harian",
+  hourly: "Per jam",
+};
+
+/** Nama periode gaji: "September 2026" bila satu bulan penuh, rentang tanggal bila tidak. */
+export const namaPeriode = (mulai: string, selesai: string) => {
+  const a = new Date(mulai);
+  const b = new Date(selesai);
+  if (a.getDate() === 1 && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) {
+    return formatTanggal(mulai, "MMMM yyyy");
+  }
+  return `${formatTanggal(mulai, "d MMM")} – ${formatTanggal(selesai, "d MMM yyyy")}`;
+};

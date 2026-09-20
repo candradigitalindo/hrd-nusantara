@@ -215,3 +215,64 @@ export interface Kasus {
   handledBy: { id: string; nik: string; name: string } | null;
   warning?: string;
 }
+
+export interface TipeCuti {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  defaultQuotaDays: number | null;
+  isPaid: boolean;
+  deductsBalance: boolean;
+  requiresAttachment: boolean;
+  maxConsecutiveDays: number | null;
+  genderRestriction: string | null;
+  isActive: boolean;
+}
+
+export interface SaldoCuti {
+  id: string;
+  employeeId: string;
+  leaveType: { id: string; code: string; name: string };
+  year: number;
+  entitledDays: number;
+  carriedOverDays: number;
+  usedDays: number;
+  remainingDays: number;
+  note: string | null;
+}
+
+export interface ItemSlip {
+  code: string;
+  name: string;
+  type: "allowance" | "deduction";
+  amount: number;
+  calculationNote: string | null;
+  isTaxable: boolean;
+}
+
+export interface SlipGaji {
+  id: string;
+  employeeId: string;
+  payrollRunId: string;
+  payPeriodStart: string;
+  payPeriodEnd: string;
+  salaryType: string;
+  baseAmount: number;
+  basicSalary: number;
+  scheduledDays: number;
+  workedDays: number;
+  unpaidLeaveDays: number;
+  overtimeHours: number;
+  overtimePay: number;
+  totalAllowances: number;
+  totalDeductions: number;
+  grossSalary: number;
+  taxableIncome: number;
+  netSalary: number;
+  status: string;
+  note: string | null;
+  createdAt: string;
+  employee: { id: string; nik: string; name: string; departmentId: string | null };
+  items: ItemSlip[];
+}
