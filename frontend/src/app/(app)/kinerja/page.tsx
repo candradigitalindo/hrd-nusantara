@@ -20,7 +20,7 @@ import { GrafikBatang } from "@/components/dashboard/grafik-batang";
 import { FormTemplate } from "@/components/kinerja/form-template";
 import { IsiPenilaian } from "@/components/kinerja/isi-penilaian";
 import { formatTanggal, formatRelatif, labelStatus, LABEL_PERIODE, LABEL_PENILAI, LABEL_UMPAN, cn } from "@/lib/utils";
-import type { Halaman, SiklusPenilaian, TemplatePenilaian, Penilaian, UmpanBalik, RingkasanKinerja, Karyawan, JenisPenilai } from "@/lib/types";
+import type { Halaman, SiklusPenilaian, TemplatePenilaian, Penilaian, UmpanBalik, RingkasanKinerja, KaryawanDirektori, JenisPenilai } from "@/lib/types";
 
 type Tab = "penilaian" | "siklus" | "template" | "ringkasan" | "umpan";
 type FormSiklus = { code: string; name: string; periodType: "quarterly" | "semester" | "annual"; periodStart: string; periodEnd: string; note: string };
@@ -46,7 +46,7 @@ export default function HalamanKinerja() {
   const template = useQuery({ queryKey: ["template-kinerja"], queryFn: async () => (await api.get<Halaman<TemplatePenilaian> | TemplatePenilaian[]>("/performance/templates?limit=100")).data, select: (d) => (Array.isArray(d) ? d : d.data), enabled: hr });
   const pr = new URLSearchParams({ limit: "100" }); if (filterStatus) pr.set("status", filterStatus);
   const penilaian = useQuery({ queryKey: ["penilaian", pr.toString()], queryFn: async () => (await api.get<Halaman<Penilaian>>(`/performance/reviews?${pr}`)).data.data });
-  const karyawan = useQuery({ queryKey: ["karyawan", "pilihan"], queryFn: async () => (await api.get<Halaman<Karyawan>>("/employees?limit=100")).data.data, enabled: tugasBuka || umpanBuka || tab === "ringkasan" || (hr && tab === "umpan") });
+  const karyawan = useQuery({ queryKey: ["direktori"], queryFn: async () => (await api.get<{ data: KaryawanDirektori[] }>("/employees/directory")).data.data, enabled: tugasBuka || umpanBuka || tab === "ringkasan" || (hr && tab === "umpan") });
   const umpan = useQuery({ queryKey: ["umpan-balik", umpanUntuk], queryFn: async () => (await api.get<Halaman<UmpanBalik>>(`/feedback?limit=50${umpanUntuk ? `&recipientId=${umpanUntuk}` : ""}`)).data.data, enabled: tab === "umpan" });
   const ringkasan = useQuery({ queryKey: ["ringkasan-kinerja", ringkasSiklus, ringkasKaryawan], queryFn: async () => (await api.get<RingkasanKinerja>(`/performance/summary/${ringkasSiklus}/${ringkasKaryawan}`)).data, enabled: hr && tab === "ringkasan" && Boolean(ringkasSiklus && ringkasKaryawan) });
   // Detail memuat kriteria formulir + diskusi terbaru; daftar tidak membawanya.

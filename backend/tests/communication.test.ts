@@ -390,6 +390,26 @@ describe('Survei', () => {
 // ===== Ruang obrolan =====
 
 describe('Ruang obrolan', () => {
+  it('daftar ruang menyebut peran saya dan pesan terakhir', async () => {
+    const ruang = await request(app)
+      .post('/api/chat/rooms')
+      .set(auth(budiToken))
+      .send({ name: 'Kitchen', memberIds: [siti.id] });
+    expect(ruang.status).toBe(201);
+
+    const kosong = await request(app).get('/api/chat/rooms').set(auth(budiToken));
+    expect(kosong.body.data[0]).toMatchObject({ myRole: 'moderator', lastMessage: null });
+
+    await request(app)
+      .post(`/api/chat/rooms/${ruang.body.id}/messages`)
+      .set(auth(sitiToken))
+      .send({ message: 'Stok ayam menipis' });
+
+    const sitiLihat = await request(app).get('/api/chat/rooms').set(auth(sitiToken));
+    expect(sitiLihat.body.data[0].myRole).toBe('member');
+    expect(sitiLihat.body.data[0].lastMessage).toMatchObject({ message: 'Stok ayam menipis', senderName: expect.any(String), isDeleted: false });
+  });
+
   const buatRuang = (token = budiToken, memberIds: string[] = []) =>
     request(app)
       .post('/api/chat/rooms')

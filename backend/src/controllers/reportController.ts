@@ -1,6 +1,6 @@
 // src/controllers/reportController.ts
 import { Request, Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import {
   turnoverRate,
@@ -37,9 +37,20 @@ const akhirEksklusif = (d: Date) => new Date(d.getTime() + 24 * 60 * 60 * 1000);
  * periode ditambahkan kembali. Menghitung langsung dari status saat ini akan
  * keliru, karena status hanya menyimpan keadaan terakhir — bukan riwayatnya.
  */
+/**
+ * Manajer hanya melihat departemennya sendiri, apa pun filter yang dikirim.
+ * Manajer tanpa departemen tidak melihat siapa pun — bukan seluruh perusahaan.
+ */
+const batasiDepartemenManajer = (query: PeriodQuery, actor: { role: Role; departmentId: string | null }) => {
+  if (actor.role === Role.MANAGER) {
+    query.departmentId = actor.departmentId ?? '__tanpa_departemen__';
+  }
+};
+
 export const getDashboard = async (req: Request, res: Response) => {
   const query = req.query as unknown as PeriodQuery;
   if (!periksaPeriode(query, res)) return;
+  batasiDepartemenManajer(query, req.user!);
 
   const sampai = akhirEksklusif(query.endDate);
   const deptFilter = query.departmentId ? { departmentId: query.departmentId } : {};
@@ -218,6 +229,7 @@ export const getCostAnalysis = async (req: Request, res: Response) => {
 export const getProductivityReport = async (req: Request, res: Response) => {
   const query = req.query as unknown as PeriodQuery;
   if (!periksaPeriode(query, res)) return;
+  batasiDepartemenManajer(query, req.user!);
 
   const rentang = businessDayRange(query.startDate, query.endDate, env.APP_TIMEZONE);
   const deptFilter = query.departmentId ? { employee: { departmentId: query.departmentId } } : {};

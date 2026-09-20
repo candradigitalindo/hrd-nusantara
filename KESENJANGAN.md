@@ -52,14 +52,14 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Struktur gaji per karyawan (HR) — gaji pokok & riwayat, komponen tunjangan/potongan | ✅ |
 | Rekrutmen — lowongan (buat/sunting/tayangkan/tutup), pelamar (tahap, penolakan beralasan, jadwal wawancara, psikotes, terima → karyawan), wawancara & umpan balik pewawancara, corong seleksi | ✅ |
 | Komunikasi — pengumuman (prioritas, sasaran departemen, konfirmasi wajib, laporan siapa belum membaca), survei (pembuat pertanyaan skala/pilihan/teks, anonim, pengisian, hasil agregat) | ✅ |
-| Komunikasi — forum/chat | ❌ | Endpoint chat ada; halaman belum. |
+| Komunikasi — chat tim: ruang per tim/departemen, tertutup atau terbuka, moderator menambah anggota, pesan dengan penanda hapus (jejak audit tetap), daftar ruang dengan pesan terakhir | ✅ | Penyegaran berkala 5 detik, bukan WebSocket. |
 | Pelatihan — program (wajib/opsional, masa berlaku, nilai lulus), jadwal sesi & kuota/daftar tunggu, pendaftaran & pembatalan, kehadiran, evaluasi & sertifikat, riwayat karyawan, laporan kepatuhan (siapa yang belum/kedaluwarsa) | ✅ |
 | Kinerja — siklus (triwulan/semester/tahunan), form KPI per jabatan dengan bobot, penugasan penilai 360° (diri/atasan/rekan/bawahan), pengisian skor per kriteria, akui hasil, catatan diskusi, ringkasan per jenis penilai, umpan balik berkelanjutan | ✅ |
 | Kompetensi & sertifikasi — kamus kompetensi berskala tingkat, standar per jabatan, penilaian tingkat karyawan, kesenjangan (kesiapan %) per karyawan & laporan lintas departemen, jenis sertifikasi (wajib, masa berlaku, tautan pelatihan), catatan sertifikat dengan status berlaku/segera/kedaluwarsa/dicabut | ✅ |
 | WhatsApp — nomor, QR, arsip & pencarian | ✅ |
 | Jejak audit | ✅ |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
-| Laporan kustom | ❌ |
+| Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
 
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
@@ -76,5 +76,5 @@ berwarna sesuai jenis dengan penjelasan (bukan sekadar "Berhasil").
 
 ## Urutan yang disarankan berikutnya
 
-1. Laporan kustom, halaman chat
-2. Mobile Flutter (belum dimulai)
+1. Mobile Flutter (belum dimulai)
+2. Suksesi dan onboarding — menunggu keputusan

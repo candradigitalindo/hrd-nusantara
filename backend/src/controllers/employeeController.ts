@@ -1,4 +1,5 @@
 // src/controllers/employeeController.ts
+import type { DirectoryQuery } from '../schemas/employeeSchema';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
@@ -298,4 +299,34 @@ export const deactivateEmployee = async (req: Request, res: Response) => {
     }
     throw error;
   }
+};
+
+/**
+ * Direktori karyawan aktif untuk semua peran: hanya nama, NIK, dan unit kerja.
+ * Karyawan biasa perlu memilih rekan saat membuat ruang obrolan atau memberi
+ * umpan balik, tapi tidak boleh melihat email, telepon, alamat, atau gaji —
+ * itu tetap di GET /employees yang dibatasi manajemen.
+ */
+export const getDirectory = async (req: Request, res: Response) => {
+  const { q } = req.query as unknown as DirectoryQuery;
+
+  const data = await prisma.employee.findMany({
+    where: {
+      status: { notIn: INACTIVE_STATUSES },
+      ...(q
+        ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { nik: { contains: q, mode: 'insensitive' } }] }
+        : {}),
+    },
+    select: {
+      id: true,
+      nik: true,
+      name: true,
+      department: { select: { id: true, name: true } },
+      position: { select: { id: true, name: true } },
+    },
+    orderBy: { name: 'asc' },
+    take: 300,
+  });
+
+  res.json({ data });
 };

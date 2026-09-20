@@ -3,6 +3,7 @@ import express from 'express';
 import { Role } from '@prisma/client';
 import {
   getAllEmployees,
+  getDirectory,
   getEmployeeById,
   createEmployee,
   updateEmployee,
@@ -16,6 +17,7 @@ import {
   listEmployeeQuerySchema,
   employeeIdParamSchema,
   deactivateEmployeeSchema,
+  directoryQuerySchema,
 } from '../schemas/employeeSchema';
 
 const router = express.Router();
@@ -29,6 +31,10 @@ router.get(
   validate(listEmployeeQuerySchema, 'query'),
   asyncHandler(getAllEmployees)
 );
+
+// Direktori ringkas untuk semua peran — harus di atas '/:id' agar tidak
+// tertangkap sebagai ID karyawan bernama "directory".
+router.get('/directory', validate(directoryQuerySchema, 'query'), asyncHandler(getDirectory));
 
 // Tanpa requireRole: karyawan biasa boleh membuka datanya sendiri.
 // Pembatasan siapa boleh melihat siapa dikerjakan di dalam controller.

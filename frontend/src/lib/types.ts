@@ -155,18 +155,24 @@ export interface JejakAudit {
   createdAt: string;
 }
 
+/** Hitungan per nilai, sudah diurutkan dari yang terbanyak oleh server. */
+export interface Hitungan {
+  value: string;
+  count: number;
+}
+
 export interface Dashboard {
   period: { startDate: string; endDate: string };
   headcount: {
     start: number;
     end: number;
-    byDepartment: Record<string, number>;
-    byStatus: Record<string, number>;
+    byDepartment: Hitungan[];
+    byStatus: Hitungan[];
   };
   movement: { hires: number; exits: number; turnoverRate: number | null };
   tenure: {
     averageDays: number | null;
-    distribution: Record<string, number>;
+    distribution: { label: string; count: number }[];
     unknownJoinDate: number;
   };
 }
@@ -767,4 +773,97 @@ export interface Sertifikat {
 
 export interface DaftarSertifikat extends Halaman<Sertifikat> {
   summary: { valid: number; expiringSoon: number; expired: number; revoked: number };
+}
+
+// ===== Direktori, laporan, chat =====
+
+/** Direktori ringkas untuk semua peran: nama dan unit saja, tanpa data pribadi. */
+export interface KaryawanDirektori {
+  id: string;
+  nik: string;
+  name: string;
+  department: Ref | null;
+  position: Ref | null;
+}
+
+export interface LaporanTurnover {
+  period: { startDate: string; endDate: string };
+  totalExits: number;
+  byReason: Hitungan[];
+  byType: Hitungan[];
+  byDepartment: Hitungan[];
+  byPosition: Hitungan[];
+  tenureAtExit: { averageDays: number | null; distribution: { label: string; count: number }[] };
+  exits: {
+    id: string;
+    nik: string;
+    name: string;
+    joinDate: string | null;
+    exitDate: string | null;
+    exitReason: string | null;
+    exitType: string | null;
+    department: Ref | null;
+    position: Ref | null;
+  }[];
+}
+
+export interface LaporanBiaya {
+  period: { startDate: string; endDate: string };
+  costs: {
+    payroll: number;
+    training: number;
+    recruitment: number;
+    total: number;
+    shares: { payroll: number; training: number; recruitment: number };
+  };
+  detail: { payslipCount: number; overtimePay: number; allowances: number; trainingSessions: number; jobPostings: number };
+  hires: number;
+  costPerHire: number | null;
+}
+
+export interface LaporanProduktivitas {
+  period: { startDate: string; endDate: string };
+  scheduledShifts: number;
+  attendanceCount: number;
+  averageWorkedHours: number;
+  latePercentage: number;
+  absencePercentage: number;
+  approvedOvertimeHours: number;
+}
+
+export type DatasetMentah = "employees" | "attendance" | "leaves" | "payrolls" | "trainings";
+
+export interface DataMentah {
+  dataset: DatasetMentah;
+  data: Record<string, unknown>[];
+  pagination: { page: number; limit: number; total: number };
+}
+
+export type JenisRuang = "general" | "department" | "team";
+
+export interface RuangChat {
+  id: string;
+  name: string;
+  description: string | null;
+  type: JenisRuang;
+  isPrivate: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count: { members: number; messages: number };
+  myRole: "member" | "moderator";
+  lastMessage: { message: string | null; timestamp: string; senderName: string; isDeleted: boolean } | null;
+}
+
+export interface PesanChat {
+  id: string;
+  roomId: string;
+  senderId: string;
+  /** null bila sudah dihapus. */
+  message: string | null;
+  isDeleted: boolean;
+  editedAt: string | null;
+  deletedAt: string | null;
+  timestamp: string;
+  sender: { id: string; name: string };
 }

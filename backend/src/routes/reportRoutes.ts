@@ -20,9 +20,10 @@ router.use(authenticateToken);
 // dan alasan berhenti seluruh karyawan.
 const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
+// Dasbor terbuka untuk manajer, tapi controller membatasinya ke departemennya.
 router.get(
   '/reports/dashboard',
-  requireRole(...HR),
+  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN, Role.MANAGER),
   validate(periodQuerySchema, 'query'),
   asyncHandler(getDashboard)
 );

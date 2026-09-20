@@ -137,6 +137,35 @@ describe('Dasbor HR', () => {
     expect(res.status).toBe(400);
   });
 
+  it('manajer hanya melihat departemennya sendiri, apa pun filternya', async () => {
+    const barId = (await makeDepartment('Bar')).id;
+    await buatKaryawan({ nik: 'K-1', joinDate: '2025-01-01', departmentId: dapurId });
+    await buatKaryawan({ nik: 'K-2', joinDate: '2025-01-01', departmentId: dapurId });
+    await buatKaryawan({ nik: 'B-1', joinDate: '2025-01-01', departmentId: barId });
+    await makeEmployee({ email: 'chef@resto.id', nik: 'MGR-1', role: Role.MANAGER, departmentId: dapurId });
+    const chefToken = await login(app, 'chef@resto.id');
+
+    const res = await request(app)
+      .get(`/api/reports/dashboard?startDate=${AWAL}&endDate=${AKHIR}&departmentId=${barId}`)
+      .set(auth(chefToken));
+    expect(res.status).toBe(200);
+    // Dua koki + chef sendiri; Bar tidak ikut walau diminta lewat filter.
+    expect(res.body.headcount.end).toBe(3);
+
+    const prod = await request(app)
+      .get(`/api/reports/productivity?startDate=${AWAL}&endDate=${AKHIR}&departmentId=${barId}`)
+      .set(auth(chefToken));
+    expect(prod.status).toBe(200);
+  });
+
+  it('manajer tanpa departemen tidak melihat siapa pun', async () => {
+    await buatKaryawan({ nik: 'K-1', joinDate: '2025-01-01', departmentId: dapurId });
+    await makeEmployee({ email: 'lepas@resto.id', nik: 'MGR-2', role: Role.MANAGER });
+    const res = await laporan('dashboard', await login(app, 'lepas@resto.id'));
+    expect(res.status).toBe(200);
+    expect(res.body.headcount.end).toBe(0);
+  });
+
   it('karyawan biasa tidak boleh membuka dasbor', async () => {
     const res = await laporan('dashboard', budiToken);
     expect(res.status).toBe(403);

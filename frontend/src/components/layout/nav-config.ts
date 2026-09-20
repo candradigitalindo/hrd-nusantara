@@ -14,6 +14,8 @@ import {
   GraduationCap,
   Target,
   Award,
+  BarChart3,
+  MessagesSquare,
   type LucideIcon,
 } from "lucide-react";
 import type { Role } from "@/lib/types";
@@ -34,6 +36,7 @@ const MANAJEMEN: Role[] = ["SUPER_ADMIN", "HR_ADMIN", "MANAGER"];
 export const MENU: MenuNav[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, utama: true },
   { href: "/pengumuman", label: "Pengumuman", icon: Megaphone },
+  { href: "/chat", label: "Chat", icon: MessagesSquare },
   { href: "/karyawan", label: "Karyawan", icon: Users, roles: MANAJEMEN, utama: true },
   { href: "/organisasi", label: "Organisasi", icon: Building2, roles: HR },
   { href: "/presensi", label: "Presensi", icon: CalendarCheck, utama: true },
@@ -46,6 +49,7 @@ export const MENU: MenuNav[] = [
   { href: "/rekrutmen", label: "Rekrutmen", icon: UserSearch, roles: MANAJEMEN },
   { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: HR },
+  { href: "/laporan", label: "Laporan", icon: BarChart3, roles: MANAJEMEN },
   { href: "/audit", label: "Jejak Audit", icon: ScrollText, roles: ["SUPER_ADMIN"] },
 ];
 

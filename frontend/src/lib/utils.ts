@@ -175,3 +175,7 @@ export const LABEL_UMPAN: Record<string, string> = { praise: "Apresiasi", improv
 /** Nama tingkat kompetensi: pakai label kustom bila ada, kalau tidak "Tingkat N". */
 export const labelTingkat = (tingkat: number, labels?: Record<string, string> | null) =>
   labels?.[String(tingkat)] ?? (tingkat === 0 ? "Belum ada" : `Tingkat ${tingkat}`);
+
+export const LABEL_RUANG: Record<string, string> = { general: "Umum", department: "Departemen", team: "Tim" };
+export const LABEL_DATASET: Record<string, string> = { employees: "Karyawan", attendance: "Presensi", leaves: "Cuti", payrolls: "Penggajian", trainings: "Pelatihan" };
+export const LABEL_EXIT: Record<string, string> = { voluntary: "Mengundurkan diri", involuntary: "Diberhentikan", "tidak dicatat": "Tidak dicatat" };

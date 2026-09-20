@@ -28,13 +28,6 @@ const PRESET = [
   { label: "12 bulan terakhir", bulan: 11 },
 ];
 
-const LABEL_TENURE: Record<string, string> = {
-  "<3m": "< 3 bln",
-  "3-12m": "3–12 bln",
-  "1-3y": "1–3 thn",
-  "3-5y": "3–5 thn",
-  ">5y": "> 5 thn",
-};
 
 export default function HalamanDashboard() {
   const { data: saya } = useSesi();
@@ -78,14 +71,11 @@ export default function HalamanDashboard() {
   const d = dashboard.data;
   const hitungStatus = (status: string) => presensiHariIni.data?.data.filter((p) => p.status === status).length ?? 0;
 
+  // Server sudah mengurutkan dari yang terbanyak; "tidak dicatat" = tanpa departemen.
   const dataDept = d
-    ? Object.entries(d.headcount.byDepartment)
-        .map(([label, nilai]) => ({ label: label === "null" ? "Tanpa departemen" : label, nilai }))
-        .sort((a, b) => b.nilai - a.nilai)
+    ? d.headcount.byDepartment.map((h) => ({ label: h.value === "tidak dicatat" ? "Tanpa departemen" : h.value, nilai: h.count }))
     : [];
-  const dataTenure = d
-    ? Object.entries(d.tenure.distribution).map(([k, nilai]) => ({ label: LABEL_TENURE[k] ?? k, nilai }))
-    : [];
+  const dataTenure = d ? d.tenure.distribution.map((b) => ({ label: b.label, nilai: b.count })) : [];
 
   if (!manajemen) {
     return (

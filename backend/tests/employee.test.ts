@@ -217,3 +217,34 @@ describe('PATCH /api/employees/:id/deactivate', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('GET /api/employees/directory', () => {
+  it('bisa diakses karyawan biasa, tanpa data pribadi, tanpa yang sudah keluar', async () => {
+    await makeEmployee({ email: 'budi@resto.id', nik: 'EMP-1', name: 'Budi Cook' });
+    await makeEmployee({ email: 'mantan@resto.id', nik: 'EMP-2', name: 'Mantan', status: 'resign' });
+    const budiToken = await login(app, 'budi@resto.id');
+
+    const res = await request(app).get('/api/employees/directory').set(auth(budiToken));
+
+    expect(res.status).toBe(200);
+    const nama = res.body.data.map((e: { name: string }) => e.name);
+    expect(nama).toContain('Budi Cook');
+    expect(nama).not.toContain('Mantan');
+    for (const e of res.body.data) {
+      expect(e).not.toHaveProperty('email');
+      expect(e).not.toHaveProperty('password');
+      expect(e).not.toHaveProperty('phoneNumber');
+    }
+  });
+
+  it('mencari berdasarkan nama atau NIK', async () => {
+    await makeEmployee({ email: 'budi@resto.id', nik: 'EMP-1', name: 'Budi Cook' });
+    await makeEmployee({ email: 'siti@resto.id', nik: 'EMP-2', name: 'Siti Waiter' });
+
+    const res = await request(app).get('/api/employees/directory?q=siti').set(auth(token));
+    expect(res.body.data.map((e: { name: string }) => e.name)).toEqual(['Siti Waiter']);
+
+    const nik = await request(app).get('/api/employees/directory?q=emp-1').set(auth(token));
+    expect(nik.body.data.map((e: { name: string }) => e.name)).toEqual(['Budi Cook']);
+  });
+});

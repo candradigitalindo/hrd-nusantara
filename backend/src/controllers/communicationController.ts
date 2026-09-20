@@ -633,11 +633,31 @@ export const getMyRooms = async (req: Request, res: Response) => {
     where: { isActive: true, members: { some: { employeeId: req.user!.id } } },
     include: {
       _count: { select: { members: true, messages: true } },
+      // Peran saya di ruang ini menentukan tombol apa yang tampil di klien.
+      members: { where: { employeeId: req.user!.id }, select: { role: true } },
+      messages: {
+        orderBy: { timestamp: 'desc' },
+        take: 1,
+        select: { message: true, timestamp: true, deletedAt: true, sender: { select: { name: true } } },
+      },
     },
     orderBy: { updatedAt: 'desc' },
   });
 
-  res.json({ data: rooms });
+  res.json({
+    data: rooms.map(({ members, messages, ...r }) => ({
+      ...r,
+      myRole: members[0]?.role ?? 'member',
+      lastMessage: messages[0]
+        ? {
+            message: messages[0].deletedAt ? null : messages[0].message,
+            timestamp: messages[0].timestamp,
+            senderName: messages[0].sender.name,
+            isDeleted: messages[0].deletedAt !== null,
+          }
+        : null,
+    })),
+  });
 };
 
 export const addRoomMember = async (req: Request, res: Response) => {

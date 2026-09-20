@@ -85,3 +85,9 @@ export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 export type ListEmployeeQuery = z.infer<typeof listEmployeeQuerySchema>;
 export type DeactivateEmployeeInput = z.infer<typeof deactivateEmployeeSchema>;
+
+/** Direktori ringkas untuk memilih rekan (chat, umpan balik): nama & unit saja. */
+export const directoryQuerySchema = z.object({
+  q: z.string().trim().max(100).optional(),
+});
+export type DirectoryQuery = z.infer<typeof directoryQuerySchema>;
