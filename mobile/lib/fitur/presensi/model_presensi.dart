@@ -84,7 +84,7 @@ extension MetodeAbsenKode on MetodeAbsen {
 
 /// Data yang dikirim ke POST /attendance/check-in atau /check-out.
 class PermintaanAbsen {
-  const PermintaanAbsen({required this.metode, this.latitude, this.longitude, this.lokasiId, this.qrToken, this.fotoWajahBase64, this.catatan});
+  const PermintaanAbsen({required this.metode, this.latitude, this.longitude, this.lokasiId, this.qrToken, this.fotoWajahBase64, this.catatan, this.integritas});
   final MetodeAbsen metode;
   final double? latitude;
   final double? longitude;
@@ -92,6 +92,8 @@ class PermintaanAbsen {
   final String? qrToken;
   final String? fotoWajahBase64;
   final String? catatan;
+  /// Laporan keaslian lokasi (lihat integritas_lokasi.dart); server yang menilai.
+  final Map<String, dynamic>? integritas;
 
   Map<String, dynamic> keJson({bool sertakanLokasiId = true}) => {
         'method': metode.kode,
@@ -101,5 +103,6 @@ class PermintaanAbsen {
         if (qrToken != null) 'qrToken': qrToken,
         if (fotoWajahBase64 != null) 'faceImage': fotoWajahBase64,
         if (catatan != null && catatan!.isNotEmpty) 'notes': catatan,
+        if (integritas != null) 'integrity': integritas,
       };
 }

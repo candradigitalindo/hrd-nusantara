@@ -12,7 +12,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 |---|---|---|---|
 | 1 | Data karyawan — profil, status, struktur | ✅ | **Departemen & jabatan sebelumnya tidak punya endpoint sama sekali** — tidak ada cara membuatnya selain menulis ke database. Ditambahkan hari ini. |
 | 1 | Data karyawan — dokumen digital (CV, ijazah, kontrak, BPJS) | ✅ | Unggah (HR), lihat/unduh (HR dan pemilik), masa berlaku, pelacakan kedaluwarsa. Berkas di luar direktori publik, jenis dikenali dari isi, soft delete, tiap unduhan tercatat di audit. |
-| 2 | Presensi — GPS, wajah, QR, shift, validasi, lembur, laporan | ✅ | Pengenalan wajah dan anti-spoofing berjalan di server sendiri. |
+| 2 | Presensi — GPS, wajah, QR, shift, validasi, lembur, laporan | ✅ | Pengenalan wajah dan anti-spoofing berjalan di server sendiri. Deteksi fake GPS berlapis: ponsel (penanda mock OS, aplikasi lokasi palsu terpasang, root/jailbreak, emulator, opsi pengembang, pembanding lokasi jaringan, posisi basi) + server (perpindahan mustahil antar presensi). Mock/aplikasi palsu/root memblokir; sisanya ditandai "Dicurigai" untuk HR. |
 | 3 | Cuti — tipe, pengajuan, saldo, kalender | ✅ | Cuti bersama memotong kuota tahunan otomatis — hanya karyawan pola kerja tetap yang libur; staf shift outlet/hotel tidak dipotong. Dipulihkan bila hari liburnya dibatalkan; saldo yang dibuat belakangan ikut menanggung. |
 | 4 | Payroll — hitung otomatis, BPJS, PPh 21, slip digital | ✅ | PPh 21 opsional, tidak aktif secara bawaan. |
 | 5 | Rekrutmen — lowongan, pelamar, wawancara, hire | ✅ | |
@@ -58,7 +58,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Kompetensi & sertifikasi — kamus kompetensi berskala tingkat, standar per jabatan, penilaian tingkat karyawan, kesenjangan (kesiapan %) per karyawan & laporan lintas departemen, jenis sertifikasi (wajib, masa berlaku, tautan pelatihan), catatan sertifikat dengan status berlaku/segera/kedaluwarsa/dicabut | ✅ |
 | WhatsApp — kepatuhan per karyawan & pengingat, nomor perusahaan, QR, arsip & pencarian; web: WhatsApp Saya (tautkan, QR, pindai ulang) + peringatan di dashboard; mobile: hanya memeriksa tautan + peringatan "Tautan WhatsApp terputus" di beranda | ✅ |
 | Jejak audit | ✅ |
-| Mobile Flutter (`mobile/`) — login & profil, presensi GPS/wajah/QR + riwayat, cuti (saldo, ajukan, batalkan), slip gaji, jadwal shift, pengumuman & konfirmasi, survei, chat tim, status sesi WhatsApp + QR scan ulang, push FCM | 🟡 | Analyzer bersih, 23 tes lulus. Push butuh `flutterfire configure` (proyek hrd-app-635cb). iOS belum diverifikasi: simulator belum terpasang di mesin ini. |
+| Mobile Flutter (`mobile/`) — login & profil, presensi GPS/wajah/QR + riwayat, cuti (saldo, ajukan, batalkan), slip gaji, jadwal shift, pengumuman & konfirmasi, survei, chat tim, status sesi WhatsApp + QR scan ulang, push FCM | 🟡 | Analyzer bersih, 23 tes lulus. Push butuh `flutterfire configure` (proyek hrd-app-635cb). Build iOS (tanpa codesign) berhasil; uji jalan iOS butuh perangkat/simulator. |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
 

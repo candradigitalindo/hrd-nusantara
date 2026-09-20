@@ -79,6 +79,8 @@ export interface Presensi {
   overtimeHours: string | number | null;
   overtimeApproved: boolean;
   faceVerified: boolean;
+  /** Penanda kecurangan lokasi; kosong = wajar. Lihat LABEL_INTEGRITAS. */
+  integrityFlags: string[];
   status: string;
   notes: string | null;
   employee: { id: string; nik: string; name: string; departmentId: string | null };

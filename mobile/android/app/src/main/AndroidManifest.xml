@@ -47,6 +47,27 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- Aplikasi lokasi palsu yang umum, agar terlihat oleh deteksi fake GPS (Android 11+). -->
+        <package android:name="com.lexa.fakegps"/>
+        <package android:name="com.incorporateapps.fakegps.fre"/>
+        <package android:name="com.blogspot.newapphorizons.fakegps"/>
+        <package android:name="com.evezzon.fakegps"/>
+        <package android:name="com.theappninjas.gpsjoystick"/>
+        <package android:name="com.gsmartstudio.fakegps"/>
+        <package android:name="ru.gavrikov.mocklocations"/>
+        <package android:name="com.rosteam.gpsemulator"/>
+        <package android:name="com.lkr.fakelocation"/>
+        <package android:name="com.ninja.toolkit.pulse.fake.gps.pro"/>
+        <package android:name="com.fakegps.mock"/>
+        <package android:name="com.byterevapps.fakegps"/>
+        <package android:name="com.hola.fakelocation"/>
+        <package android:name="org.hola.gpslocation"/>
+        <package android:name="com.pe.fakegps"/>
+        <package android:name="com.dvaoru.fake.gps"/>
+        <package android:name="com.location.mock"/>
+        <package android:name="com.blackbox.mocklocation"/>
+        <package android:name="com.kokosoft.fake.gps"/>
+        <package android:name="com.xdadevelopers.mockgps"/>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

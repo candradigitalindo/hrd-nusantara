@@ -51,6 +51,28 @@ lib/
 Alur data: layar → provider Riverpod → repo → `KlienApi` (dio). Token JWT
 disimpan di Keychain/Keystore; 401 dari server otomatis mengeluarkan sesi.
 
+## Deteksi fake GPS
+
+Sebelum check-in/out berbasis GPS atau wajah, aplikasi mengumpulkan sinyal
+keaslian lokasi (`lib/fitur/presensi/integritas_lokasi.dart` + kode native
+`MainActivity.kt` / `AppDelegate.swift`):
+
+| Sinyal | Android | iOS | Akibat |
+|---|---|---|---|
+| Posisi ditandai mock oleh OS | `isMocked` | `isSimulatedBySoftware` (iOS 15+) | blokir |
+| Aplikasi lokasi palsu terpasang | izin `ACCESS_MOCK_LOCATION` + daftar paket dikenal (`<queries>`) | — | blokir |
+| Root / jailbreak | berkas su, Magisk, test-keys | Cydia, Sileo, tulis di luar sandbox | blokir |
+| Emulator / simulator | Build.* | targetEnvironment | ditandai |
+| Opsi pengembang aktif | Settings.Global | — | ditandai |
+| GPS jauh (>1,5 km) dari lokasi jaringan seluler | NETWORK_PROVIDER | — | ditandai |
+| Posisi GPS basi (>2 menit) | timestamp | timestamp | ditandai |
+| Perpindahan mustahil (>250 km/jam) antar presensi | dihitung **server** | dihitung **server** | ditandai |
+
+Yang memblokir ditolak di ponsel (dialog menjelaskan apa yang terdeteksi)
+dan ditolak lagi di server (422). Laporan lengkap ikut dikirim di field
+`integrity`; server menyimpan penanda di `integrityFlags` dan HR melihatnya
+di halaman Presensi web sebagai "Dicurigai".
+
 ## Push (Firebase Cloud Messaging)
 
 Build ini berjalan penuh tanpa Firebase; push saja yang belum aktif.
@@ -92,5 +114,6 @@ flutter build apk --release --dart-define=API_URL=https://api.domain-anda.id/api
 flutter build ipa --release --dart-define=API_URL=https://api.domain-anda.id/api
 ```
 
-Catatan: simulator iOS belum terpasang di mesin pengembang ini
-(`flutter doctor`), jadi verifikasi iOS harus dilakukan di mesin lain.
+Catatan: `flutter build ios --no-codesign` berhasil di mesin pengembang
+(Xcode 27, target iOS 15); simulator iOS belum terpasang, jadi uji jalan di
+iOS perlu perangkat sungguhan atau memasang runtime simulator lewat Xcode.

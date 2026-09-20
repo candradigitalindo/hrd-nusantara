@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { decryptBytes, encryptJson, decryptJson } from '../utils/fieldCrypto';
+import { evaluateIntegrity, type PreviousFix } from '../utils/locationIntegrity';
 
 type Koordinat = { lat: number; lng: number };
 
@@ -57,6 +58,9 @@ const attendanceSelect = {
   faceVerified: true,
   faceMatchScore: true,
   livenessScore: true,
+  integrityFlags: true,
+  integrityReport: true,
+  checkOutIntegrityReport: true,
   status: true,
   notes: true,
   createdAt: true,
@@ -83,6 +87,34 @@ const toDTO = (row: AttendanceRow) => ({
 });
 
 /** Presensi yang belum di-check-out dan belum ditandai lupa check-out. */
+/**
+ * Titik lokasi terakhir yang diketahui dari presensi sebelumnya, untuk
+ * memeriksa kecepatan perpindahan yang mustahil.
+ */
+const posisiTerakhir = async (employeeId: string, kecuali?: string): Promise<PreviousFix | null> => {
+  const terakhir = await prisma.attendance.findFirst({
+    where: { employeeId, ...(kecuali ? { id: { not: kecuali } } : {}) },
+    orderBy: { checkInTime: 'desc' },
+    select: { checkInTime: true, checkOutTime: true, checkInLocation: true, checkOutLocation: true },
+  });
+  if (!terakhir) return null;
+  const keluar = decryptJson<Koordinat>(terakhir.checkOutLocation);
+  if (keluar && terakhir.checkOutTime) return { latitude: keluar.lat, longitude: keluar.lng, at: terakhir.checkOutTime };
+  const masuk = decryptJson<Koordinat>(terakhir.checkInLocation);
+  if (masuk) return { latitude: masuk.lat, longitude: masuk.lng, at: terakhir.checkInTime };
+  return null;
+};
+
+const tolakIntegritas = (res: Response, reason: string | null, flags: string[], aksi: string) => {
+  res.locals.audit = {
+    action: 'attendance.integrity.blocked',
+    entity: 'Attendance',
+    summary: `${aksi} ditolak: ${reason}`,
+    metadata: { flags },
+  };
+  return res.status(422).json({ error: `Presensi ditolak. ${reason}.`, details: { integrityFlags: flags } });
+};
+
 const findOpenAttendance = (employeeId: string) =>
   prisma.attendance.findFirst({
     where: { employeeId, checkOutTime: null, status: { not: 'no_checkout' } },
@@ -299,6 +331,17 @@ export const checkIn = async (req: Request, res: Response) => {
     return res.status(lokasi.status).json({ error: lokasi.error, details: lokasi.details });
   }
 
+  // Deteksi lokasi palsu: sinyal dari ponsel + kecepatan perpindahan mustahil.
+  const pakaiGps = input.method !== 'qr';
+  const integritas = evaluateIntegrity({
+    report: input.integrity,
+    usesGps: pakaiGps,
+    position: input.latitude !== undefined && input.longitude !== undefined ? { latitude: input.latitude, longitude: input.longitude } : undefined,
+    previous: pakaiGps ? await posisiTerakhir(employeeId) : null,
+    now,
+  });
+  if (integritas.blocked) return tolakIntegritas(res, integritas.reason, integritas.flags, 'Check-in');
+
   let wajah: HasilVerifikasiWajah = {
     faceVerified: false,
     faceMatchScore: 0,
@@ -340,6 +383,8 @@ export const checkIn = async (req: Request, res: Response) => {
       lateMinutes: penilaian.lateMinutes,
       status: penilaian.status,
       notes: input.notes,
+      integrityFlags: integritas.flags,
+      integrityReport: input.integrity ?? undefined,
     },
     select: attendanceSelect,
   });
@@ -366,6 +411,17 @@ export const checkOut = async (req: Request, res: Response) => {
   if (!lokasi.ok) {
     return res.status(lokasi.status).json({ error: lokasi.error, details: lokasi.details });
   }
+
+  const pakaiGpsKeluar = input.method !== 'qr';
+  const masuk = decryptJson<Koordinat>(terbuka.checkInLocation);
+  const integritasKeluar = evaluateIntegrity({
+    report: input.integrity,
+    usesGps: pakaiGpsKeluar,
+    position: input.latitude !== undefined && input.longitude !== undefined ? { latitude: input.latitude, longitude: input.longitude } : undefined,
+    previous: pakaiGpsKeluar && masuk ? { latitude: masuk.lat, longitude: masuk.lng, at: terbuka.checkInTime } : null,
+    now,
+  });
+  if (integritasKeluar.blocked) return tolakIntegritas(res, integritasKeluar.reason, integritasKeluar.flags, 'Check-out');
 
   if (input.method === 'face') {
     try {
@@ -405,6 +461,9 @@ export const checkOut = async (req: Request, res: Response) => {
       // yang sudah diotorisasi atasan.
       overtimeHours: new Prisma.Decimal(penilaian.overtimeHours),
       ...(input.notes ? { notes: input.notes } : {}),
+      // Penanda check-out digabung dengan penanda check-in, tanpa duplikat.
+      integrityFlags: [...new Set([...terbuka.integrityFlags, ...integritasKeluar.flags])],
+      checkOutIntegrityReport: input.integrity ?? undefined,
     },
     select: attendanceSelect,
   });
@@ -433,6 +492,7 @@ const buildAttendanceWhere = (
     where.overtimeHours = { gt: 0 };
     where.overtimeApproved = false;
   }
+  if (query.flaggedOnly) where.integrityFlags = { isEmpty: false };
 
   if (query.startDate || query.endDate) {
     const rentang = businessDayRange(

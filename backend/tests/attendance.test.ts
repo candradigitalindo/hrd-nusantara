@@ -1,4 +1,6 @@
 import request from 'supertest';
+import { encryptJson } from '../src/utils/fieldCrypto';
+import { generateULID } from '../src/utils/generateULID';
 import { DateTime } from 'luxon';
 import { Role } from '@prisma/client';
 import {
@@ -610,5 +612,105 @@ describe('Koordinat tersimpan terenkripsi', () => {
       SELECT column_name FROM information_schema.columns
       WHERE table_name = 'Attendance' AND column_name ILIKE '%latitude%'`;
     expect(kolom).toEqual([]);
+  });
+});
+
+describe('Deteksi fake GPS saat presensi', () => {
+  const laporanJujur = { mockLocation: false, mockApps: [], rooted: false, emulator: false, developerOptions: false, networkDistanceMeters: 80, positionAgeSeconds: 2, platform: 'android' as const };
+
+  it('menolak check-in dari aplikasi lokasi palsu dan tidak menyimpan apa pun', async () => {
+    const res = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS, integrity: { ...laporanJujur, mockApps: ['com.lexa.fakegps'] } });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error).toContain('com.lexa.fakegps');
+    expect(res.body.details.integrityFlags).toEqual(['mock_app_installed']);
+    expect(await prisma.attendance.count()).toBe(0);
+  });
+
+  it('menolak posisi yang ditandai mock oleh sistem operasi', async () => {
+    const res = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS, integrity: { ...laporanJujur, mockLocation: true } });
+    expect(res.status).toBe(422);
+    expect(res.body.details.integrityFlags).toEqual(['mock_location']);
+  });
+
+  it('laporan jujur lolos tanpa penanda; opsi pengembang hanya ditandai untuk HR', async () => {
+    const bersih = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS, integrity: laporanJujur });
+    expect(bersih.status).toBe(201);
+    expect(bersih.body.integrityFlags).toEqual([]);
+    expect(bersih.body.integrityReport.platform).toBe('android');
+
+    await prisma.attendance.deleteMany();
+    const dev = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS, integrity: { ...laporanJujur, developerOptions: true, emulator: true } });
+    expect(dev.status).toBe(201);
+    expect(dev.body.integrityFlags).toEqual(['emulator', 'developer_options']);
+  });
+
+  it('klien yang tidak mengirim laporan ditandai integrity_missing, kecuali metode QR', async () => {
+    const gps = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS });
+    expect(gps.status).toBe(201);
+    expect(gps.body.integrityFlags).toEqual(['integrity_missing']);
+  });
+
+  it('menandai perpindahan mustahil dari presensi sebelumnya', async () => {
+    // Check-out 20 menit lalu di Surabaya, kini check-in di Monas (Jakarta).
+    const duluan = new Date(Date.now() - 20 * 60_000);
+    await prisma.attendance.create({
+      data: {
+        id: generateULID(), employeeId: karyawan.id, checkInMethod: 'gps',
+        checkInTime: new Date(duluan.getTime() - 8 * 3_600_000), checkOutTime: duluan,
+        checkInLocation: encryptJson({ lat: -7.2575, lng: 112.7521 }), checkOutLocation: encryptJson({ lat: -7.2575, lng: 112.7521 }),
+        status: 'present', workLocationId: lokasiId,
+      },
+    });
+
+    const res = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS, integrity: laporanJujur });
+    expect(res.status).toBe(201);
+    expect(res.body.integrityFlags).toEqual(['impossible_speed']);
+
+    // HR menyaring yang dicurigai.
+    const hr = await makeEmployee({ email: 'hr-fg@resto.id', nik: 'HR-FG', role: Role.HR_ADMIN });
+    const hrToken = await login(app, hr.email);
+    const daftar = await request(app).get('/api/attendance?flaggedOnly=true').set(auth(hrToken));
+    expect(daftar.status).toBe(200);
+    expect(daftar.body.data.map((a: { id: string }) => a.id)).toEqual([res.body.id]);
+  });
+
+  it('check-out juga diperiksa dan penandanya digabung', async () => {
+    const masuk = await request(app)
+      .post('/api/attendance/check-in')
+      .set(auth(token))
+      .send({ method: 'gps', workLocationId: lokasiId, ...MONAS, integrity: { ...laporanJujur, developerOptions: true } });
+    expect(masuk.status).toBe(201);
+
+    const ditolak = await request(app)
+      .post('/api/attendance/check-out')
+      .set(auth(token))
+      .send({ method: 'gps', ...MONAS, integrity: { ...laporanJujur, rooted: true } });
+    expect(ditolak.status).toBe(422);
+
+    const keluar = await request(app)
+      .post('/api/attendance/check-out')
+      .set(auth(token))
+      .send({ method: 'gps', ...MONAS, integrity: { ...laporanJujur, emulator: true } });
+    expect(keluar.status).toBe(200);
+    expect(keluar.body.integrityFlags.sort()).toEqual(['developer_options', 'emulator']);
   });
 });

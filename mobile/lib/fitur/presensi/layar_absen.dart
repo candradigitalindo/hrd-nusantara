@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../core/widget/widget_umum.dart';
+import 'integritas_lokasi.dart';
 import 'layanan_lokasi.dart';
 import 'layar_kamera_wajah.dart';
 import 'layar_pindai_qr.dart';
@@ -53,6 +54,14 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
         case MetodeAbsen.wajah:
           setState(() => _langkah = 'Mengambil lokasi GPS…');
           final posisi = await ambilPosisi();
+          if (!mounted) return;
+          setState(() => _langkah = 'Memeriksa keaslian lokasi…');
+          final integritas = await periksaIntegritas(posisi);
+          if (integritas.diblokir) {
+            if (!mounted) return;
+            await _tolakKecurangan(integritas);
+            return _batal();
+          }
           final daftar = await ref.read(repoPresensiProvider).lokasiKerja();
           final terdekat = lokasiTerdekat(daftar, posisi.latitude, posisi.longitude);
           if (terdekat == null) throw GalatLokasi('Belum ada lokasi kerja terdaftar. Hubungi HR.');
@@ -75,6 +84,7 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
             lokasiId: terdekat.lokasi.id,
             fotoWajahBase64: foto,
             catatan: _catatan.text,
+            integritas: integritas.keJson(),
           );
       }
       if (!mounted) return;
@@ -96,6 +106,28 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
       _batal();
     }
   }
+
+  /// Presensi dihentikan di ponsel; server juga akan menolaknya. Dijelaskan
+  /// apa yang terdeteksi supaya karyawan yang jujur tahu apa yang harus dicabut.
+  Future<void> _tolakKecurangan(LaporanIntegritas laporan) => showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: Icon(Icons.gpp_bad, color: Theme.of(ctx).colorScheme.error, size: 36),
+          title: const Text('Presensi ditolak'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Terdeteksi indikasi lokasi palsu:'),
+              const SizedBox(height: 8),
+              for (final a in laporan.alasanBlokir) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('• $a')),
+              const SizedBox(height: 8),
+              Text('Matikan atau hapus aplikasi lokasi palsu, nonaktifkan "lokasi tiruan" di opsi pengembang, lalu coba lagi. Percobaan ini tercatat.', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+            ],
+          ),
+          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mengerti'))],
+        ),
+      );
 
   void _batal() {
     if (mounted) {

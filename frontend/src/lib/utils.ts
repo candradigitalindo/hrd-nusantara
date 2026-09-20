@@ -181,3 +181,17 @@ export const labelTingkat = (tingkat: number, labels?: Record<string, string> | 
 export const LABEL_RUANG: Record<string, string> = { general: "Umum", department: "Departemen", team: "Tim" };
 export const LABEL_DATASET: Record<string, string> = { employees: "Karyawan", attendance: "Presensi", leaves: "Cuti", payrolls: "Penggajian", trainings: "Pelatihan" };
 export const LABEL_EXIT: Record<string, string> = { voluntary: "Mengundurkan diri", involuntary: "Diberhentikan", "tidak dicatat": "Tidak dicatat" };
+
+/** Penanda kecurangan lokasi pada presensi, sejalan dengan backend locationIntegrity.ts. */
+export const LABEL_INTEGRITAS: Record<string, string> = {
+  mock_location: "Lokasi ditandai palsu oleh OS",
+  mock_app_installed: "Aplikasi lokasi palsu terpasang",
+  rooted_device: "Perangkat di-root / jailbreak",
+  emulator: "Berjalan di emulator",
+  developer_options: "Opsi pengembang aktif",
+  network_mismatch: "GPS jauh dari lokasi jaringan seluler",
+  stale_position: "Posisi GPS basi",
+  impossible_speed: "Perpindahan terlalu cepat dari presensi sebelumnya",
+  integrity_missing: "Aplikasi tidak mengirim laporan integritas",
+};
+export const BLOKIR_INTEGRITAS = new Set(["mock_location", "mock_app_installed", "rooted_device"]);

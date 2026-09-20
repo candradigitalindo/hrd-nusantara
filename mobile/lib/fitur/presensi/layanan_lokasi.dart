@@ -13,10 +13,14 @@ class GalatLokasi implements Exception {
 }
 
 class PosisiSaatIni {
-  const PosisiSaatIni(this.latitude, this.longitude, this.akurasiMeter);
+  const PosisiSaatIni(this.latitude, this.longitude, this.akurasiMeter, {this.mocked = false, this.waktu});
   final double latitude;
   final double longitude;
   final double akurasiMeter;
+  /// Android menandai posisi dari penyedia mock (aplikasi fake GPS).
+  final bool mocked;
+  /// Waktu pembacaan menurut perangkat; posisi tua berarti bukan pembacaan saat ini.
+  final DateTime? waktu;
 }
 
 /// Jarak permukaan bumi (haversine) dalam meter. Murni, supaya bisa diuji.
@@ -60,5 +64,5 @@ Future<PosisiSaatIni> ambilPosisi() async {
   final p = await Geolocator.getCurrentPosition(
     locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
   );
-  return PosisiSaatIni(p.latitude, p.longitude, p.accuracy);
+  return PosisiSaatIni(p.latitude, p.longitude, p.accuracy, mocked: p.isMocked, waktu: p.timestamp);
 }

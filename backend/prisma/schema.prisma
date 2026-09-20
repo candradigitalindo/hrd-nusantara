@@ -192,6 +192,15 @@ model Attendance {
   /// Skor "wajah hidup" dari model anti-spoofing, disimpan untuk audit dan
   /// untuk menyetel ulang ambang berdasarkan data lapangan sendiri.
   livenessScore  Float?
+  /// Penanda kecurangan lokasi (src/utils/locationIntegrity.ts): mock_location,
+  /// mock_app_installed, rooted_device, emulator, developer_options,
+  /// network_mismatch, stale_position, impossible_speed, integrity_missing.
+  /// Kosong = tidak ada yang mencurigakan.
+  integrityFlags String[] @default([])
+  /// Laporan integritas mentah dari aplikasi mobile, disimpan untuk jejak
+  /// audit bila ada sengketa.
+  integrityReport         Json?
+  checkOutIntegrityReport Json?
 
   status    String   @default("present") // present, late, absent, no_checkout
   notes     String?

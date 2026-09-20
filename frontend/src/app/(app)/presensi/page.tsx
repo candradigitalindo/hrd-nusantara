@@ -16,7 +16,7 @@ import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { Pagination } from "@/components/ui/pagination";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatTanggal, formatWaktu, labelStatus } from "@/lib/utils";
+import { formatTanggal, formatWaktu, labelStatus, LABEL_INTEGRITAS, BLOKIR_INTEGRITAS } from "@/lib/utils";
 import type { Halaman, Presensi } from "@/lib/types";
 
 const menit = (n: number | null | undefined) => (n ? `${n} mnt` : "—");
@@ -31,11 +31,13 @@ export default function HalamanPresensi() {
   const [sampai, setSampai] = React.useState(hariIni);
   const [status, setStatus] = React.useState("");
   const [lemburSaja, setLemburSaja] = React.useState(false);
+  const [dicurigaiSaja, setDicurigaiSaja] = React.useState(false);
   const [page, setPage] = React.useState(1);
 
   const params = new URLSearchParams({ page: String(page), limit: "25", startDate: mulai, endDate: sampai });
   if (status) params.set("status", status);
   if (lemburSaja) params.set("onlyPendingOvertime", "true");
+  if (dicurigaiSaja) params.set("flaggedOnly", "true");
 
   const { data, isLoading } = useQuery({
     queryKey: ["presensi", manajemen ? "semua" : "saya", params.toString()],
@@ -59,6 +61,7 @@ export default function HalamanPresensi() {
       hadir: rows.filter((r) => r.status === "present").length,
       terlambat: rows.filter((r) => r.status === "late").length,
       lupa: rows.filter((r) => r.status === "no_checkout").length,
+      dicurigai: rows.filter((r) => (r.integrityFlags ?? []).length > 0).length,
     };
   }, [data]);
 
@@ -97,6 +100,21 @@ export default function HalamanPresensi() {
         ),
     },
     {
+      key: "keaslian",
+      header: "Keaslian lokasi",
+      cell: (p) => {
+        const flags = p.integrityFlags ?? [];
+        if (flags.length === 0) return <span className="text-xs text-muted">Wajar</span>;
+        const berat = flags.some((f) => BLOKIR_INTEGRITAS.has(f) || f === "impossible_speed");
+        return (
+          <span className="inline-flex flex-col gap-0.5">
+            <Badge tone={berat ? "danger" : "warning"} dot>Dicurigai</Badge>
+            <span className="text-[11px] leading-tight text-muted">{flags.map((f) => LABEL_INTEGRITAS[f] ?? f).join(" · ")}</span>
+          </span>
+        );
+      },
+    },
+    {
       key: "lembur",
       header: "Lembur",
       cell: (p) => {
@@ -121,11 +139,12 @@ export default function HalamanPresensi() {
       <PageHeader title="Presensi" description={manajemen ? "Kehadiran seluruh karyawan" : "Riwayat kehadiran Anda"} />
 
       {manajemen && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
             { label: "Hadir", nilai: ringkas.hadir, nada: "success" as const },
             { label: "Terlambat", nilai: ringkas.terlambat, nada: "warning" as const },
             { label: "Lupa check-out", nilai: ringkas.lupa, nada: "info" as const },
+            { label: "Lokasi dicurigai", nilai: ringkas.dicurigai, nada: "danger" as const },
           ].map((s) => (
             <Card key={s.label} className="p-3 sm:p-4">
               <p className="text-xs text-muted sm:text-sm">{s.label}</p>
@@ -136,7 +155,7 @@ export default function HalamanPresensi() {
       )}
 
       <Card>
-        <div className="grid gap-2 border-b border-border p-3 sm:grid-cols-[auto_auto_1fr_auto] sm:items-center">
+        <div className="grid gap-2 border-b border-border p-3 sm:grid-cols-[auto_auto_1fr_auto_auto] sm:items-center">
           <Input type="date" value={mulai} max={sampai} onChange={(e) => { setMulai(e.target.value); setPage(1); }} aria-label="Dari tanggal" />
           <Input type="date" value={sampai} min={mulai} onChange={(e) => { setSampai(e.target.value); setPage(1); }} aria-label="Sampai tanggal" />
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Status" className="sm:w-44">
@@ -147,6 +166,12 @@ export default function HalamanPresensi() {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={lemburSaja} onChange={(e) => { setLemburSaja(e.target.checked); setPage(1); }} className="h-4 w-4 accent-[var(--primary)]" />
               <Clock className="h-4 w-4 text-muted" aria-hidden /> Lembur menunggu
+            </label>
+          )}
+          {manajemen && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={dicurigaiSaja} onChange={(e) => { setDicurigaiSaja(e.target.checked); setPage(1); }} className="h-4 w-4 accent-[var(--primary)]" />
+              <ShieldOff className="h-4 w-4 text-muted" aria-hidden /> Lokasi dicurigai
             </label>
           )}
         </div>

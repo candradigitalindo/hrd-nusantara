@@ -81,6 +81,24 @@ const requireByMethod = (
   }
 };
 
+/**
+ * Laporan integritas perangkat dari aplikasi mobile. Semua opsional: klien
+ * lama tidak mengirimnya, dan ketiadaannya sendiri ditandai oleh server.
+ */
+export const integritySchema = z
+  .object({
+    mockLocation: z.boolean().optional(),
+    mockApps: z.array(z.string().trim().max(200)).max(50).optional(),
+    rooted: z.boolean().optional(),
+    emulator: z.boolean().optional(),
+    developerOptions: z.boolean().optional(),
+    networkDistanceMeters: z.number().min(0).max(40_000_000).nullable().optional(),
+    positionAgeSeconds: z.number().min(0).max(31_536_000).nullable().optional(),
+    platform: z.enum(['android', 'ios']).optional(),
+    appVersion: z.string().trim().max(40).optional(),
+  })
+  .strict();
+
 export const checkInSchema = z
   .object({
     method: z.enum(ATTENDANCE_METHODS),
@@ -89,6 +107,7 @@ export const checkInSchema = z
     qrToken: z.string().trim().min(1).max(200).optional(),
     faceImage: base64ImageField.optional(),
     notes: z.string().trim().max(500).optional(),
+    integrity: integritySchema.optional(),
   })
   .strict()
   .superRefine(requireByMethod);
@@ -101,6 +120,7 @@ export const checkOutSchema = z
     qrToken: z.string().trim().min(1).max(200).optional(),
     faceImage: base64ImageField.optional(),
     notes: z.string().trim().max(500).optional(),
+    integrity: integritySchema.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -124,6 +144,11 @@ export const listAttendanceQuerySchema = z.object({
   startDate: dateOnlyField.optional(),
   endDate: dateOnlyField.optional(),
   onlyPendingOvertime: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  /// Hanya presensi yang punya penanda kecurangan lokasi.
+  flaggedOnly: z
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
