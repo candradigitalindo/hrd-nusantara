@@ -38,6 +38,8 @@ class _AplikasiHrdState extends ConsumerState<AplikasiHrd> {
       debugShowCheckedModeBanner: false,
       theme: temaTerang(),
       darkTheme: temaGelap(),
+      // Bawaan terang, tidak mengikuti pengaturan sistem ponsel.
+      themeMode: ThemeMode.light,
       locale: const Locale('id', 'ID'),
       supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
       localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],

@@ -4,7 +4,7 @@
  * Token desain. Semua warna didefinisikan di sini dan dipakai lewat kelas
  * Tailwind (bg-primary, text-muted, ...), supaya pergantian tema tidak
  * menyentuh komponen. Mode gelap mengikuti sistem, dan bisa dipaksa lewat
- * data-theme pada <html>.
+ * data-theme pada <html>. Bawaan terang; gelap hanya atas pilihan pengguna.
  */
 :root {
   --background: #f4f7f5;
@@ -44,39 +44,8 @@
   --chart-2: #b8860b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --background: #0c1512;
-    --surface: #12201a;
-    --surface-2: #1a2b23;
-    --foreground: #e6ede8;
-    --muted: #97a89f;
-    --border: #26392f;
-
-    --primary: #7fb897;
-    --primary-hover: #9ccbb0;
-    --primary-soft: #1d3327;
-    --on-primary: #0c1512;
-
-    --secondary: #e6b93f;
-    --secondary-hover: #f0c95f;
-    --secondary-soft: #3d2f0b;
-    --on-secondary: #1c1a10;
-
-    --success: #34d399;
-    --success-soft: #052e22;
-    --warning: #fbbf24;
-    --warning-soft: #422006;
-    --danger: #fb7185;
-    --danger-soft: #4c0519;
-    --info: #38bdf8;
-    --info-soft: #082f49;
-
-    --ring: #9ccbb0;
-    --chart-1: #37a96f;
-    --chart-2: #b8860b;
-  }
-}
+/* Tema gelap TIDAK mengikuti sistem: bawaan terang, gelap hanya bila pengguna
+   memilihnya (html[data-theme="dark"], lihat hooks/use-tema.ts). */
 
 :root[data-theme="dark"] {
   --background: #0c1512;

@@ -4,48 +4,41 @@ import { useSyncExternalStore } from "react";
 
 /**
  * Tema sebagai external store, bukan state + effect: nilainya hidup di
- * <html data-theme> dan localStorage, React hanya berlangganan. Ini juga
- * menghindari kedipan — server dan klien sama-sama mulai dari "system".
+ * <html data-theme> dan localStorage, React hanya berlangganan.
+ *
+ * Bawaan TERANG. Preferensi sistem sengaja tidak diikuti: aplikasi ini
+ * dipakai di outlet dengan banyak perangkat bersama, dan tema gelap hanya
+ * muncul bila pengguna sendiri yang memilihnya lewat tombol di header.
  */
-type Tema = "light" | "dark" | "system";
+type Tema = "light" | "dark";
 
 const pendengar = new Set<() => void>();
 const beriTahu = () => pendengar.forEach((p) => p());
 
 const bacaTersimpan = (): Tema => {
   try {
-    const t = localStorage.getItem("tema");
-    return t === "light" || t === "dark" ? t : "system";
+    return localStorage.getItem("tema") === "dark" ? "dark" : "light";
   } catch {
-    return "system";
+    return "light";
   }
 };
 
 const terapkan = (tema: Tema) => {
-  if (tema === "system") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = tema;
-};
-
-const gelapEfektif = (): boolean => {
-  const t = bacaTersimpan();
-  if (t !== "system") return t === "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (tema === "dark") document.documentElement.dataset.theme = "dark";
+  else delete document.documentElement.dataset.theme;
 };
 
 const subscribe = (cb: () => void) => {
   pendengar.add(cb);
-  const mq = window.matchMedia("(prefers-color-scheme: dark)");
-  mq.addEventListener("change", cb);
   // Terapkan pilihan tersimpan sekali saat pertama kali ada yang berlangganan.
   terapkan(bacaTersimpan());
   return () => {
     pendengar.delete(cb);
-    mq.removeEventListener("change", cb);
   };
 };
 
 export const useTema = () => {
-  const gelap = useSyncExternalStore(subscribe, gelapEfektif, () => false);
+  const gelap = useSyncExternalStore(subscribe, () => bacaTersimpan() === "dark", () => false);
   const ganti = () => {
     const baru: Tema = gelap ? "light" : "dark";
     try {
