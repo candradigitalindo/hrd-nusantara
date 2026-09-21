@@ -42,6 +42,7 @@ export const IZIN: readonly DefinisiIzin[] = [
 
   // Rekrutmen
   { key: 'rekrutmen.kelola', label: 'Kelola lowongan, kandidat, wawancara, dan psikotes', modul: 'Rekrutmen' },
+  { key: 'rekrutmen.wawancara', label: 'Buka menu Rekrutmen untuk wawancara yang ditugaskan', modul: 'Rekrutmen' },
 
   // Pengembangan
   { key: 'kinerja.kelola', label: 'Kelola template, siklus, dan review kinerja', modul: 'Pengembangan' },
@@ -64,7 +65,26 @@ export const IZIN: readonly DefinisiIzin[] = [
   // Administrasi
   { key: 'aplikasi.rilis', label: 'Unggah rilis aplikasi mobile', modul: 'Administrasi' },
   { key: 'peran.kelola', label: 'Kelola peran dan hak akses', modul: 'Administrasi' },
+
+  // Akses menu layanan mandiri. Setiap item sidebar yang bukan halaman
+  // pengelolaan punya satu kunci di sini, supaya peran benar-benar
+  // menentukan seluruh menu yang terlihat — dan API di baliknya ikut ditutup.
+  { key: 'halaman.dashboard', label: 'Dashboard', modul: 'Akses Menu' },
+  { key: 'halaman.pengumuman', label: 'Pengumuman & survei', modul: 'Akses Menu' },
+  { key: 'halaman.chat', label: 'Chat tim', modul: 'Akses Menu' },
+  { key: 'halaman.whatsapp_saya', label: 'WhatsApp Saya (tautkan nomor sendiri)', modul: 'Akses Menu' },
+  { key: 'halaman.presensi', label: 'Presensi (check-in, riwayat, jadwal sendiri)', modul: 'Akses Menu' },
+  { key: 'halaman.cuti', label: 'Cuti & izin (saldo, ajukan, batalkan)', modul: 'Akses Menu' },
+  { key: 'halaman.gaji', label: 'Slip gaji sendiri', modul: 'Akses Menu' },
+  { key: 'halaman.pelatihan', label: 'Pelatihan (daftar sesi, riwayat)', modul: 'Akses Menu' },
+  { key: 'halaman.kinerja', label: 'Kinerja (penilaian, umpan balik)', modul: 'Akses Menu' },
+  { key: 'halaman.kompetensi', label: 'Kompetensi & sertifikasi sendiri', modul: 'Akses Menu' },
+  { key: 'halaman.kasus', label: 'Keluhan & disiplin (ajukan, lihat kasus sendiri)', modul: 'Akses Menu' },
+  { key: 'halaman.unduh', label: 'Unduh aplikasi mobile', modul: 'Akses Menu' },
 ];
+
+/** Kunci akses menu — sebelumnya terbuka untuk semua, jadi jadi bawaan semua peran. */
+export const IZIN_MENU: readonly string[] = IZIN.filter((i) => i.modul === 'Akses Menu').map((i) => i.key);
 
 export const KUNCI_IZIN: readonly string[] = IZIN.map((i) => i.key);
 const HIMPUNAN_IZIN: ReadonlySet<string> = new Set(KUNCI_IZIN);
@@ -80,6 +100,8 @@ const IZIN_MANAJER = [
   'cuti.setujui',
   'disiplin.kelola',
   'laporan.dashboard',
+  'rekrutmen.wawancara',
+  ...IZIN_MENU,
 ];
 const HANYA_PEMILIK = new Set(['audit.lihat', 'peran.kelola']);
 
@@ -96,7 +118,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, readonly string[]> = {
   [Role.SUPER_ADMIN]: SEMUA,
   [Role.HR_ADMIN]: SEMUA.filter((k) => !HANYA_PEMILIK.has(k)),
   [Role.MANAGER]: IZIN_MANAJER,
-  [Role.EMPLOYEE]: [],
+  [Role.EMPLOYEE]: [...IZIN_MENU],
 };
 
 /** Label lingkup data yang dipakai peran, untuk UI dan pesan error. */

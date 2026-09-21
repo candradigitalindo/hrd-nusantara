@@ -44,11 +44,11 @@ router.use(authenticateToken);
 
 // --- WhatsApp pribadi karyawan (wajib, sesuai dokumen fitur) ---
 // Tanpa requireRole: setiap karyawan menautkan nomornya sendiri.
-router.get('/whatsapp/me', asyncHandler(getMyWhatsApp));
-router.post('/whatsapp/me/connect', asyncHandler(connectMyWhatsApp));
+router.get('/whatsapp/me', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), asyncHandler(getMyWhatsApp));
+router.post('/whatsapp/me/connect', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), asyncHandler(connectMyWhatsApp));
 // Grup tujuan foto absensi ber-stempel — dipilih dari grup yang diikuti nomor itu.
-router.get('/whatsapp/me/groups', asyncHandler(getMyGroups));
-router.put('/whatsapp/me/attendance-group', validate(attendanceGroupSchema), asyncHandler(setMyAttendanceGroup));
+router.get('/whatsapp/me/groups', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), asyncHandler(getMyGroups));
+router.put('/whatsapp/me/attendance-group', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), validate(attendanceGroupSchema), asyncHandler(setMyAttendanceGroup));
 
 // Kepatuhan hanya untuk HR: daftar siapa yang belum/putus, plus pengingat.
 router.get(
@@ -96,6 +96,7 @@ router.post(
 // memindai ulang. Penyaringan siapa melihat apa dikerjakan di controller.
 router.get(
   '/whatsapp/accounts/:id/session',
+  requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'),
   validate(idParamSchema, 'params'),
   asyncHandler(getWhatsAppSession)
 );
@@ -133,6 +134,7 @@ router.post(
 // Penyaringan siapa melihat apa dikerjakan di controller.
 router.get(
   '/whatsapp/session-events',
+  requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'),
   validate(listSessionEventQuerySchema, 'query'),
   asyncHandler(getSessionEvents)
 );

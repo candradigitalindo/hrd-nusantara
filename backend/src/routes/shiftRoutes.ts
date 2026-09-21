@@ -23,7 +23,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Didaftarkan sebelum '/:id' supaya "me" tidak tertangkap sebagai ULID.
-router.get('/me', validate(listShiftQuerySchema, 'query'), asyncHandler(getMyShifts));
+router.get('/me', requirePermission('halaman.presensi'), validate(listShiftQuerySchema, 'query'), asyncHandler(getMyShifts));
 
 router.get(
   '/',

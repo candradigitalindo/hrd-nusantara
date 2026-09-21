@@ -39,6 +39,7 @@ router.use(authenticateToken);
 // --- Kamus kompetensi ---
 router.get(
   '/competencies',
+  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
   validate(listCompetencyQuerySchema, 'query'),
   asyncHandler(getAllCompetencies)
 );
@@ -52,6 +53,7 @@ router.post(
 // --- Standar jabatan ---
 router.get(
   '/positions/:id/competency-standards',
+  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(getPositionStandards)
 );
@@ -81,6 +83,7 @@ router.put(
 // Tanpa requireRole: karyawan boleh melihat kesenjangan kompetensinya sendiri.
 router.get(
   '/employees/:id/competency-gap',
+  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(getEmployeeGap)
 );
@@ -94,6 +97,7 @@ router.get(
 // --- Jenis sertifikasi ---
 router.get(
   '/certification-types',
+  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
   validate(listCertificationTypeQuerySchema, 'query'),
   asyncHandler(getAllCertificationTypes)
 );
@@ -107,6 +111,7 @@ router.post(
 // --- Sertifikat karyawan ---
 router.get(
   '/certifications',
+  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
   validate(listCertificationQuerySchema, 'query'),
   asyncHandler(getAllCertifications)
 );

@@ -35,13 +35,18 @@ const TautanKartu = ({ href, children }: { href: string; children: React.ReactNo
 );
 
 /** Dashboard karyawan: apa yang perlu diketahui dan dikerjakan hari ini. */
-function DashboardKaryawan({ nama, hariIni }: { nama: string; hariIni: string }) {
-  const presensiHariIni = useQuery({ queryKey: ["presensi", "saya", "hari-ini"], queryFn: async () => (await api.get<Halaman<Presensi>>(`/attendance/me?startDate=${hariIni}&endDate=${hariIni}&limit=5`)).data.data[0] ?? null });
-  const presensiSaya = useQuery({ queryKey: ["presensi", "saya", "7-hari"], queryFn: async () => (await api.get<Halaman<Presensi>>("/attendance/me?limit=7")).data.data });
-  const saldo = useQuery({ queryKey: ["cuti", "saldo-saya"], queryFn: async () => (await api.get<{ data: SaldoCuti[] }>(`/leave-balances/me?year=${new Date().getFullYear()}`)).data.data });
-  const cutiSaya = useQuery({ queryKey: ["cuti", "saya", "terakhir"], queryFn: async () => (await api.get<Halaman<Cuti>>("/leaves/me?limit=3")).data.data });
-  const pengumuman = useQuery({ queryKey: ["pengumuman", "ringkas"], queryFn: async () => (await api.get<Halaman<Pengumuman>>("/announcements?limit=5")).data.data });
-  const slip = useQuery({ queryKey: ["gaji", "slip-terakhir"], queryFn: async () => (await api.get<Halaman<SlipGaji>>("/payrolls/me?limit=1")).data.data[0] ?? null });
+function DashboardKaryawan({ nama, hariIni, izin }: { nama: string; hariIni: string; izin: (kunci: string) => boolean }) {
+  // Kartu hanya dimuat bila menunya termasuk peran; API-nya pun ditutup server.
+  const bolehPresensi = izin("halaman.presensi");
+  const bolehCuti = izin("halaman.cuti");
+  const bolehPengumuman = izin("halaman.pengumuman");
+  const bolehGaji = izin("halaman.gaji");
+  const presensiHariIni = useQuery({ queryKey: ["presensi", "saya", "hari-ini"], queryFn: async () => (await api.get<Halaman<Presensi>>(`/attendance/me?startDate=${hariIni}&endDate=${hariIni}&limit=5`)).data.data[0] ?? null, enabled: bolehPresensi });
+  const presensiSaya = useQuery({ queryKey: ["presensi", "saya", "7-hari"], queryFn: async () => (await api.get<Halaman<Presensi>>("/attendance/me?limit=7")).data.data, enabled: bolehPresensi });
+  const saldo = useQuery({ queryKey: ["cuti", "saldo-saya"], queryFn: async () => (await api.get<{ data: SaldoCuti[] }>(`/leave-balances/me?year=${new Date().getFullYear()}`)).data.data, enabled: bolehCuti });
+  const cutiSaya = useQuery({ queryKey: ["cuti", "saya", "terakhir"], queryFn: async () => (await api.get<Halaman<Cuti>>("/leaves/me?limit=3")).data.data, enabled: bolehCuti });
+  const pengumuman = useQuery({ queryKey: ["pengumuman", "ringkas"], queryFn: async () => (await api.get<Halaman<Pengumuman>>("/announcements?limit=5")).data.data, enabled: bolehPengumuman });
+  const slip = useQuery({ queryKey: ["gaji", "slip-terakhir"], queryFn: async () => (await api.get<Halaman<SlipGaji>>("/payrolls/me?limit=1")).data.data[0] ?? null, enabled: bolehGaji });
 
   const p = presensiHariIni.data;
   const tahunan = (saldo.data ?? []).find((s) => s.leaveType.name.toLowerCase().includes("tahun")) ?? saldo.data?.[0];
@@ -52,22 +57,27 @@ function DashboardKaryawan({ nama, hariIni }: { nama: string; hariIni: string })
       <PageHeader title={`Halo, ${nama.split(" ")[0]}`} description={formatTanggal(hariIni, "EEEE, d MMMM yyyy")} />
       <PeringatanTautanWhatsApp />
 
+      {!bolehPresensi && !bolehCuti && !bolehPengumuman && !bolehGaji && (
+        <Card><EmptyState icon={Users} title="Selamat datang" description="Pilih menu di samping untuk mulai bekerja." /></Card>
+      )}
+
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        {presensiHariIni.isLoading ? <Skeleton className="h-28" /> : (
+        {bolehPresensi && (presensiHariIni.isLoading ? <Skeleton className="h-28" /> : (
           <StatCard label="Presensi hari ini" value={p ? (p.checkOutTime ? "Selesai" : "Bekerja") : "Belum"} hint={p ? `masuk ${formatWaktu(p.checkInTime)}${p.checkOutTime ? ` · pulang ${formatWaktu(p.checkOutTime)}` : ""}` : "check-in lewat aplikasi mobile"} icon={CalendarCheck} tone={p ? (p.status === "late" ? "warning" : "success") : "info"} />
-        )}
-        {saldo.isLoading ? <Skeleton className="h-28" /> : (
+        ))}
+        {bolehCuti && (saldo.isLoading ? <Skeleton className="h-28" /> : (
           <StatCard label={tahunan ? `Sisa ${tahunan.leaveType.name.toLowerCase()}` : "Sisa cuti"} value={tahunan ? `${tahunan.remainingDays} hari` : "—"} hint={tahunan ? `dari ${tahunan.entitledDays + tahunan.carriedOverDays} hari` : "belum ditetapkan HR"} icon={CalendarOff} tone="primary" />
-        )}
-        {pengumuman.isLoading ? <Skeleton className="h-28" /> : (
+        ))}
+        {bolehPengumuman && (pengumuman.isLoading ? <Skeleton className="h-28" /> : (
           <StatCard label="Pengumuman belum dibaca" value={formatAngka(belumDibaca)} hint={(pengumuman.data ?? []).some((a) => a.requiresAcknowledgment && !a.acknowledgedAt) ? "ada yang perlu konfirmasi" : "semua sudah dibaca"} icon={Megaphone} tone={belumDibaca > 0 ? "warning" : "success"} />
-        )}
-        {slip.isLoading ? <Skeleton className="h-28" /> : (
+        ))}
+        {bolehGaji && (slip.isLoading ? <Skeleton className="h-28" /> : (
           <StatCard label="Slip gaji terakhir" value={slip.data ? formatRupiah(slip.data.netSalary) : "—"} hint={slip.data ? `${formatTanggal(slip.data.payPeriodStart, "d MMM")} – ${formatTanggal(slip.data.payPeriodEnd, "d MMM yyyy")} · ${labelStatus(slip.data.status)}` : "belum ada slip"} icon={Wallet} tone="secondary" />
-        )}
+        ))}
       </div>
 
       <div className="grid gap-3 sm:gap-4 lg:grid-cols-3">
+        {bolehPresensi && (
         <div className="space-y-3 sm:space-y-4 lg:col-span-2">
           <Card>
             <CardHeader className="flex-row items-start justify-between gap-3">
@@ -88,8 +98,10 @@ function DashboardKaryawan({ nama, hariIni }: { nama: string; hariIni: string })
             </CardContent>
           </Card>
         </div>
+        )}
 
         <div className="space-y-3 sm:space-y-4">
+          {bolehPengumuman && (
           <Card>
             <CardHeader className="flex-row items-start justify-between gap-3">
               <CardTitle>Pengumuman terbaru</CardTitle>
@@ -108,7 +120,9 @@ function DashboardKaryawan({ nama, hariIni }: { nama: string; hariIni: string })
               ) : <p className="text-sm text-muted">Belum ada pengumuman.</p>}
             </CardContent>
           </Card>
+          )}
 
+          {bolehCuti && (
           <Card>
             <CardHeader className="flex-row items-start justify-between gap-3">
               <CardTitle>Pengajuan cuti terakhir</CardTitle>
@@ -127,6 +141,7 @@ function DashboardKaryawan({ nama, hariIni }: { nama: string; hariIni: string })
               ) : <p className="text-sm text-muted">Belum ada pengajuan cuti.</p>}
             </CardContent>
           </Card>
+          )}
         </div>
       </div>
     </>
@@ -164,7 +179,7 @@ export default function HalamanDashboard() {
   });
 
   if (!saya) return <Skeleton className="h-64" />;
-  if (!manajemen) return <DashboardKaryawan nama={saya.name} hariIni={hariIni} />;
+  if (!manajemen) return <DashboardKaryawan nama={saya.name} hariIni={hariIni} izin={(k) => punyaIzin(saya, k)} />;
 
   const d = dashboard.data;
   const hitungStatus = (status: string) => presensiHariIni.data?.data.filter((p) => p.status === status).length ?? 0;

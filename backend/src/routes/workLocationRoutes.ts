@@ -22,8 +22,8 @@ router.use(authenticateToken);
 
 // Semua karyawan boleh melihat daftar lokasi — dibutuhkan untuk memilih
 // lokasi saat check-in. Token QR-nya disaring di controller.
-router.get('/', validate(listWorkLocationQuerySchema, 'query'), asyncHandler(getAllWorkLocations));
-router.get('/:id', validate(idParamSchema, 'params'), asyncHandler(getWorkLocationById));
+router.get('/', requirePermission('halaman.presensi', 'presensi.lihat_tim', 'lokasi.kelola'), validate(listWorkLocationQuerySchema, 'query'), asyncHandler(getAllWorkLocations));
+router.get('/:id', requirePermission('halaman.presensi', 'presensi.lihat_tim', 'lokasi.kelola'), validate(idParamSchema, 'params'), asyncHandler(getWorkLocationById));
 
 router.post(
   '/',

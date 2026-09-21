@@ -4,7 +4,7 @@ import { prisma, resetDatabase, makeEmployee, makeDepartment } from './helpers/d
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { pastikanPeranSistem } from '../src/services/roles/system';
-import { IZIN, DEFAULT_PERMISSIONS } from '../src/utils/permissions';
+import { IZIN, IZIN_MENU, DEFAULT_PERMISSIONS } from '../src/utils/permissions';
 
 const app = bikinApp();
 
@@ -285,5 +285,68 @@ describe('Perlindungan peran', () => {
     const staf = await makeEmployee({ email: 'staf@resto.id' });
     const res = await request(app).put(`/api/employees/${staf.id}`).set(auth(owner)).send({ customRoleId: '01ARZ3NDEKTSV4RRFFQ69G5FAV' });
     expectStatus(res, 400);
+  });
+});
+
+describe('Izin akses menu (halaman layanan mandiri)', () => {
+  it('katalog memuat satu kunci per menu layanan mandiri dan semua peran sistem memilikinya', async () => {
+    expect(IZIN_MENU).toEqual(
+      expect.arrayContaining(['halaman.dashboard', 'halaman.presensi', 'halaman.cuti', 'halaman.gaji', 'halaman.pengumuman', 'halaman.chat', 'halaman.whatsapp_saya', 'halaman.unduh'])
+    );
+    for (const code of [Role.EMPLOYEE, Role.MANAGER, Role.HR_ADMIN, Role.SUPER_ADMIN]) {
+      const peran = await peranSistem(code);
+      expect(peran.permissions).toEqual(expect.arrayContaining([...IZIN_MENU]));
+    }
+    expect(DEFAULT_PERMISSIONS.EMPLOYEE).toEqual([...IZIN_MENU]);
+    expect(DEFAULT_PERMISSIONS.MANAGER).toContain('rekrutmen.wawancara');
+  });
+
+  it('karyawan biasa tetap bisa memakai layanan mandiri', async () => {
+    await makeEmployee({ email: 'budi@resto.id' });
+    const token = await login(app, 'budi@resto.id');
+    expectStatus(await request(app).get('/api/leaves/me').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/attendance/me').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/payrolls/me').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/announcements').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/chat/rooms').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/whatsapp/me').set(auth(token)), 200);
+  });
+
+  it('peran tanpa kunci menu menutup API di balik menu itu, bukan cuma menyembunyikannya', async () => {
+    const owner = await bikinPemilik();
+    // Hanya presensi dan pengumuman; tanpa cuti, gaji, chat, WhatsApp.
+    const buat = await request(app)
+      .post('/api/roles')
+      .set(auth(owner))
+      .send({ name: 'Staf Harian', baseRole: 'EMPLOYEE', permissions: ['halaman.presensi', 'halaman.pengumuman'] });
+    expectStatus(buat, 201);
+    await makeEmployee({ email: 'harian@resto.id', customRoleId: buat.body.id });
+    const token = await login(app, 'harian@resto.id');
+
+    expectStatus(await request(app).get('/api/attendance/me').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/announcements').set(auth(token)), 200);
+
+    expectStatus(await request(app).get('/api/leaves/me').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/leave-balances/me').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/payrolls/me').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/chat/rooms').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/whatsapp/me').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/training/sessions').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/feedback').set(auth(token)), 403);
+    expectStatus(await request(app).get('/api/cases').set(auth(token)), 403);
+  });
+
+  it('izin fungsional juga membuka API menu yang sama (pengelola cuti tanpa kunci menu cuti)', async () => {
+    const owner = await bikinPemilik();
+    const buat = await request(app)
+      .post('/api/roles')
+      .set(auth(owner))
+      .send({ name: 'Penyetuju Cuti', baseRole: 'MANAGER', permissions: ['cuti.setujui'] });
+    expectStatus(buat, 201);
+    await makeEmployee({ email: 'penyetuju@resto.id', role: Role.MANAGER, customRoleId: buat.body.id });
+    const token = await login(app, 'penyetuju@resto.id');
+    expectStatus(await request(app).get('/api/leaves').set(auth(token)), 200);
+    // Layanan mandiri cuti miliknya sendiri tetap tertutup tanpa kunci menu.
+    expectStatus(await request(app).get('/api/leaves/me').set(auth(token)), 403);
   });
 });

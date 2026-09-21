@@ -66,6 +66,7 @@ router.put(
 // pembatasannya di controller.
 router.get(
   '/employees/:id/salary',
+  requirePermission('halaman.gaji', 'payroll.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(getEmployeeSalaryHistory)
 );
@@ -125,13 +126,13 @@ router.get(
 
 // --- Slip gaji ---
 // Didaftarkan sebelum '/:id' supaya "me" tidak tertangkap sebagai ULID.
-router.get('/payrolls/me', validate(listPayrollQuerySchema, 'query'), asyncHandler(getMyPayrolls));
+router.get('/payrolls/me', requirePermission('halaman.gaji'), validate(listPayrollQuerySchema, 'query'), asyncHandler(getMyPayrolls));
 router.get(
   '/payrolls',
   requirePermission('payroll.kelola'),
   validate(listPayrollQuerySchema, 'query'),
   asyncHandler(getAllPayrolls)
 );
-router.get('/payrolls/:id', validate(idParamSchema, 'params'), asyncHandler(getPayrollById));
+router.get('/payrolls/:id', requirePermission('halaman.gaji', 'payroll.kelola'), validate(idParamSchema, 'params'), asyncHandler(getPayrollById));
 
 export default router;

@@ -41,6 +41,7 @@ router.use(authenticateToken);
 // apa saja yang tersedia dan mana yang wajib.
 router.get(
   '/training/programs',
+  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
   validate(listProgramQuerySchema, 'query'),
   asyncHandler(getAllPrograms)
 );
@@ -61,6 +62,7 @@ router.put(
 // --- Sesi pelatihan ---
 router.get(
   '/training/sessions',
+  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
   validate(listSessionQuerySchema, 'query'),
   asyncHandler(getAllSessions)
 );
@@ -81,6 +83,7 @@ router.patch(
 // Karyawan mendaftar sendiri; HR bisa mendaftarkan orang lain.
 router.post(
   '/training/sessions/:id/register',
+  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
   validate(idParamSchema, 'params'),
   validate(registerSchema),
   asyncHandler(register)
@@ -96,11 +99,13 @@ router.post(
 // --- Pendaftaran & evaluasi ---
 router.get(
   '/training/registrations',
+  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
   validate(listRegistrationQuerySchema, 'query'),
   asyncHandler(getAllRegistrations)
 );
 router.patch(
   '/training/registrations/:id/cancel',
+  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(cancelRegistration)
 );

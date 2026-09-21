@@ -117,7 +117,7 @@ router.delete(
 );
 
 // --- Saldo cuti ---
-router.get('/leave-balances/me', validate(listLeaveBalanceQuerySchema, 'query'), asyncHandler(getMyLeaveBalances));
+router.get('/leave-balances/me', requirePermission('halaman.cuti'), validate(listLeaveBalanceQuerySchema, 'query'), asyncHandler(getMyLeaveBalances));
 router.post('/leave-balances', requirePermission('cuti.kelola'), validate(upsertLeaveBalanceSchema), asyncHandler(upsertLeaveBalance));
 router.get(
   '/employees/:id/leave-balances',
@@ -129,7 +129,7 @@ router.get(
 
 // --- Pengajuan cuti ---
 // Rute literal didaftarkan sebelum '/:id'.
-router.get('/leaves/me', validate(listLeaveQuerySchema, 'query'), asyncHandler(getMyLeaves));
+router.get('/leaves/me', requirePermission('halaman.cuti'), validate(listLeaveQuerySchema, 'query'), asyncHandler(getMyLeaves));
 router.get(
   '/leaves/calendar',
   requirePermission('cuti.setujui'),
@@ -145,9 +145,9 @@ router.get(
 
 // Pengajuan selalu untuk diri sendiri: identitas diambil dari token, tidak
 // dari body, supaya tidak ada yang bisa mengajukan cuti atas nama orang lain.
-router.post('/leaves', validate(createLeaveSchema), asyncHandler(createLeave));
+router.post('/leaves', requirePermission('halaman.cuti'), validate(createLeaveSchema), asyncHandler(createLeave));
 
-router.get('/leaves/:id', validate(idParamSchema, 'params'), asyncHandler(getLeaveById));
+router.get('/leaves/:id', requirePermission('halaman.cuti', 'cuti.setujui'), validate(idParamSchema, 'params'), asyncHandler(getLeaveById));
 
 router.patch(
   '/leaves/:id/decision',
@@ -160,6 +160,7 @@ router.patch(
 // Tanpa requireRole: karyawan boleh membatalkan pengajuannya sendiri.
 router.patch(
   '/leaves/:id/cancel',
+  requirePermission('halaman.cuti'),
   validate(idParamSchema, 'params'),
   validate(cancelLeaveSchema),
   asyncHandler(cancelLeave)

@@ -64,6 +64,19 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
 
+Peran mencakup seluruh sidebar (22 September 2026): setiap item menu punya
+izin — halaman pengelolaan memakai izin fungsinya (mis. `karyawan.lihat`),
+halaman layanan mandiri memakai kunci `halaman.*` (Dashboard, Pengumuman,
+Chat, WhatsApp Saya, Presensi, Cuti, Slip Gaji, Pelatihan, Kinerja,
+Kompetensi, Keluhan & Disiplin, Unduh Aplikasi). Kunci ini bawaan semua
+peran (migrasi menambahkannya ke peran yang sudah ada), jadi tidak ada yang
+kehilangan akses; admin bisa mencabutnya per peran. API di balik menu ikut
+ditutup (`/leaves/me`, `/payrolls/me`, `/chat/*`, `/whatsapp/me`, dst.),
+kecuali lowongan internal dan wawancara yang datanya sudah terbatas ke
+pewawancara sendiri, serta halaman unduh yang memang publik. Web menolak
+merender halaman yang menunya tidak termasuk peran; mobile menyembunyikan
+tab, pintasan, dan kartu beranda yang bersangkutan.
+
 Peran dinamis (21 September 2026): kolom `Employee.role` tetap ada sebagai
 **lingkup data** (controller memakainya untuk membatasi departemen sendiri,
 dsb.) dan disinkronkan otomatis dari lingkup peran yang diberikan. Izin

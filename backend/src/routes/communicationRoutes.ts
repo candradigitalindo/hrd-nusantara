@@ -47,6 +47,7 @@ router.use(authenticateToken);
 // Semua karyawan melihat papan informasi; penyaringan sasaran di controller.
 router.get(
   '/announcements',
+  requirePermission('halaman.pengumuman', 'pengumuman.kelola'),
   validate(listAnnouncementQuerySchema, 'query'),
   asyncHandler(getAllAnnouncements)
 );
@@ -72,6 +73,7 @@ router.patch(
 );
 router.post(
   '/announcements/:id/read',
+  requirePermission('halaman.pengumuman', 'pengumuman.kelola'),
   validate(idParamSchema, 'params'),
   validate(markReadSchema),
   asyncHandler(markAnnouncementRead)
@@ -84,7 +86,7 @@ router.get(
 );
 
 // --- Survei ---
-router.get('/surveys', validate(listSurveyQuerySchema, 'query'), asyncHandler(getAllSurveys));
+router.get('/surveys', requirePermission('halaman.pengumuman', 'survei.kelola'), validate(listSurveyQuerySchema, 'query'), asyncHandler(getAllSurveys));
 router.post('/surveys', requirePermission('survei.kelola'), validate(createSurveySchema), asyncHandler(createSurvey));
 router.patch(
   '/surveys/:id/status',
@@ -95,6 +97,7 @@ router.patch(
 );
 router.post(
   '/surveys/:id/submit',
+  requirePermission('halaman.pengumuman', 'survei.kelola'),
   validate(idParamSchema, 'params'),
   validate(submitSurveySchema),
   asyncHandler(submitSurvey)
@@ -107,28 +110,32 @@ router.get(
 );
 
 // --- Ruang obrolan ---
-router.get('/chat/rooms', asyncHandler(getMyRooms));
-router.post('/chat/rooms', validate(createRoomSchema), asyncHandler(createRoom));
+router.get('/chat/rooms', requirePermission('halaman.chat'), asyncHandler(getMyRooms));
+router.post('/chat/rooms', requirePermission('halaman.chat'), validate(createRoomSchema), asyncHandler(createRoom));
 router.post(
   '/chat/rooms/:id/members',
+  requirePermission('halaman.chat'),
   validate(idParamSchema, 'params'),
   validate(addMemberSchema),
   asyncHandler(addRoomMember)
 );
 router.get(
   '/chat/rooms/:id/messages',
+  requirePermission('halaman.chat'),
   validate(idParamSchema, 'params'),
   validate(listMessageQuerySchema, 'query'),
   asyncHandler(getMessages)
 );
 router.post(
   '/chat/rooms/:id/messages',
+  requirePermission('halaman.chat'),
   validate(idParamSchema, 'params'),
   validate(sendMessageSchema),
   asyncHandler(sendMessage)
 );
 router.delete(
   '/chat/messages/:id',
+  requirePermission('halaman.chat'),
   validate(idParamSchema, 'params'),
   asyncHandler(deleteMessage)
 );
