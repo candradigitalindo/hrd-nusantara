@@ -1,6 +1,5 @@
 // src/routes/attendanceRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   checkIn,
   checkOut,
@@ -10,7 +9,7 @@ import {
   decideOvertime,
   getAttendanceReport,
 } from '../controllers/attendanceController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -35,14 +34,14 @@ router.get('/me', validate(listAttendanceQuerySchema, 'query'), asyncHandler(get
 
 router.get(
   '/reports/summary',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN, Role.MANAGER),
+  requirePermission('presensi.lihat_tim'),
   validate(attendanceReportQuerySchema, 'query'),
   asyncHandler(getAttendanceReport)
 );
 
 router.get(
   '/',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN, Role.MANAGER),
+  requirePermission('presensi.lihat_tim'),
   validate(listAttendanceQuerySchema, 'query'),
   asyncHandler(getAllAttendance)
 );
@@ -53,7 +52,7 @@ router.get('/:id', validate(idParamSchema, 'params'), asyncHandler(getAttendance
 
 router.patch(
   '/:id/overtime',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN, Role.MANAGER),
+  requirePermission('presensi.lembur'),
   validate(idParamSchema, 'params'),
   validate(overtimeDecisionSchema),
   asyncHandler(decideOvertime)

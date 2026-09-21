@@ -1,6 +1,5 @@
 // src/routes/workLocationRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createWorkLocation,
   getAllWorkLocations,
@@ -8,7 +7,7 @@ import {
   updateWorkLocation,
   rotateQrSecret,
 } from '../controllers/workLocationController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -28,14 +27,14 @@ router.get('/:id', validate(idParamSchema, 'params'), asyncHandler(getWorkLocati
 
 router.post(
   '/',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('lokasi.kelola'),
   validate(createWorkLocationSchema),
   asyncHandler(createWorkLocation)
 );
 
 router.put(
   '/:id',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('lokasi.kelola'),
   validate(idParamSchema, 'params'),
   validate(updateWorkLocationSchema),
   asyncHandler(updateWorkLocation)
@@ -43,7 +42,7 @@ router.put(
 
 router.post(
   '/:id/rotate-qr',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('lokasi.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(rotateQrSecret)
 );

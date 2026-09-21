@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { Award, Plus, BookOpen, ListChecks, BadgeCheck, ShieldCheck, AlertTriangle, Clock, Ban, ExternalLink, Trash2, FilePlus2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -36,7 +36,7 @@ const STATUS_SERTIFIKAT: { kode: StatusSertifikat; label: string; kunci: keyof D
 export default function HalamanKompetensi() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
+  const hr = punyaIzin(saya, "kompetensi.kelola");
   const [tab, setTab] = React.useState<Tab>("kesenjangan");
   const [karyawanGap, setKaryawanGap] = React.useState("");
   const [filterDept, setFilterDept] = React.useState("");

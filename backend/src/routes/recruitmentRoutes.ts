@@ -1,6 +1,5 @@
 // src/routes/recruitmentRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createJobPosting,
   getAllJobPostings,
@@ -16,7 +15,7 @@ import {
   getAllInterviews,
   getRecruitmentFunnel,
 } from '../controllers/recruitmentController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -38,7 +37,6 @@ const router = express.Router();
 
 router.use(authenticateToken);
 
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Lowongan ---
 // Daftar lowongan terbuka untuk semua karyawan: rekrutmen internal dan
@@ -50,20 +48,20 @@ router.get(
 );
 router.post(
   '/job-postings',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(createJobPostingSchema),
   asyncHandler(createJobPosting)
 );
 router.put(
   '/job-postings/:id',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(idParamSchema, 'params'),
   validate(updateJobPostingSchema),
   asyncHandler(updateJobPosting)
 );
 router.patch(
   '/job-postings/:id/status',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(idParamSchema, 'params'),
   validate(changeJobPostingStatusSchema),
   asyncHandler(changeJobPostingStatus)
@@ -72,32 +70,32 @@ router.patch(
 // --- Pelamar ---
 router.get(
   '/candidates',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(listCandidateQuerySchema, 'query'),
   asyncHandler(getAllCandidates)
 );
 router.post(
   '/candidates',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(createCandidateSchema),
   asyncHandler(createCandidate)
 );
 router.get(
   '/candidates/:id',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(getCandidateById)
 );
 router.patch(
   '/candidates/:id/stage',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(idParamSchema, 'params'),
   validate(changeCandidateStageSchema),
   asyncHandler(changeCandidateStage)
 );
 router.post(
   '/candidates/:id/hire',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(idParamSchema, 'params'),
   validate(hireCandidateSchema),
   asyncHandler(hireCandidate)
@@ -113,7 +111,7 @@ router.get(
 );
 router.post(
   '/interviews',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(scheduleInterviewSchema),
   asyncHandler(scheduleInterview)
 );
@@ -127,7 +125,7 @@ router.patch(
 // --- Laporan ---
 router.get(
   '/recruitment/funnel',
-  requireRole(...HR),
+  requirePermission('rekrutmen.kelola'),
   validate(recruitmentReportQuerySchema, 'query'),
   asyncHandler(getRecruitmentFunnel)
 );

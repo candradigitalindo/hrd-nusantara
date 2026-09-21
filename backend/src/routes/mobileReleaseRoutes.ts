@@ -4,7 +4,6 @@
 // '/api': rute unduh harus publik, karena karyawan mengunduh aplikasi
 // sebelum punya sesi di ponselnya.
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   uploadRelease,
   listReleases,
@@ -14,7 +13,7 @@ import {
   downloadApk,
   qrForText,
 } from '../controllers/mobileReleaseController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -25,7 +24,6 @@ import {
 } from '../schemas/mobileReleaseSchema';
 
 const router = express.Router();
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Publik ---
 router.get('/releases/latest', asyncHandler(getLatestRelease));
@@ -36,7 +34,7 @@ router.get('/releases/:id/apk', validate(idParamSchema, 'params'), asyncHandler(
 router.get(
   '/releases',
   authenticateToken,
-  requireRole(...HR),
+  requirePermission('aplikasi.rilis'),
   validate(listReleaseQuerySchema, 'query'),
   asyncHandler(listReleases)
 );
@@ -45,7 +43,7 @@ router.get(
 router.post(
   '/releases',
   authenticateToken,
-  requireRole(...HR),
+  requirePermission('aplikasi.rilis'),
   validate(uploadReleaseQuerySchema, 'query'),
   express.raw({ type: () => true, limit: '300mb' }),
   asyncHandler(uploadRelease)
@@ -53,11 +51,11 @@ router.post(
 router.patch(
   '/releases/:id',
   authenticateToken,
-  requireRole(...HR),
+  requirePermission('aplikasi.rilis'),
   validate(idParamSchema, 'params'),
   validate(updateReleaseSchema),
   asyncHandler(updateRelease)
 );
-router.get('/qr', authenticateToken, requireRole(...HR), validate(qrQuerySchema, 'query'), asyncHandler(qrForText));
+router.get('/qr', authenticateToken, requirePermission('aplikasi.rilis'), validate(qrQuerySchema, 'query'), asyncHandler(qrForText));
 
 export default router;

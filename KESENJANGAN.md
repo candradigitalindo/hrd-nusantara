@@ -27,7 +27,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 12 | Integrasi POS / PMS / akuntansi | ➖ | Tidak ada sistem luar yang ditentukan untuk diintegrasikan. |
 | 13 | Enkripsi — percakapan | ✅ | AES-256-GCM + indeks buta. |
 | 13 | Enkripsi — wajah, lokasi | ✅ | Embedding wajah AES-256-GCM sebagai biner bertanda; koordinat presensi sebagai JSON terenkripsi, kolom terbuka dihapus. Kunci enkripsi kini wajib. |
-| 13 | Akses berjenjang | ✅ | |
+| 13 | Akses berjenjang — peran dinamis | ✅ | Peran dibuat admin dengan mencentang izin dari katalog 25 izin per modul (`backend/src/utils/permissions.ts`); tiap peran punya lingkup data (diri sendiri / departemen / seluruh perusahaan / pemilik). Empat peran sistem dibuat otomatis dan izinnya bisa disunting (kecuali Super Admin yang terkunci). Semua penjaga rute memakai izin (`requirePermission`), bukan lagi enum peran. Anti-eskalasi: pengelola peran non-Super Admin hanya bisa memberikan izin yang ia pegang sendiri dan tidak bisa membuat peran berlingkup HR/Super Admin; peran yang sedang dipegang tidak bisa diubah sendiri; peran sistem tidak bisa dihapus, peran yang masih dipegang karyawan juga tidak. |
 | 13 | Audit trail | ✅ | Append-only, ditegakkan trigger database. |
 | 13 | Keluhan & disiplin | ✅ | Keluhan (siapa pun; subjeknya tidak melihat), tindakan disiplin bertingkat SP1–SP3 (UU 13/2003 ps. 161; subjek berhak melihat), alur status, peringatan SP3 tanpa SP1/SP2, pembacaan tercatat di audit. |
 | 13 | Perencanaan suksesi | ❌ | |
@@ -58,10 +58,20 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Kompetensi & sertifikasi — kamus kompetensi berskala tingkat, standar per jabatan, penilaian tingkat karyawan, kesenjangan (kesiapan %) per karyawan & laporan lintas departemen, jenis sertifikasi (wajib, masa berlaku, tautan pelatihan), catatan sertifikat dengan status berlaku/segera/kedaluwarsa/dicabut | ✅ |
 | WhatsApp — kepatuhan per karyawan & pengingat, nomor perusahaan, QR, arsip & pencarian; web: WhatsApp Saya (tautkan, QR, pindai ulang) + peringatan di dashboard; mobile: hanya memeriksa tautan + peringatan "Tautan WhatsApp terputus" di beranda | ✅ |
 | Jejak audit | ✅ |
+| Peran & Hak Akses — daftar peran (sistem & kustom, jumlah pemegang, lingkup), buat/sunting dengan centang izin per modul dan "pilih semua", hapus; formulir karyawan memilih peran dari daftar ini; menu sidebar dan tombol aksi disaring berdasarkan izin | ✅ |
 | Distribusi aplikasi mobile — HR mengunggah APK hasil build (web, dengan persentase unggah), riwayat versi + sha256 + jumlah unduhan, nonaktifkan versi bermasalah; halaman publik `/unduh` (tanpa login) menawarkan versi terbaru + langkah pasang; QR tautan untuk dipajang di outlet | ✅ | Berkas disimpan di `UPLOAD_DIR/apk` (volume Docker yang sama dengan dokumen). |
 | Mobile Flutter (`mobile/`) — login & profil, presensi GPS/wajah/QR + riwayat, cuti (saldo, ajukan, batalkan), slip gaji, jadwal shift, pengumuman & konfirmasi, survei, chat tim, status sesi WhatsApp + QR scan ulang, push FCM | 🟡 | Analyzer bersih, 23 tes lulus. Push butuh `flutterfire configure` (proyek hrd-app-635cb). Build iOS (tanpa codesign) berhasil; uji jalan iOS butuh perangkat/simulator. |
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
+
+Peran dinamis (21 September 2026): kolom `Employee.role` tetap ada sebagai
+**lingkup data** (controller memakainya untuk membatasi departemen sendiri,
+dsb.) dan disinkronkan otomatis dari lingkup peran yang diberikan. Izin
+efektif dibaca ulang setiap permintaan — suntingan pada peran langsung
+berlaku tanpa login ulang. Akun lama tanpa peran eksplisit memakai peran
+sistem sesuai lingkupnya (migrasi mengisi `customRoleId` untuk semua yang
+sudah ada). `/auth/me` dan respons login menyertakan `permissions` dan
+`customRole`; web dan mobile memakainya hanya untuk menyembunyikan menu.
 
 Login (21 September 2026): username adalah **nomor HP/WhatsApp** karyawan
 (08xx, +62xx, 62xx — dibakukan ke 62xx dan unik); email tetap diterima sebagai

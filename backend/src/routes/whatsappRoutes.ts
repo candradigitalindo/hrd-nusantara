@@ -1,6 +1,5 @@
 // src/routes/whatsappRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createAccount,
   getAllAccounts,
@@ -19,7 +18,7 @@ import {
   getMyGroups,
   setMyAttendanceGroup,
 } from '../controllers/whatsappController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -38,7 +37,6 @@ import {
 
 const router = express.Router();
 
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // Webhook Belly's ada di src/routes/webhookRoutes.ts, dipasang lebih dulu
 // karena tidak memakai token JWT.
@@ -55,13 +53,13 @@ router.put('/whatsapp/me/attendance-group', validate(attendanceGroupSchema), asy
 // Kepatuhan hanya untuk HR: daftar siapa yang belum/putus, plus pengingat.
 router.get(
   '/whatsapp/compliance',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(complianceQuerySchema, 'query'),
   asyncHandler(getCompliance)
 );
 router.post(
   '/whatsapp/compliance/remind',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(remindSchema),
   asyncHandler(remindCompliance)
 );
@@ -69,19 +67,19 @@ router.post(
 // --- Nomor perusahaan ---
 router.get(
   '/whatsapp/accounts',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(listAccountQuerySchema, 'query'),
   asyncHandler(getAllAccounts)
 );
 router.post(
   '/whatsapp/accounts',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(createAccountSchema),
   asyncHandler(createAccount)
 );
 router.put(
   '/whatsapp/accounts/:id',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(idParamSchema, 'params'),
   validate(updateAccountSchema),
   asyncHandler(updateAccount)
@@ -90,7 +88,7 @@ router.put(
 // --- Sesi WhatsApp (Baileys) ---
 router.post(
   '/whatsapp/accounts/:id/connect',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(idParamSchema, 'params'),
   asyncHandler(connectWhatsAppAccount)
 );
@@ -103,7 +101,7 @@ router.get(
 );
 router.post(
   '/whatsapp/accounts/:id/disconnect',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(idParamSchema, 'params'),
   validate(disconnectSchema),
   asyncHandler(disconnectWhatsAppAccount)
@@ -114,7 +112,7 @@ router.post(
 // yang tidak pernah menjadi bagian dari perusahaan.
 router.get(
   '/whatsapp/conversations',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(listConversationQuerySchema, 'query'),
   asyncHandler(getConversations)
 );
@@ -125,7 +123,7 @@ router.get(
 // server, bukan tersembunyi di dalam proses.
 router.post(
   '/whatsapp/retention/purge',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(purgeSchema),
   asyncHandler(purgeExpiredConversations)
 );
@@ -140,7 +138,7 @@ router.get(
 );
 router.post(
   '/whatsapp/session-events/notified',
-  requireRole(...HR),
+  requirePermission('whatsapp.pantau'),
   validate(markNotifiedSchema),
   asyncHandler(markEventsNotified)
 );

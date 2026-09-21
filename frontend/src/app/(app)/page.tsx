@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Users, UserPlus, UserMinus, TrendingDown, CalendarCheck, CalendarOff, FileWarning, Megaphone, Wallet, ArrowRight } from "lucide-react";
 import { format, startOfMonth, subMonths } from "date-fns";
 import { api } from "@/lib/api";
-import { useSesi, bolehManajer, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -135,8 +135,8 @@ function DashboardKaryawan({ nama, hariIni }: { nama: string; hariIni: string })
 
 export default function HalamanDashboard() {
   const { data: saya } = useSesi();
-  const manajemen = bolehManajer(saya?.role);
-  const hr = bolehHr(saya?.role);
+  const manajemen = punyaIzin(saya, "laporan.dashboard");
+  const hr = punyaIzin(saya, "dokumen.kelola");
   const [preset, setPreset] = React.useState(0);
 
   const hariIni = format(new Date(), "yyyy-MM-dd");

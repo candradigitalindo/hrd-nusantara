@@ -4,6 +4,7 @@ import { env } from './config/env';
 import { prisma } from './lib/prisma';
 import { mulaiDriverWhatsApp, hentikanDriverWhatsApp } from './services/whatsapp/bootstrap';
 import { mulaiPush, hentikanPush } from './services/notification/bootstrap';
+import { pastikanPeranSistem } from './services/roles/system';
 
 const app = createApp();
 
@@ -13,6 +14,12 @@ const server = app.listen(env.PORT, () => {
   // Sengaja setelah listen: koneksi WhatsApp bisa lama tersambung, dan API
   // tidak boleh ikut menunggu. Kegagalannya pun tidak menjatuhkan server —
   // modul HRD lainnya tetap harus melayani.
+  // Peran sistem harus ada sebelum ada yang menambah karyawan; kalau gagal,
+  // izin bawaan yang dikodekan tetap berlaku (lihat services/roles/resolve.ts).
+  pastikanPeranSistem().catch((error) => {
+    console.warn('[peran] gagal membuat peran sistem:', error);
+  });
+
   mulaiPush();
 
   mulaiDriverWhatsApp().catch((error) => {

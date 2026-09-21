@@ -20,16 +20,19 @@ import {
   TabletSmartphone,
   Download,
   Briefcase,
+  KeyRound,
   type LucideIcon,
 } from "lucide-react";
-import type { Role } from "@/lib/types";
+import type { PenggunaSesi, Role } from "@/lib/types";
 
 export interface MenuNav {
   href: string;
   label: string;
   icon: LucideIcon;
-  /** Kosong = semua peran. */
-  roles?: Role[];
+  /** Izin yang dibutuhkan; kosong = semua pengguna. */
+  izin?: string;
+  /** Lingkup data yang juga boleh melihat walau tanpa izin di atas. */
+  lingkup?: Role[];
   /** Tampil di bar bawah ponsel (maksimal 4). */
   utama?: boolean;
 }
@@ -42,9 +45,6 @@ export interface KelompokMenu {
   item: MenuNav[];
 }
 
-const HR: Role[] = ["SUPER_ADMIN", "HR_ADMIN"];
-const MANAJEMEN: Role[] = ["SUPER_ADMIN", "HR_ADMIN", "MANAGER"];
-
 export const KELOMPOK: KelompokMenu[] = [
   { id: "beranda", label: "Beranda", icon: LayoutDashboard, item: [{ href: "/", label: "Dashboard", icon: LayoutDashboard, utama: true }] },
   {
@@ -55,7 +55,7 @@ export const KELOMPOK: KelompokMenu[] = [
       { href: "/pengumuman", label: "Pengumuman", icon: Megaphone },
       { href: "/chat", label: "Chat Tim", icon: MessagesSquare },
       { href: "/whatsapp-saya", label: "WhatsApp Saya", icon: Smartphone },
-      { href: "/whatsapp", label: "Pemantauan WA", icon: MessageCircle, roles: HR },
+      { href: "/whatsapp", label: "Pemantauan WA", icon: MessageCircle, izin: "whatsapp.pantau" },
     ],
   },
   {
@@ -63,9 +63,9 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Kepegawaian",
     icon: Briefcase,
     item: [
-      { href: "/karyawan", label: "Karyawan", icon: Users, roles: MANAJEMEN, utama: true },
-      { href: "/organisasi", label: "Organisasi", icon: Building2, roles: HR },
-      { href: "/rekrutmen", label: "Rekrutmen", icon: UserSearch, roles: MANAJEMEN },
+      { href: "/karyawan", label: "Karyawan", icon: Users, izin: "karyawan.lihat", utama: true },
+      { href: "/organisasi", label: "Organisasi", icon: Building2, izin: "organisasi.kelola" },
+      { href: "/rekrutmen", label: "Rekrutmen", icon: UserSearch, izin: "rekrutmen.kelola", lingkup: ["MANAGER"] },
     ],
   },
   {
@@ -83,7 +83,7 @@ export const KELOMPOK: KelompokMenu[] = [
     icon: Wallet,
     item: [
       { href: "/gaji", label: "Slip Gaji", icon: Wallet },
-      { href: "/payroll", label: "Payroll", icon: Banknote, roles: HR },
+      { href: "/payroll", label: "Payroll", icon: Banknote, izin: "payroll.kelola" },
     ],
   },
   {
@@ -102,31 +102,41 @@ export const KELOMPOK: KelompokMenu[] = [
     icon: ShieldAlert,
     item: [
       { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert },
-      { href: "/audit", label: "Jejak Audit", icon: ScrollText, roles: ["SUPER_ADMIN"] },
+      { href: "/audit", label: "Jejak Audit", icon: ScrollText, izin: "audit.lihat" },
     ],
   },
-  { id: "analitik", label: "Analitik", icon: BarChart3, item: [{ href: "/laporan", label: "Laporan", icon: BarChart3, roles: MANAJEMEN }] },
+  { id: "analitik", label: "Analitik", icon: BarChart3, item: [{ href: "/laporan", label: "Laporan", icon: BarChart3, izin: "laporan.dashboard" }] },
   {
     id: "aplikasi",
     label: "Aplikasi Mobile",
     icon: TabletSmartphone,
     item: [
-      { href: "/aplikasi", label: "Rilis APK", icon: TabletSmartphone, roles: HR },
+      { href: "/aplikasi", label: "Rilis APK", icon: TabletSmartphone, izin: "aplikasi.rilis" },
       { href: "/unduh", label: "Unduh Aplikasi", icon: Download },
     ],
+  },
+  {
+    id: "administrasi",
+    label: "Administrasi",
+    icon: KeyRound,
+    item: [{ href: "/peran", label: "Peran & Hak Akses", icon: KeyRound, izin: "peran.kelola" }],
   },
 ];
 
 /** Daftar rata, untuk bar bawah ponsel dan pencarian judul halaman. */
 export const MENU: MenuNav[] = KELOMPOK.flatMap((k) => k.item);
 
-const bolehLihat = (m: MenuNav, role: Role | undefined) => !m.roles || (role !== undefined && m.roles.includes(role));
+const bolehLihat = (m: MenuNav, saya: PenggunaSesi | undefined) => {
+  if (!m.izin) return true;
+  if (!saya) return false;
+  return saya.permissions.includes(m.izin) || (m.lingkup?.includes(saya.role) ?? false);
+};
 
-export const menuUntuk = (role: Role | undefined) => MENU.filter((m) => bolehLihat(m, role));
+export const menuUntuk = (saya: PenggunaSesi | undefined) => MENU.filter((m) => bolehLihat(m, saya));
 
-/** Kategori beserta itemnya yang boleh dilihat peran ini; kategori kosong dibuang. */
-export const kelompokUntuk = (role: Role | undefined): KelompokMenu[] =>
-  KELOMPOK.map((k) => ({ ...k, item: k.item.filter((m) => bolehLihat(m, role)) })).filter((k) => k.item.length > 0);
+/** Kategori beserta itemnya yang boleh dilihat pengguna ini; kategori kosong dibuang. */
+export const kelompokUntuk = (saya: PenggunaSesi | undefined): KelompokMenu[] =>
+  KELOMPOK.map((k) => ({ ...k, item: k.item.filter((m) => bolehLihat(m, saya)) })).filter((k) => k.item.length > 0);
 
 /**
  * Apakah tautan menu mewakili halaman yang sedang dibuka.

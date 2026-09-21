@@ -64,7 +64,7 @@ class LayarProfil extends ConsumerWidget {
                   BarisRincian('Email', p.email),
                   BarisRincian('Telepon', p.telepon ?? '—'),
                   BarisRincian('Alamat', p.alamat ?? '—'),
-                  BarisRincian('Peran', labelPeran(p.peran)),
+                  BarisRincian('Peran', p.namaPeran ?? labelPeran(p.peran)),
                 ],
               ),
             ),

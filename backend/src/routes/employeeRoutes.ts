@@ -1,6 +1,5 @@
 // src/routes/employeeRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   getAllEmployees,
   getDirectory,
@@ -9,7 +8,7 @@ import {
   updateEmployee,
   deactivateEmployee,
 } from '../controllers/employeeController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import {
   createEmployeeSchema,
@@ -27,7 +26,7 @@ router.use(authenticateToken);
 
 router.get(
   '/',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN, Role.MANAGER),
+  requirePermission('karyawan.lihat'),
   validate(listEmployeeQuerySchema, 'query'),
   asyncHandler(getAllEmployees)
 );
@@ -42,14 +41,14 @@ router.get('/:id', validate(employeeIdParamSchema, 'params'), asyncHandler(getEm
 
 router.post(
   '/',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('karyawan.kelola'),
   validate(createEmployeeSchema),
   asyncHandler(createEmployee)
 );
 
 router.put(
   '/:id',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('karyawan.kelola'),
   validate(employeeIdParamSchema, 'params'),
   validate(updateEmployeeSchema),
   asyncHandler(updateEmployee)
@@ -58,7 +57,7 @@ router.put(
 // Bukan DELETE: data kepegawaian diarsipkan, bukan dihapus.
 router.patch(
   '/:id/deactivate',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('karyawan.kelola'),
   validate(employeeIdParamSchema, 'params'),
   validate(deactivateEmployeeSchema),
   asyncHandler(deactivateEmployee)

@@ -1,6 +1,5 @@
 // src/routes/communicationRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createAnnouncement,
   updateAnnouncement,
@@ -20,7 +19,7 @@ import {
   getMessages,
   deleteMessage,
 } from '../controllers/communicationController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -43,7 +42,6 @@ const router = express.Router();
 
 router.use(authenticateToken);
 
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Pengumuman ---
 // Semua karyawan melihat papan informasi; penyaringan sasaran di controller.
@@ -54,20 +52,20 @@ router.get(
 );
 router.post(
   '/announcements',
-  requireRole(...HR),
+  requirePermission('pengumuman.kelola'),
   validate(createAnnouncementSchema),
   asyncHandler(createAnnouncement)
 );
 router.put(
   '/announcements/:id',
-  requireRole(...HR),
+  requirePermission('pengumuman.kelola'),
   validate(idParamSchema, 'params'),
   validate(updateAnnouncementSchema),
   asyncHandler(updateAnnouncement)
 );
 router.patch(
   '/announcements/:id/status',
-  requireRole(...HR),
+  requirePermission('pengumuman.kelola'),
   validate(idParamSchema, 'params'),
   validate(changeAnnouncementStatusSchema),
   asyncHandler(changeAnnouncementStatus)
@@ -80,17 +78,17 @@ router.post(
 );
 router.get(
   '/announcements/:id/reads',
-  requireRole(...HR),
+  requirePermission('pengumuman.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(getAnnouncementReadReport)
 );
 
 // --- Survei ---
 router.get('/surveys', validate(listSurveyQuerySchema, 'query'), asyncHandler(getAllSurveys));
-router.post('/surveys', requireRole(...HR), validate(createSurveySchema), asyncHandler(createSurvey));
+router.post('/surveys', requirePermission('survei.kelola'), validate(createSurveySchema), asyncHandler(createSurvey));
 router.patch(
   '/surveys/:id/status',
-  requireRole(...HR),
+  requirePermission('survei.kelola'),
   validate(idParamSchema, 'params'),
   validate(changeSurveyStatusSchema),
   asyncHandler(changeSurveyStatus)
@@ -103,7 +101,7 @@ router.post(
 );
 router.get(
   '/surveys/:id/results',
-  requireRole(...HR),
+  requirePermission('survei.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(getSurveyResults)
 );

@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { format, startOfMonth, startOfYear, subMonths } from "date-fns";
 import { UserMinus, Banknote, GraduationCap, UserSearch, CalendarClock, Clock, TimerOff, Download, Database, Users } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr, bolehManajer } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -49,8 +49,8 @@ const judulKolom = (k: string) => k.replace(/\./g, " › ").replace(/([a-z])([A-
 
 export default function HalamanLaporan() {
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
-  const manajemen = bolehManajer(saya?.role);
+  const hr = punyaIzin(saya, "laporan.hr");
+  const manajemen = punyaIzin(saya, "laporan.dashboard");
   const [tab, setTab] = React.useState<Tab>(hr ? "turnover" : "produktivitas");
   const [preset, setPreset] = React.useState(2);
   const [kustom, setKustom] = React.useState<{ mulai: string; selesai: string } | null>(null);

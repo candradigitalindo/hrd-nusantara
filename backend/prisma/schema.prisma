@@ -17,6 +17,26 @@ enum Role {
   EMPLOYEE
 }
 
+/// Peran dinamis. Admin membuat peran sendiri dengan mencentang izin dari
+/// katalog (src/utils/permissions.ts). Setiap peran memiliki satu lingkup
+/// data (baseRole) yang menentukan seberapa luas data yang terlihat:
+/// diri sendiri, departemen sendiri, atau seluruh perusahaan.
+model CustomRole {
+  id          String     @id
+  /// Terisi hanya untuk empat peran sistem (SUPER_ADMIN, HR_ADMIN, MANAGER,
+  /// EMPLOYEE); peran buatan admin tidak punya kode.
+  code        String?    @unique
+  name        String     @unique
+  description String?
+  baseRole    Role
+  permissions String[]   @default([])
+  /// Peran sistem tidak bisa dihapus; peran SUPER_ADMIN juga tidak bisa disunting.
+  isSystem    Boolean    @default(false)
+  employees   Employee[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
 /// This table is used by Prisma to store metadata about applied migrations.
 /// Learn more: https://pris.ly/d/migrations
 
@@ -53,7 +73,13 @@ model Employee {
   workPatternId String?
   status        String       @default("active") // active, probation, contract, internship, on_leave, inactive, resign, terminated
   password      String? // hash bcrypt; null = akun belum pernah diaktifkan
+  /// Lingkup data. Disinkronkan dari customRole.baseRole saat peran diberikan;
+  /// controller memakainya untuk membatasi data (departemen sendiri, dsb.).
   role          Role         @default(EMPLOYEE)
+  /// Peran dinamis yang menentukan izin. Kosong = memakai peran sistem
+  /// sesuai kolom role.
+  customRole    CustomRole?  @relation(fields: [customRoleId], references: [id])
+  customRoleId  String?
   lastLoginAt   DateTime?
   department    Department?  @relation(fields: [departmentId], references: [id])
   departmentId  String?
@@ -110,11 +136,12 @@ model Employee {
   evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
   deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
   documents             EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
-  mobileReleases        MobileRelease[]    @relation("MobileReleaseUploader")
+  mobileReleases        MobileRelease[]                 @relation("MobileReleaseUploader")
 
   @@index([departmentId])
   @@index([positionId])
   @@index([status])
+  @@index([customRoleId])
 }
 
 model Department {
@@ -190,16 +217,16 @@ model Attendance {
 
   // Hasil pencocokan wajah, disimpan untuk jejak audit: kalau kemudian ada
   // sengketa "itu bukan saya", skor kemiripannya bisa ditelusuri.
-  faceVerified   Boolean @default(false)
-  faceMatchScore Float?
+  faceVerified            Boolean   @default(false)
+  faceMatchScore          Float?
   /// Skor "wajah hidup" dari model anti-spoofing, disimpan untuk audit dan
   /// untuk menyetel ulang ambang berdasarkan data lapangan sendiri.
-  livenessScore  Float?
+  livenessScore           Float?
   /// Penanda kecurangan lokasi (src/utils/locationIntegrity.ts): mock_location,
   /// mock_app_installed, rooted_device, emulator, developer_options,
   /// network_mismatch, stale_position, impossible_speed, integrity_missing.
   /// Kosong = tidak ada yang mencurigakan.
-  integrityFlags String[] @default([])
+  integrityFlags          String[]  @default([])
   /// Laporan integritas mentah dari aplikasi mobile, disimpan untuk jejak
   /// audit bila ada sengketa.
   integrityReport         Json?
@@ -207,9 +234,9 @@ model Attendance {
   /// Pengiriman foto absensi ber-stempel ke grup WhatsApp karyawan:
   /// sent, failed, skipped (belum pilih grup / sesi putus). Untuk check-out
   /// nilainya ditimpa oleh pengiriman terakhir.
-  stampStatus String?
-  stampSentAt DateTime?
-  stampNote   String?
+  stampStatus             String?
+  stampSentAt             DateTime?
+  stampNote               String?
 
   status    String   @default("present") // present, late, absent, no_checkout
   notes     String?
@@ -1455,9 +1482,9 @@ model WhatsAppAccount {
   attendanceGroupJid  String?
   attendanceGroupName String?
   /// connected, disconnected, pending_scan
-  sessionStatus      String    @default("pending_scan")
-  lastConnectedAt    DateTime?
-  lastDisconnectedAt DateTime?
+  sessionStatus       String    @default("pending_scan")
+  lastConnectedAt     DateTime?
+  lastDisconnectedAt  DateTime?
 
   isActive Boolean @default(true)
 
@@ -1545,12 +1572,12 @@ model WhatsAppConversation {
 
   createdAt DateTime @default(now())
 
+  @@unique([accountId, externalMessageId])
   @@index([timestamp])
   @@index([employeeId])
   @@index([senderWhatsappNumber])
   @@index([accountId, timestamp])
   @@index([contactNumber])
-  @@unique([accountId, externalMessageId])
   /// GIN: pencarian memakai hasEvery pada array token.
   @@index([searchTokens], type: Gin)
 }
@@ -1830,16 +1857,16 @@ model CollectiveLeaveDeduction {
 /// diunduh karyawan dari halaman publik. Berkasnya tidak dienkripsi: ini
 /// artefak yang memang dibagikan, bukan data pribadi.
 model MobileRelease {
-  id          String @id
+  id            String  @id
   /// Versi yang dibaca manusia, mis. "1.2.0".
-  versionName String
+  versionName   String
   /// Nomor versi Android; harus naik tiap rilis, unik.
-  versionCode Int    @unique
-  fileName    String
-  storagePath String
-  sizeBytes   Int
-  sha256      String
-  notes       String?
+  versionCode   Int     @unique
+  fileName      String
+  storagePath   String
+  sizeBytes     Int
+  sha256        String
+  notes         String?
   /// Rilis nonaktif tidak lagi ditawarkan sebagai "terbaru".
   isActive      Boolean @default(true)
   downloadCount Int     @default(0)

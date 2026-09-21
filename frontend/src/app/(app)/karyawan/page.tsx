@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { Plus, Search, UserX, Users, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,7 @@ export default function HalamanKaryawan() {
   const qc = useQueryClient();
   const router = useRouter();
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
+  const hr = punyaIzin(saya, "karyawan.kelola");
 
   const [cari, setCari] = React.useState("");
   const [cariTunda, setCariTunda] = React.useState("");
@@ -89,7 +89,7 @@ export default function HalamanKaryawan() {
     },
     { key: "dept", header: "Departemen", cell: (k) => k.department?.name ?? <span className="text-muted">—</span> },
     { key: "jabatan", header: "Jabatan", cell: (k) => k.position?.name ?? <span className="text-muted">—</span> },
-    { key: "peran", header: "Peran", cell: (k) => LABEL_ROLE[k.role] },
+    { key: "peran", header: "Peran", cell: (k) => k.customRole?.name ?? LABEL_ROLE[k.role] },
     {
       key: "status",
       header: "Status",
@@ -188,7 +188,7 @@ export default function HalamanKaryawan() {
         )}
       </Card>
 
-      <FormKaryawan open={form.open} onClose={() => setForm({ open: false, karyawan: null })} karyawan={form.karyawan} peranSaya={saya?.role} />
+      <FormKaryawan open={form.open} onClose={() => setForm({ open: false, karyawan: null })} karyawan={form.karyawan} sesi={saya} />
 
       <ConfirmDialog
         open={Boolean(nonaktif)}

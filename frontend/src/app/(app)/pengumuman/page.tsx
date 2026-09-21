@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Megaphone, Plus, Pencil, Users, CheckCheck, AlertTriangle, Archive } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -28,7 +28,8 @@ type LaporanPembaca = { announcement: { id: string; title: string }; targetCount
 export default function HalamanPengumuman() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
+  const hr = punyaIzin(saya, "pengumuman.kelola");
+  const survei = punyaIzin(saya, "survei.kelola");
   const [tab, setTab] = React.useState<"pengumuman" | "survei">("pengumuman");
   const [status, setStatus] = React.useState("");
   const [belumDibaca, setBelumDibaca] = React.useState(false);
@@ -93,7 +94,7 @@ export default function HalamanPengumuman() {
         ))}
       </div>
 
-      {tab === "survei" ? <PanelSurvei hr={hr} /> : (
+      {tab === "survei" ? <PanelSurvei hr={survei} /> : (
         <>
           {belumDikonfirmasi > 0 && <Alert tone="warning" title={`${belumDikonfirmasi} pengumuman perlu konfirmasi Anda`}>Buka pengumumannya lalu tekan &ldquo;Saya sudah membaca&rdquo;.</Alert>}
           <Card>

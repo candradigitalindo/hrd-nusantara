@@ -1,6 +1,5 @@
 // src/routes/performanceRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createTemplate,
   getAllTemplates,
@@ -17,7 +16,7 @@ import {
   createFeedback,
   getFeedback,
 } from '../controllers/performanceController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -38,18 +37,17 @@ const router = express.Router();
 
 router.use(authenticateToken);
 
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Formulir penilaian ---
 router.get(
   '/performance/templates',
-  requireRole(...HR),
+  requirePermission('kinerja.kelola'),
   validate(listTemplateQuerySchema, 'query'),
   asyncHandler(getAllTemplates)
 );
 router.post(
   '/performance/templates',
-  requireRole(...HR),
+  requirePermission('kinerja.kelola'),
   validate(createTemplateSchema),
   asyncHandler(createTemplate)
 );
@@ -57,19 +55,19 @@ router.post(
 // --- Siklus penilaian ---
 router.get(
   '/performance/cycles',
-  requireRole(...HR),
+  requirePermission('kinerja.kelola'),
   validate(listCycleQuerySchema, 'query'),
   asyncHandler(getAllCycles)
 );
 router.post(
   '/performance/cycles',
-  requireRole(...HR),
+  requirePermission('kinerja.kelola'),
   validate(createCycleSchema),
   asyncHandler(createCycle)
 );
 router.patch(
   '/performance/cycles/:id/status',
-  requireRole(...HR),
+  requirePermission('kinerja.kelola'),
   validate(idParamSchema, 'params'),
   validate(changeCycleStatusSchema),
   asyncHandler(changeCycleStatus)
@@ -78,7 +76,7 @@ router.patch(
 // --- Penilaian ---
 router.post(
   '/performance/reviews',
-  requireRole(...HR),
+  requirePermission('kinerja.kelola'),
   validate(assignReviewSchema),
   asyncHandler(assignReview)
 );

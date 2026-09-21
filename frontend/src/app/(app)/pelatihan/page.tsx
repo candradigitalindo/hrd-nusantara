@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -29,7 +29,7 @@ type FormEvaluasi = { score: string; certificateUrl: string; note: string };
 export default function HalamanPelatihan() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
+  const hr = punyaIzin(saya, "pelatihan.kelola");
   const [tab, setTab] = React.useState<Tab>("jadwal");
   const [statusSesi, setStatusSesi] = React.useState("scheduled");
   const [pageSesi, setPageSesi] = React.useState(1);

@@ -1,6 +1,5 @@
 // src/routes/trainingRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createProgram,
   getAllPrograms,
@@ -15,7 +14,7 @@ import {
   getAllRegistrations,
   getComplianceReport,
 } from '../controllers/trainingController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -36,7 +35,6 @@ const router = express.Router();
 
 router.use(authenticateToken);
 
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Program pelatihan ---
 // Daftar program terbuka untuk semua karyawan: mereka perlu tahu pelatihan
@@ -48,13 +46,13 @@ router.get(
 );
 router.post(
   '/training/programs',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(createProgramSchema),
   asyncHandler(createProgram)
 );
 router.put(
   '/training/programs/:id',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(idParamSchema, 'params'),
   validate(updateProgramSchema),
   asyncHandler(updateProgram)
@@ -68,13 +66,13 @@ router.get(
 );
 router.post(
   '/training/sessions',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(createSessionSchema),
   asyncHandler(createSession)
 );
 router.patch(
   '/training/sessions/:id/status',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(idParamSchema, 'params'),
   validate(changeSessionStatusSchema),
   asyncHandler(changeSessionStatus)
@@ -89,7 +87,7 @@ router.post(
 );
 router.post(
   '/training/sessions/:id/attendance',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(idParamSchema, 'params'),
   validate(recordAttendanceSchema),
   asyncHandler(recordAttendance)
@@ -108,7 +106,7 @@ router.patch(
 );
 router.post(
   '/training/registrations/:id/evaluate',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(idParamSchema, 'params'),
   validate(evaluateSchema),
   asyncHandler(evaluate)
@@ -117,7 +115,7 @@ router.post(
 // --- Laporan kepatuhan ---
 router.get(
   '/training/compliance',
-  requireRole(...HR),
+  requirePermission('pelatihan.kelola'),
   validate(complianceQuerySchema, 'query'),
   asyncHandler(getComplianceReport)
 );

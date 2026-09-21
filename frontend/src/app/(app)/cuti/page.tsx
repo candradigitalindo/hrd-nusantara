@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { CalendarOff, Check, X, Plus, Ban, Paperclip } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehManajer } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -51,7 +51,7 @@ const KartuSaldo = ({ saldo }: { saldo: SaldoCuti }) => {
 export default function HalamanCuti() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const manajemen = bolehManajer(saya?.role);
+  const manajemen = punyaIzin(saya, "cuti.setujui");
   const tahun = new Date().getFullYear();
 
   const [tab, setTab] = React.useState<"saya" | "persetujuan">("saya");

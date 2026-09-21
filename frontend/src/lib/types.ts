@@ -5,10 +5,39 @@ export interface PenggunaSesi {
   nik: string;
   name: string;
   email: string;
+  /** Lingkup data (diri sendiri / departemen / seluruh perusahaan). */
   role: Role;
   status: string;
   departmentId: string | null;
   positionId: string | null;
+  /** Peran dinamis yang dipegang; null = memakai peran sistem sesuai role. */
+  customRole: Ref | null;
+  /** Izin efektif — hanya untuk menyembunyikan menu; penegakan tetap di server. */
+  permissions: string[];
+}
+
+export interface DefinisiIzin {
+  key: string;
+  label: string;
+  modul: string;
+}
+
+export interface KatalogIzin {
+  permissions: DefinisiIzin[];
+  scopes: { role: Role; label: string }[];
+}
+
+export interface PeranKustom {
+  id: string;
+  code: Role | null;
+  name: string;
+  description: string | null;
+  baseRole: Role;
+  permissions: string[];
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count: { employees: number };
 }
 
 export interface Paginasi {
@@ -38,6 +67,8 @@ export interface Karyawan {
   dateOfBirth: string | null;
   status: string;
   role: Role;
+  customRoleId: string | null;
+  customRole: (Ref & { isSystem: boolean }) | null;
   lastLoginAt: string | null;
   joinDate: string | null;
   exitDate: string | null;

@@ -11,6 +11,8 @@ class Pengguna {
     this.jabatan,
     this.telepon,
     this.alamat,
+    this.namaPeran,
+    this.izin = const [],
   });
 
   final String id;
@@ -24,8 +26,18 @@ class Pengguna {
   final String? telepon;
   final String? alamat;
 
+  /// Nama peran dinamis (mis. "Supervisor Outlet"); null = peran sistem.
+  final String? namaPeran;
+
+  /// Izin efektif dari peran dinamis. Hanya untuk menyembunyikan menu;
+  /// penegakannya tetap di server.
+  final List<String> izin;
+
+  /// Lingkup data (kolom role): seberapa luas data yang terlihat.
   bool get hr => peran == 'SUPER_ADMIN' || peran == 'HR_ADMIN';
   bool get manajemen => hr || peran == 'MANAGER';
+
+  bool punyaIzin(String kunci) => izin.contains(kunci);
 
   factory Pengguna.dariJson(Map<String, dynamic> j) => Pengguna(
         id: j['id'] as String,
@@ -38,6 +50,8 @@ class Pengguna {
         jabatan: (j['position'] as Map?)?['name'] as String?,
         telepon: j['phoneNumber'] as String?,
         alamat: j['address'] as String?,
+        namaPeran: (j['customRole'] as Map?)?['name'] as String?,
+        izin: ((j['permissions'] as List?) ?? const []).map((e) => e.toString()).toList(),
       );
 
   Map<String, dynamic> keJson() => {
@@ -51,5 +65,7 @@ class Pengguna {
         'position': jabatan == null ? null : {'name': jabatan},
         'phoneNumber': telepon,
         'address': alamat,
+        'customRole': namaPeran == null ? null : {'name': namaPeran},
+        'permissions': izin,
       };
 }

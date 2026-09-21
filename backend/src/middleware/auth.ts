@@ -4,16 +4,21 @@ import jwt from 'jsonwebtoken';
 import { Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
+import { izinEfektif } from '../services/roles/resolve';
 
 export interface AuthUser {
   id: string;
   nik: string;
   name: string;
   email: string;
+  /** Lingkup data (diri sendiri / departemen / seluruh perusahaan). */
   role: Role;
   status: string;
   departmentId: string | null;
   positionId: string | null;
+  customRoleId: string | null;
+  /** Izin efektif dari peran dinamis — lihat utils/permissions.ts. */
+  permissions: string[];
 }
 
 declare global {
@@ -78,6 +83,8 @@ export const authenticateToken = asyncHandler(
         status: true,
         departmentId: true,
         positionId: true,
+        customRoleId: true,
+        customRole: { select: { permissions: true } },
       },
     });
 
@@ -89,12 +96,40 @@ export const authenticateToken = asyncHandler(
       return res.status(403).json({ error: 'Akun Anda sudah tidak aktif' });
     }
 
-    req.user = user;
+    // Izin dibaca ulang setiap permintaan, bukan disimpan di token: suntingan
+    // admin pada sebuah peran harus langsung berlaku, tanpa menunggu semua
+    // pemegangnya login ulang.
+    const { customRole, ...pengguna } = user;
+    req.user = { ...pengguna, permissions: await izinEfektif({ role: user.role, customRole }) };
     next();
   }
 );
 
-/** Akses berjenjang — dipasang setelah authenticateToken. */
+/**
+ * Penjaga rute berbasis izin — dipasang setelah authenticateToken.
+ * Lolos bila pengguna memegang SALAH SATU izin yang disebut.
+ */
+export const requirePermission =
+  (...izin: string[]): RequestHandler =>
+  (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Belum terautentikasi' });
+    }
+    if (!izin.some((k) => req.user!.permissions.includes(k))) {
+      return res.status(403).json({ error: 'Anda tidak punya akses ke resource ini' });
+    }
+    next();
+  };
+
+/** Apakah pengguna memegang izin ini. Untuk pemeriksaan di dalam controller. */
+export const punyaIzin = (user: Pick<AuthUser, 'permissions'>, izin: string): boolean =>
+  user.permissions.includes(izin);
+
+/**
+ * Akses berjenjang berdasarkan lingkup data — dipasang setelah authenticateToken.
+ * Sejak peran dinamis ada, rute memakai requirePermission; ini disisakan
+ * untuk pemeriksaan lingkup yang memang soal cakupan data, bukan izin.
+ */
 export const requireRole =
   (...roles: Role[]): RequestHandler =>
   (req, res, next) => {

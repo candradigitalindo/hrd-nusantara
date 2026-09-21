@@ -1,12 +1,11 @@
 // src/routes/faceEnrollmentRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   enrollFace,
   getFaceEnrollments,
   deactivateFaceEnrollment,
 } from '../controllers/faceEnrollmentController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import { enrollFaceSchema, listFaceEnrollmentQuerySchema } from '../schemas/faceSchema';
@@ -25,7 +24,7 @@ router.use(authenticateToken);
  */
 router.post(
   '/employees/:id/face-enrollments',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('wajah.kelola'),
   validate(idParamSchema, 'params'),
   validate(enrollFaceSchema),
   asyncHandler(enrollFace)
@@ -33,7 +32,7 @@ router.post(
 
 router.get(
   '/employees/:id/face-enrollments',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('wajah.kelola'),
   validate(idParamSchema, 'params'),
   validate(listFaceEnrollmentQuerySchema, 'query'),
   asyncHandler(getFaceEnrollments)
@@ -41,7 +40,7 @@ router.get(
 
 router.delete(
   '/face-enrollments/:id',
-  requireRole(Role.SUPER_ADMIN, Role.HR_ADMIN),
+  requirePermission('wajah.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(deactivateFaceEnrollment)
 );

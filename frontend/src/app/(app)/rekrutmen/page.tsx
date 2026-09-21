@@ -6,7 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { format, subMonths, startOfMonth } from "date-fns";
 import { Briefcase, Plus, Pencil, Users, CalendarClock, MessageSquareText } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -38,7 +38,7 @@ const normalkanCorong = (f: CorongRekrutmen["funnel"]) =>
 export default function HalamanRekrutmen() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
+  const hr = punyaIzin(saya, "rekrutmen.kelola");
   const [tab, setTab] = React.useState<Tab>(hr ? "pelamar" : "wawancara");
   const [formBuka, setFormBuka] = React.useState<{ open: boolean; item: Lowongan | null }>({ open: false, item: null });
   const [pageLowongan, setPageLowongan] = React.useState(1);

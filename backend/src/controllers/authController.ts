@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { ACTIVE_STATUSES } from '../middleware/auth';
 import type { LoginInput, ChangePasswordInput } from '../schemas/authSchema';
+import { izinEfektif } from '../services/roles/resolve';
 
 /**
  * Hash palsu yang valid secara format. Dipakai saat email tidak ditemukan
@@ -25,6 +26,8 @@ const publicUserFields = {
   status: true,
   departmentId: true,
   positionId: true,
+  customRoleId: true,
+  customRole: { select: { id: true, name: true, permissions: true } },
 } as const;
 
 /**
@@ -33,10 +36,13 @@ const publicUserFields = {
  * "tidak terdaftar" supaya balasan gagalnya seragam.
  */
 const cariAkunLogin = (pengenal: string) => {
-  if (pengenal.includes('@')) return prisma.employee.findUnique({ where: { email: pengenal.toLowerCase() } });
+  const include = { customRole: { select: { id: true, name: true, permissions: true } } };
+  if (pengenal.includes('@')) {
+    return prisma.employee.findUnique({ where: { email: pengenal.toLowerCase() }, include });
+  }
   const nomor = normalizePhoneNumber(pengenal);
   if (!nomor) return Promise.resolve(null);
-  return prisma.employee.findUnique({ where: { phoneNumber: nomor } });
+  return prisma.employee.findUnique({ where: { phoneNumber: nomor }, include });
 };
 
 export const login = async (req: Request, res: Response) => {
@@ -107,6 +113,8 @@ export const login = async (req: Request, res: Response) => {
       status: employee.status,
       departmentId: employee.departmentId,
       positionId: employee.positionId,
+      customRole: employee.customRole ? { id: employee.customRole.id, name: employee.customRole.name } : null,
+      permissions: await izinEfektif(employee),
     },
   });
 };
@@ -129,7 +137,14 @@ export const me = async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
   }
 
-  res.json(employee);
+  // Izin dikirim ke klien hanya untuk menyembunyikan menu yang tidak relevan;
+  // penegakannya tetap di server pada setiap rute.
+  const { customRole, ...data } = employee;
+  res.json({
+    ...data,
+    customRole: customRole ? { id: customRole.id, name: customRole.name } : null,
+    permissions: await izinEfektif({ role: employee.role, customRole }),
+  });
 };
 
 export const changePassword = async (req: Request, res: Response) => {

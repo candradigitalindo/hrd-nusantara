@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Mail, Phone, MapPin, Calendar, Building2, Briefcase } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge, nadaStatus } from "@/components/ui/badge";
@@ -31,7 +31,9 @@ const Baris = ({ icon: Icon, label, value }: { icon: typeof Mail; label: string;
 export default function HalamanDetailKaryawan() {
   const { id } = useParams<{ id: string }>();
   const { data: saya } = useSesi();
-  const hr = bolehHr(saya?.role);
+  const hr = punyaIzin(saya, "karyawan.kelola");
+  const gaji = punyaIzin(saya, "payroll.kelola");
+  const dokumen = punyaIzin(saya, "dokumen.kelola");
 
   const { data: k, isLoading, isError, error } = useQuery({
     queryKey: ["karyawan", id],
@@ -52,7 +54,7 @@ export default function HalamanDetailKaryawan() {
         <>
           <PageHeader
             title={k.name}
-            description={`${k.nik} · ${LABEL_ROLE[k.role]}`}
+            description={`${k.nik} · ${k.customRole?.name ?? LABEL_ROLE[k.role]}`}
             actions={<Badge tone={nadaStatus(k.status)} dot className="text-sm px-3 py-1">{labelStatus(k.status)}</Badge>}
           />
 
@@ -81,8 +83,8 @@ export default function HalamanDetailKaryawan() {
             </Card>
 
             <div className="space-y-4 lg:col-span-2">
-              {hr && <PanelGaji employeeId={k.id} />}
-              <PanelDokumen employeeId={k.id} hr={hr} />
+              {gaji && <PanelGaji employeeId={k.id} />}
+              <PanelDokumen employeeId={k.id} hr={dokumen} />
             </div>
           </div>
         </>

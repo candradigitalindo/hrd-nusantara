@@ -10,11 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Field, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { notifikasi } from "@/hooks/use-notifikasi";
-import { LABEL_STATUS, LABEL_ROLE } from "@/lib/utils";
-import type { Halaman, Departemen, Jabatan, Karyawan, Role } from "@/lib/types";
+import { punyaIzin } from "@/hooks/use-sesi";
+import { LABEL_STATUS, LABEL_LINGKUP } from "@/lib/utils";
+import type { Halaman, Departemen, Jabatan, Karyawan, PenggunaSesi, PeranKustom } from "@/lib/types";
 
 const STATUS = ["active", "probation", "contract", "internship", "on_leave", "inactive"] as const;
-const ROLE = ["EMPLOYEE", "MANAGER", "HR_ADMIN", "SUPER_ADMIN"] as const;
 
 const skema = z.object({
   nik: z.string().trim().min(2, "NIK minimal 2 karakter").max(50),
@@ -31,7 +31,7 @@ const skema = z.object({
   dateOfBirth: z.string().optional().or(z.literal("")),
   joinDate: z.string().optional().or(z.literal("")),
   status: z.enum(STATUS),
-  role: z.enum(ROLE),
+  customRoleId: z.string().min(1, "Pilih peran"),
   departmentId: z.string().optional().or(z.literal("")),
   positionId: z.string().optional().or(z.literal("")),
   password: z.string().min(8, "Minimal 8 karakter").optional().or(z.literal("")),
@@ -56,15 +56,26 @@ export const FormKaryawan = ({
   open,
   onClose,
   karyawan,
-  peranSaya,
+  sesi,
 }: {
   open: boolean;
   onClose: () => void;
   karyawan?: Karyawan | null;
-  peranSaya: Role | undefined;
+  sesi: PenggunaSesi | undefined;
 }) => {
   const qc = useQueryClient();
   const sunting = Boolean(karyawan);
+  const bolehUbahRole = punyaIzin(sesi, "karyawan.kelola");
+
+  const { data: peran } = useQuery({
+    queryKey: ["peran"],
+    queryFn: async () => (await api.get<{ data: PeranKustom[] }>("/roles")).data.data,
+    enabled: open && bolehUbahRole,
+  });
+  // Akun lama yang belum pernah diberi peran secara eksplisit memakai peran
+  // sistem sesuai lingkupnya; formulir menampilkannya sebagai pilihan aktif.
+  const peranAwal = karyawan?.customRoleId ?? peran?.find((r) => r.code === karyawan?.role)?.id ?? "";
+  const peranBawaan = peran?.find((r) => r.code === "EMPLOYEE")?.id ?? "";
 
   const { data: departemen } = useQuery({
     queryKey: ["departemen", "semua"],
@@ -85,7 +96,7 @@ export const FormKaryawan = ({
     formState: { errors },
   } = useForm<Nilai>({
     resolver: zodResolver(skema),
-    defaultValues: { status: "active", role: "EMPLOYEE" },
+    defaultValues: { status: "active", customRoleId: "" },
   });
 
   React.useEffect(() => {
@@ -103,14 +114,14 @@ export const FormKaryawan = ({
             status: (STATUS as readonly string[]).includes(karyawan.status)
               ? (karyawan.status as (typeof STATUS)[number])
               : "active",
-            role: karyawan.role,
+            customRoleId: peranAwal,
             departmentId: karyawan.departmentId ?? "",
             positionId: karyawan.positionId ?? "",
             password: "",
           }
-        : { status: "active", role: "EMPLOYEE", nik: "", name: "", email: "" }
+        : { status: "active", customRoleId: peranBawaan, nik: "", name: "", email: "" }
     );
-  }, [open, karyawan, reset]);
+  }, [open, karyawan, reset, peranAwal, peranBawaan]);
 
   const simpan = useMutation({
     mutationFn: async (nilai: Nilai) => {
@@ -132,8 +143,6 @@ export const FormKaryawan = ({
 
   const deptDipilih = useWatch({ control, name: "departmentId" });
   const jabatanTersaring = (jabatan ?? []).filter((j) => !deptDipilih || !j.departmentId || j.departmentId === deptDipilih);
-  const bolehUbahRole = peranSaya === "SUPER_ADMIN" || peranSaya === "HR_ADMIN";
-
   return (
     <Modal
       open={open}
@@ -194,11 +203,12 @@ export const FormKaryawan = ({
             ))}
           </Select>
         </Field>
-        <Field label="Peran" hint={bolehUbahRole ? undefined : "Hanya HR yang bisa mengubah peran"}>
-          <Select {...register("role")} disabled={!bolehUbahRole}>
-            {ROLE.map((r) => (
-              <option key={r} value={r}>
-                {LABEL_ROLE[r]}
+        <Field label="Peran" error={errors.customRoleId?.message} hint={bolehUbahRole ? "Menentukan hak akses dan lingkup data. Kelola di menu Peran & Hak Akses." : "Hanya HR yang bisa mengubah peran"}>
+          <Select {...register("customRoleId")} disabled={!bolehUbahRole} aria-invalid={Boolean(errors.customRoleId)}>
+            <option value="">— Pilih peran —</option>
+            {(peran ?? []).map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name} · {LABEL_LINGKUP[r.baseRole]}
               </option>
             ))}
           </Select>

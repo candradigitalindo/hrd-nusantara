@@ -23,5 +23,13 @@ export const useLogout = () => {
   };
 };
 
+/**
+ * Lingkup data, bukan izin: HR melihat seluruh perusahaan, manajer melihat
+ * departemennya. Dipakai hanya untuk UI yang memang soal cakupan data.
+ */
 export const bolehHr = (role: string | undefined) => role === "SUPER_ADMIN" || role === "HR_ADMIN";
 export const bolehManajer = (role: string | undefined) => bolehHr(role) || role === "MANAGER";
+
+/** Apakah pengguna memegang salah satu izin ini (peran dinamis). */
+export const punyaIzin = (saya: PenggunaSesi | undefined, ...izin: string[]) =>
+  saya !== undefined && izin.some((k) => saya.permissions.includes(k));

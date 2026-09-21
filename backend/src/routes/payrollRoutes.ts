@@ -1,6 +1,5 @@
 // src/routes/payrollRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createSalaryComponent,
   getAllSalaryComponents,
@@ -18,7 +17,7 @@ import {
   getPayrollById,
   previewPayroll,
 } from '../controllers/payrollController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -40,24 +39,23 @@ router.use(authenticateToken);
 
 // Seluruh modul penggajian hanya untuk HR. Manajer sengaja tidak diberi akses:
 // gaji anggota tim bukan bagian dari kewenangan operasional mereka.
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Komponen gaji ---
 router.get(
   '/salary-components',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(listSalaryComponentQuerySchema, 'query'),
   asyncHandler(getAllSalaryComponents)
 );
 router.post(
   '/salary-components',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(createSalaryComponentSchema),
   asyncHandler(createSalaryComponent)
 );
 router.put(
   '/salary-components/:id',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(idParamSchema, 'params'),
   validate(updateSalaryComponentSchema),
   asyncHandler(updateSalaryComponent)
@@ -73,21 +71,21 @@ router.get(
 );
 router.post(
   '/employees/:id/salary',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(idParamSchema, 'params'),
   validate(setEmployeeSalarySchema),
   asyncHandler(setEmployeeSalary)
 );
 router.post(
   '/employees/:id/salary-components',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(idParamSchema, 'params'),
   validate(assignComponentSchema),
   asyncHandler(assignEmployeeComponent)
 );
 router.delete(
   '/employee-salary-components/:id',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(removeEmployeeComponent)
 );
@@ -95,33 +93,33 @@ router.delete(
 // --- Batch penggajian ---
 router.get(
   '/payroll-runs',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(listPayrollRunQuerySchema, 'query'),
   asyncHandler(getAllPayrollRuns)
 );
 router.post(
   '/payroll-runs',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(createPayrollRunSchema),
   asyncHandler(createPayrollRun)
 );
 router.post(
   '/payroll-runs/:id/calculate',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(idParamSchema, 'params'),
   validate(calculatePayrollRunSchema),
   asyncHandler(calculatePayrollRun)
 );
 router.patch(
   '/payroll-runs/:id/decision',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(idParamSchema, 'params'),
   validate(decidePayrollRunSchema),
   asyncHandler(decidePayrollRun)
 );
 router.get(
   '/payroll-runs/:id/preview/:employeeId',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   asyncHandler(previewPayroll)
 );
 
@@ -130,7 +128,7 @@ router.get(
 router.get('/payrolls/me', validate(listPayrollQuerySchema, 'query'), asyncHandler(getMyPayrolls));
 router.get(
   '/payrolls',
-  requireRole(...HR),
+  requirePermission('payroll.kelola'),
   validate(listPayrollQuerySchema, 'query'),
   asyncHandler(getAllPayrolls)
 );

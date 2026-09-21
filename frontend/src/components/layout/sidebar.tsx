@@ -73,7 +73,7 @@ export const Sidebar = ({
   className?: string;
 }) => {
   const pathname = usePathname();
-  const kelompok = kelompokUntuk(pengguna?.role);
+  const kelompok = kelompokUntuk(pengguna);
   const terbuka = kategoriTerbuka(React.useSyncExternalStore(berlanggananSidebar, snapshotSidebar, snapshotSidebarServer));
 
   return (
@@ -104,7 +104,7 @@ export const Sidebar = ({
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-sm font-semibold">{inisial(pengguna.name)}</span>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{pengguna.name}</p>
-              <p className="truncate text-xs text-muted">{LABEL_ROLE[pengguna.role]}</p>
+              <p className="truncate text-xs text-muted">{pengguna.customRole?.name ?? LABEL_ROLE[pengguna.role]}</p>
             </div>
           </div>
         </div>

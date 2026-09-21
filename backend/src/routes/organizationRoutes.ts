@@ -1,6 +1,5 @@
 // src/routes/organizationRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createDepartment,
   getAllDepartments,
@@ -12,7 +11,7 @@ import {
   updatePosition,
   deletePosition,
 } from '../controllers/organizationController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -25,7 +24,6 @@ import {
 } from '../schemas/organizationSchema';
 
 const router = express.Router();
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 router.use(authenticateToken);
 
@@ -33,13 +31,13 @@ router.use(authenticateToken);
 // formulir, dan nama departemen bukan rahasia.
 router.get('/departments', validate(listDepartmentQuerySchema, 'query'), asyncHandler(getAllDepartments));
 router.get('/departments/:id', validate(idParamSchema, 'params'), asyncHandler(getDepartmentById));
-router.post('/departments', requireRole(...HR), validate(createDepartmentSchema), asyncHandler(createDepartment));
-router.put('/departments/:id', requireRole(...HR), validate(idParamSchema, 'params'), validate(updateDepartmentSchema), asyncHandler(updateDepartment));
-router.delete('/departments/:id', requireRole(...HR), validate(idParamSchema, 'params'), asyncHandler(deleteDepartment));
+router.post('/departments', requirePermission('organisasi.kelola'), validate(createDepartmentSchema), asyncHandler(createDepartment));
+router.put('/departments/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), validate(updateDepartmentSchema), asyncHandler(updateDepartment));
+router.delete('/departments/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), asyncHandler(deleteDepartment));
 
 router.get('/positions', validate(listPositionQuerySchema, 'query'), asyncHandler(getAllPositions));
-router.post('/positions', requireRole(...HR), validate(createPositionSchema), asyncHandler(createPosition));
-router.put('/positions/:id', requireRole(...HR), validate(idParamSchema, 'params'), validate(updatePositionSchema), asyncHandler(updatePosition));
-router.delete('/positions/:id', requireRole(...HR), validate(idParamSchema, 'params'), asyncHandler(deletePosition));
+router.post('/positions', requirePermission('organisasi.kelola'), validate(createPositionSchema), asyncHandler(createPosition));
+router.put('/positions/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), validate(updatePositionSchema), asyncHandler(updatePosition));
+router.delete('/positions/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), asyncHandler(deletePosition));
 
 export default router;

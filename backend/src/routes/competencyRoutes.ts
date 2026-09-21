@@ -1,6 +1,5 @@
 // src/routes/competencyRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import {
   createCompetency,
   getAllCompetencies,
@@ -16,7 +15,7 @@ import {
   revokeCertification,
   getAllCertifications,
 } from '../controllers/competencyController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -36,7 +35,6 @@ const router = express.Router();
 
 router.use(authenticateToken);
 
-const HR = [Role.SUPER_ADMIN, Role.HR_ADMIN] as const;
 
 // --- Kamus kompetensi ---
 router.get(
@@ -46,7 +44,7 @@ router.get(
 );
 router.post(
   '/competencies',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(createCompetencySchema),
   asyncHandler(createCompetency)
 );
@@ -59,14 +57,14 @@ router.get(
 );
 router.put(
   '/positions/:id/competency-standards',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(idParamSchema, 'params'),
   validate(setStandardSchema),
   asyncHandler(setStandard)
 );
 router.delete(
   '/competency-standards/:id',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(idParamSchema, 'params'),
   asyncHandler(removeStandard)
 );
@@ -74,7 +72,7 @@ router.delete(
 // --- Kompetensi karyawan ---
 router.put(
   '/employees/:id/competencies',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(idParamSchema, 'params'),
   validate(assessCompetencySchema),
   asyncHandler(assessCompetency)
@@ -88,7 +86,7 @@ router.get(
 );
 router.get(
   '/competency-gap',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(gapQuerySchema, 'query'),
   asyncHandler(getGapReport)
 );
@@ -101,7 +99,7 @@ router.get(
 );
 router.post(
   '/certification-types',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(createCertificationTypeSchema),
   asyncHandler(createCertificationType)
 );
@@ -114,13 +112,13 @@ router.get(
 );
 router.post(
   '/certifications',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(createCertificationSchema),
   asyncHandler(createCertification)
 );
 router.patch(
   '/certifications/:id/revoke',
-  requireRole(...HR),
+  requirePermission('kompetensi.kelola'),
   validate(idParamSchema, 'params'),
   validate(revokeCertificationSchema),
   asyncHandler(revokeCertification)

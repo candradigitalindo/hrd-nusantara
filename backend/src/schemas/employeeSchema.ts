@@ -31,7 +31,11 @@ export const createEmployeeSchema = z
     address: z.string().trim().max(500).optional(),
     dateOfBirth: dateField.optional(),
     status: z.enum(EMPLOYEE_STATUSES).default('active'),
+    /// Lingkup data. Dipakai bila customRoleId tidak dikirim: karyawan diberi
+    /// peran sistem yang sesuai. Kalau customRoleId dikirim, nilai ini diabaikan
+    /// dan diisi dari lingkup peran tersebut.
     role: z.enum(ROLES).default(Role.EMPLOYEE),
+    customRoleId: ulidField.optional(),
     departmentId: ulidField.optional(),
     positionId: ulidField.optional(),
     password: z.string().min(8, 'Password minimal 8 karakter').max(128).optional(),
@@ -48,6 +52,7 @@ export const updateEmployeeSchema = z
     dateOfBirth: dateField.nullable().optional(),
     status: z.enum(EMPLOYEE_STATUSES).optional(),
     role: z.enum(ROLES).optional(),
+    customRoleId: ulidField.optional(),
     // null = lepaskan dari departemen/posisi. Versi lama menerjemahkan ini
     // menjadi connect:{id:null} yang selalu error.
     departmentId: ulidField.nullable().optional(),

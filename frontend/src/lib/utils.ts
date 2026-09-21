@@ -96,6 +96,14 @@ export const LABEL_ROLE: Record<string, string> = {
   EMPLOYEE: "Karyawan",
 };
 
+/** Lingkup data sebuah peran: seberapa luas data yang terlihat pemegangnya. */
+export const LABEL_LINGKUP: Record<string, string> = {
+  SUPER_ADMIN: "Pemilik sistem",
+  HR_ADMIN: "Seluruh perusahaan",
+  MANAGER: "Departemen sendiri",
+  EMPLOYEE: "Diri sendiri",
+};
+
 export const inisial = (nama: string) =>
   nama
     .split(/\s+/)

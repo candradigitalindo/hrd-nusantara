@@ -1,8 +1,7 @@
 // src/routes/auditRoutes.ts
 import express from 'express';
-import { Role } from '@prisma/client';
 import { getAuditLogs } from '../controllers/auditController';
-import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
+import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { listAuditQuerySchema } from '../schemas/auditSchema';
 
@@ -15,7 +14,7 @@ router.use(authenticateToken);
 // Tidak ada rute tulis atau hapus di sini, dan itu disengaja.
 router.get(
   '/audit-logs',
-  requireRole(Role.SUPER_ADMIN),
+  requirePermission('audit.lihat'),
   validate(listAuditQuerySchema, 'query'),
   asyncHandler(getAuditLogs)
 );

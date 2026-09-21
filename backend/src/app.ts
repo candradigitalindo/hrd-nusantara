@@ -32,6 +32,7 @@ import psychometricRoutes from './routes/psychometricRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 import mobileReleaseRoutes from './routes/mobileReleaseRoutes';
+import roleRoutes from './routes/roleRoutes';
 
 export const createApp = () => {
   const app = express();
@@ -129,6 +130,7 @@ export const createApp = () => {
   app.use('/api', whatsappRoutes);
   app.use('/api', deviceRoutes);
   app.use('/api', auditRoutes);
+  app.use('/api', roleRoutes);
   app.use('/api', reportRoutes);
 
   app.use((_req: Request, res: Response) => {

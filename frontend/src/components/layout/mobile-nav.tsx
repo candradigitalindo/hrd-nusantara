@@ -12,7 +12,7 @@ import type { PenggunaSesi } from "@/lib/types";
  */
 export const MobileNav = ({ pengguna }: { pengguna: PenggunaSesi | undefined }) => {
   const pathname = usePathname();
-  const menu = menuUntuk(pengguna?.role).filter((m) => m.utama).slice(0, 4);
+  const menu = menuUntuk(pengguna).filter((m) => m.utama).slice(0, 4);
 
   return (
     <nav

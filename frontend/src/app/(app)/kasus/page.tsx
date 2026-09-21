@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { ShieldAlert, MessageSquareWarning, Plus, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehManajer, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, bolehHr, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -27,7 +27,7 @@ type FormStatus = { status: "under_review" | "resolved" | "dismissed"; resolutio
 export default function HalamanKasus() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const manajemen = bolehManajer(saya?.role);
+  const manajemen = punyaIzin(saya, "disiplin.kelola");
   const hr = bolehHr(saya?.role);
 
   const [jenis, setJenis] = React.useState<JenisKasus | "">("");

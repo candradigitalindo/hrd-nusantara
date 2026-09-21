@@ -9,10 +9,14 @@ import { Role } from '@prisma/client';
 import { prisma } from './lib/prisma';
 import { env } from './config/env';
 import { generateULID } from './utils/generateULID';
+import { pastikanPeranSistem } from './services/roles/system';
 
 const main = async () => {
   const email = (process.env.SEED_ADMIN_EMAIL ?? 'admin@hrd-nusantara.local').toLowerCase();
   const nik = process.env.SEED_ADMIN_NIK ?? 'ADMIN-001';
+
+  await pastikanPeranSistem();
+  const peranAdmin = await prisma.customRole.findUnique({ where: { code: Role.SUPER_ADMIN }, select: { id: true } });
 
   const existing = await prisma.employee.findFirst({ where: { role: Role.SUPER_ADMIN } });
   if (existing) {
@@ -32,6 +36,7 @@ const main = async () => {
       name: process.env.SEED_ADMIN_NAME ?? 'Administrator',
       email,
       role: Role.SUPER_ADMIN,
+      ...(peranAdmin && { customRole: { connect: { id: peranAdmin.id } } }),
       status: 'active',
       password: await bcrypt.hash(password, env.BCRYPT_ROUNDS),
     },

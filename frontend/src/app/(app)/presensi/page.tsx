@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { CalendarCheck, Clock, ShieldCheck, ShieldOff } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehManajer } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -24,7 +24,7 @@ const menit = (n: number | null | undefined) => (n ? `${n} mnt` : "—");
 export default function HalamanPresensi() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const manajemen = bolehManajer(saya?.role);
+  const manajemen = punyaIzin(saya, "presensi.lihat_tim");
   const hariIni = format(new Date(), "yyyy-MM-dd");
 
   const [mulai, setMulai] = React.useState(hariIni);

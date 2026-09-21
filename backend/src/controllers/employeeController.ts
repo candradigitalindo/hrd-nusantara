@@ -25,6 +25,8 @@ const employeeSelect = {
   dateOfBirth: true,
   status: true,
   role: true,
+  customRoleId: true,
+  customRole: { select: { id: true, name: true, isSystem: true } },
   lastLoginAt: true,
   joinDate: true,
   exitDate: true,
@@ -51,6 +53,45 @@ const assertCanAssignRole = (actorRole: Role, targetRole: Role): string | null =
     return 'Hanya SUPER_ADMIN yang boleh memberikan role HR_ADMIN atau SUPER_ADMIN';
   }
   return null;
+};
+
+/**
+ * Menentukan peran yang akan diberikan: peran kustom yang diminta, atau peran
+ * sistem sesuai lingkup data. Lingkup data karyawan (kolom role) selalu
+ * mengikuti lingkup perannya, supaya pembatasan data di controller lain
+ * konsisten dengan izin yang ia pegang.
+ */
+const tentukanPeran = async (
+  aktor: { role: Role; permissions: string[] },
+  input: { role?: Role; customRoleId?: string }
+): Promise<{ ok: true; role: Role; customRoleId: string | null } | { ok: false; status: number; error: string }> => {
+  if (input.customRoleId) {
+    const peran = await prisma.customRole.findUnique({
+      where: { id: input.customRoleId },
+      select: { id: true, baseRole: true, permissions: true },
+    });
+    if (!peran) return { ok: false, status: 400, error: 'Peran tidak ditemukan' };
+
+    const roleError = assertCanAssignRole(aktor.role, peran.baseRole);
+    if (roleError) return { ok: false, status: 403, error: roleError };
+
+    // Memberi orang lain peran yang izinnya melampaui milik sendiri adalah
+    // jalur eskalasi tidak langsung; SUPER_ADMIN bebas.
+    if (aktor.role !== Role.SUPER_ADMIN) {
+      const asing = peran.permissions.filter((k) => !aktor.permissions.includes(k));
+      if (asing.length > 0) {
+        return { ok: false, status: 403, error: `Anda tidak bisa memberikan peran dengan izin yang tidak Anda pegang: ${asing.join(', ')}` };
+      }
+    }
+    return { ok: true, role: peran.baseRole, customRoleId: peran.id };
+  }
+
+  const role = input.role ?? Role.EMPLOYEE;
+  const roleError = assertCanAssignRole(aktor.role, role);
+  if (roleError) return { ok: false, status: 403, error: roleError };
+
+  const sistem = await prisma.customRole.findUnique({ where: { code: role }, select: { id: true } });
+  return { ok: true, role, customRoleId: sistem?.id ?? null };
 };
 
 export const getAllEmployees = async (req: Request, res: Response) => {
@@ -148,10 +189,8 @@ export const createEmployee = async (req: Request, res: Response) => {
   const input = req.body as CreateEmployeeInput;
   const actor = req.user!;
 
-  const roleError = assertCanAssignRole(actor.role, input.role);
-  if (roleError) {
-    return res.status(403).json({ error: roleError });
-  }
+  const peran = await tentukanPeran(actor, input);
+  if (!peran.ok) return res.status(peran.status).json({ error: peran.error });
 
   const hp = bakukanNomorHp(input.phoneNumber);
   if (!hp.ok) return res.status(400).json({ error: 'Nomor HP tidak valid. Gunakan format 08xx atau +62xx.' });
@@ -168,7 +207,8 @@ export const createEmployee = async (req: Request, res: Response) => {
         address: input.address,
         dateOfBirth: input.dateOfBirth,
         status: input.status,
-        role: input.role,
+        role: peran.role,
+        ...(peran.customRoleId && { customRole: { connect: { id: peran.customRoleId } } }),
         password: input.password
           ? await bcrypt.hash(input.password, env.BCRYPT_ROUNDS)
           : null,
@@ -197,14 +237,15 @@ export const updateEmployee = async (req: Request, res: Response) => {
   const input = req.body as UpdateEmployeeInput;
   const actor = req.user!;
 
-  if (input.role !== undefined) {
-    const roleError = assertCanAssignRole(actor.role, input.role);
-    if (roleError) {
-      return res.status(403).json({ error: roleError });
-    }
-    if (actor.id === id && input.role !== actor.role) {
+  const ubahPeran = input.role !== undefined || input.customRoleId !== undefined;
+  let peranBaru: { role: Role; customRoleId: string | null } | null = null;
+  if (ubahPeran) {
+    const peran = await tentukanPeran(actor, input);
+    if (!peran.ok) return res.status(peran.status).json({ error: peran.error });
+    if (actor.id === id && (peran.role !== actor.role || peran.customRoleId !== actor.customRoleId)) {
       return res.status(403).json({ error: 'Anda tidak bisa mengubah role diri sendiri' });
     }
+    peranBaru = { role: peran.role, customRoleId: peran.customRoleId };
   }
 
   const data: Prisma.EmployeeUpdateInput = {};
@@ -222,7 +263,10 @@ export const updateEmployee = async (req: Request, res: Response) => {
   if (input.address !== undefined) data.address = input.address;
   if (input.dateOfBirth !== undefined) data.dateOfBirth = input.dateOfBirth;
   if (input.status !== undefined) data.status = input.status;
-  if (input.role !== undefined) data.role = input.role;
+  if (peranBaru) {
+    data.role = peranBaru.role;
+    data.customRole = peranBaru.customRoleId ? { connect: { id: peranBaru.customRoleId } } : { disconnect: true };
+  }
 
   // null berarti lepaskan relasi; string berarti pindahkan.
   if (input.departmentId !== undefined) {
@@ -239,7 +283,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
   // Nilai sebelum perubahan, khusus untuk yang menyangkut hak akses dan
   // status kerja. Jejak "role diubah" tanpa nilai lamanya tidak menjawab
   // pertanyaan yang justru ditanyakan saat audit: naik dari apa ke apa.
-  const perluNilaiLama = input.role !== undefined || input.status !== undefined;
+  const perluNilaiLama = ubahPeran || input.status !== undefined;
   const sebelum = perluNilaiLama
     ? await prisma.employee.findUnique({ where: { id }, select: { role: true, status: true } })
     : null;
@@ -248,12 +292,12 @@ export const updateEmployee = async (req: Request, res: Response) => {
     const employee = await prisma.employee.update({ where: { id }, data, select: employeeSelect });
 
     res.locals.audit = {
-      action: input.role !== undefined ? 'employee.ubah.role' : 'employee.ubah',
+      action: ubahPeran ? 'employee.ubah.role' : 'employee.ubah',
       entity: 'Employee',
       entityId: id,
       summary:
-        input.role !== undefined && sebelum && sebelum.role !== input.role
-          ? `Mengubah role ${employee.email} dari ${sebelum.role} menjadi ${input.role}`
+        ubahPeran && sebelum
+          ? `Mengubah peran ${employee.email} menjadi ${employee.customRole?.name ?? employee.role} (lingkup ${sebelum.role} → ${employee.role})`
           : `Memperbarui data ${employee.email}`,
       // Hanya NAMA field yang berubah, bukan nilainya: alamat, tanggal lahir,
       // dan nomor telepon adalah data pribadi yang tidak perlu disalin ke
