@@ -127,6 +127,21 @@ describe('Karyawan menautkan WhatsApp-nya sendiri', () => {
     expect(akun.sessionStatus).toBe('connected');
   });
 
+  it('nomor WhatsApp yang tertaut mengisi nomor HP karyawan yang masih kosong (username login)', async () => {
+    await tautkan(budiToken, '628111111111');
+    const budiDb = await prisma.employee.findUniqueOrThrow({ where: { id: budi.id } });
+    expect(budiDb.phoneNumber).toBe('628111111111');
+    // Kini Budi bisa login dengan nomornya.
+    const login = await request(app).post('/api/auth/login').send({ username: '08111111111', password: 'RahasiaUji123' });
+    expect(login.status).toBe(200);
+  });
+
+  it('nomor HP karyawan yang sudah diisi HR tidak ditimpa oleh WhatsApp', async () => {
+    await prisma.employee.update({ where: { id: budi.id }, data: { phoneNumber: '628999999999' } });
+    await tautkan(budiToken, '628111111111');
+    expect((await prisma.employee.findUniqueOrThrow({ where: { id: budi.id } })).phoneNumber).toBe('628999999999');
+  });
+
   it('menautkan dua kali tidak membuat akun kedua', async () => {
     await tautkan(budiToken, '628111111111');
     const lagi = await request(app).post('/api/whatsapp/me/connect').set(auth(budiToken)).send({});

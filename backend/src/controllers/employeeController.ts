@@ -1,6 +1,7 @@
 // src/controllers/employeeController.ts
 import type { DirectoryQuery } from '../schemas/employeeSchema';
 import { Request, Response } from 'express';
+import { normalizePhoneNumber } from '../utils/whatsappRules';
 import bcrypt from 'bcryptjs';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
@@ -125,6 +126,24 @@ export const getEmployeeById = async (req: Request, res: Response) => {
   res.json(employee);
 };
 
+/**
+ * Nomor HP adalah username login, jadi disimpan dalam bentuk baku (628…)
+ * apa pun cara HR mengetiknya; nomor yang tidak sah ditolak lebih awal.
+ */
+const bakukanNomorHp = (nomor: string | null | undefined): { ok: true; nomor: string | null } | { ok: false } => {
+  if (nomor === undefined || nomor === null || nomor.trim() === '') return { ok: true, nomor: null };
+  const baku = normalizePhoneNumber(nomor);
+  return baku ? { ok: true, nomor: baku } : { ok: false };
+};
+
+const pesanKonflik = (target: string[] | undefined) => {
+  const t = target ?? [];
+  if (t.includes('phoneNumber')) return 'Nomor HP sudah dipakai karyawan lain';
+  if (t.includes('email')) return 'Email sudah terpakai';
+  if (t.includes('nik')) return 'NIK sudah terpakai';
+  return `${t.join(', ') || 'NIK atau email'} sudah terpakai`;
+};
+
 export const createEmployee = async (req: Request, res: Response) => {
   const input = req.body as CreateEmployeeInput;
   const actor = req.user!;
@@ -134,6 +153,9 @@ export const createEmployee = async (req: Request, res: Response) => {
     return res.status(403).json({ error: roleError });
   }
 
+  const hp = bakukanNomorHp(input.phoneNumber);
+  if (!hp.ok) return res.status(400).json({ error: 'Nomor HP tidak valid. Gunakan format 08xx atau +62xx.' });
+
   try {
     const employee = await prisma.employee.create({
       data: {
@@ -142,7 +164,7 @@ export const createEmployee = async (req: Request, res: Response) => {
         nik: input.nik,
         name: input.name,
         email: input.email,
-        phoneNumber: input.phoneNumber,
+        phoneNumber: hp.nomor,
         address: input.address,
         dateOfBirth: input.dateOfBirth,
         status: input.status,
@@ -160,8 +182,7 @@ export const createEmployee = async (req: Request, res: Response) => {
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2002') {
-        const target = (error.meta?.target as string[] | undefined)?.join(', ') ?? 'NIK atau email';
-        return res.status(409).json({ error: `${target} sudah terpakai` });
+        return res.status(409).json({ error: pesanKonflik(error.meta?.target as string[] | undefined) });
       }
       if (error.code === 'P2025') {
         return res.status(400).json({ error: 'Departemen atau posisi tidak ditemukan' });
@@ -193,7 +214,11 @@ export const updateEmployee = async (req: Request, res: Response) => {
   if (input.nik !== undefined) data.nik = input.nik;
   if (input.name !== undefined) data.name = input.name;
   if (input.email !== undefined) data.email = input.email;
-  if (input.phoneNumber !== undefined) data.phoneNumber = input.phoneNumber;
+  if (input.phoneNumber !== undefined) {
+    const hp = bakukanNomorHp(input.phoneNumber);
+    if (!hp.ok) return res.status(400).json({ error: 'Nomor HP tidak valid. Gunakan format 08xx atau +62xx.' });
+    data.phoneNumber = hp.nomor;
+  }
   if (input.address !== undefined) data.address = input.address;
   if (input.dateOfBirth !== undefined) data.dateOfBirth = input.dateOfBirth;
   if (input.status !== undefined) data.status = input.status;

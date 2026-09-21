@@ -227,5 +227,19 @@ export const claimPhoneNumber = async (accountId: string, nomorMentah: string): 
   if (lain && lain.id !== accountId) return { status: 'konflik', label: lain.label };
 
   await prisma.whatsAppAccount.update({ where: { id: accountId }, data: { phoneNumber: nomor } });
+
+  // Nomor WhatsApp adalah username login. Karyawan yang nomornya belum
+  // diisi HR otomatis terisi dari nomor yang benar-benar dipindainya —
+  // asal nomor itu belum dipakai karyawan lain.
+  if (akun.kind === 'personal') {
+    const pemegang = await prisma.whatsAppAccount.findUnique({ where: { id: accountId }, select: { assignedEmployeeId: true } });
+    if (pemegang?.assignedEmployeeId) {
+      const karyawan = await prisma.employee.findUnique({ where: { id: pemegang.assignedEmployeeId }, select: { phoneNumber: true } });
+      const dipakaiLain = await prisma.employee.findUnique({ where: { phoneNumber: nomor }, select: { id: true } });
+      if (karyawan && !karyawan.phoneNumber && !dipakaiLain) {
+        await prisma.employee.update({ where: { id: pemegang.assignedEmployeeId }, data: { phoneNumber: nomor } });
+      }
+    }
+  }
   return { status: 'terpasang' };
 };

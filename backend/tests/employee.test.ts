@@ -248,3 +248,34 @@ describe('GET /api/employees/directory', () => {
     expect(nik.body.data.map((e: { name: string }) => e.name)).toEqual(['Budi Cook']);
   });
 });
+
+describe('Nomor HP sebagai username login', () => {
+  const buat = (nik: string, phoneNumber?: string) =>
+    request(app).post('/api/employees').set(auth(token)).send({ nik, name: 'Uji ' + nik, email: `${nik.toLowerCase()}@resto.id`, role: 'EMPLOYEE', status: 'active', ...(phoneNumber !== undefined ? { phoneNumber } : {}) });
+
+  it('dibakukan ke 62xx apa pun cara HR mengetiknya', async () => {
+    const res = await buat('EMP-1', '0812-3456-7890');
+    expect(res.status).toBe(201);
+    expect(res.body.phoneNumber).toBe('6281234567890');
+  });
+
+  it('nomor yang sama pada dua karyawan ditolak 409 dengan pesan yang jelas', async () => {
+    expect((await buat('EMP-1', '081234567890')).status).toBe(201);
+    const ganda = await buat('EMP-2', '+62 812 3456 7890');
+    expect(ganda.status).toBe(409);
+    expect(ganda.body.error).toContain('Nomor HP');
+  });
+
+  it('nomor tidak sah ditolak 400; kosong boleh', async () => {
+    expect((await buat('EMP-1', '123')).status).toBe(400);
+    expect((await buat('EMP-2', '')).status).toBe(201);
+    expect((await buat('EMP-3')).status).toBe(201);
+  });
+
+  it('ubah nomor lewat PUT juga dibakukan', async () => {
+    const dibuat = await buat('EMP-1', '081234567890');
+    const ubah = await request(app).put(`/api/employees/${dibuat.body.id}`).set(auth(token)).send({ phoneNumber: '+62 856-0000-1111' });
+    expect(ubah.status).toBe(200);
+    expect(ubah.body.phoneNumber).toBe('6285600001111');
+  });
+});

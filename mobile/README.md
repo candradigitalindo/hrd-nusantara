@@ -48,6 +48,9 @@ lib/
   firebase_options.dart   PENGGANTI SEMENTARA — lihat "Push"
 ```
 
+Login memakai **nomor HP/WhatsApp** yang terdaftar di HR (08xx, +62xx, atau
+62xx); email tetap diterima untuk akun lama.
+
 Alur data: layar → provider Riverpod → repo → `KlienApi` (dio). Token JWT
 disimpan di Keychain/Keystore; 401 dari server otomatis mengeluarkan sesi.
 

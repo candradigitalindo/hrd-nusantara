@@ -1,5 +1,6 @@
 // src/controllers/authController.ts
 import { Request, Response } from 'express';
+import { normalizePhoneNumber } from '../utils/whatsappRules';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
@@ -26,10 +27,23 @@ const publicUserFields = {
   positionId: true,
 } as const;
 
-export const login = async (req: Request, res: Response) => {
-  const { email, password } = req.body as LoginInput;
+/**
+ * Mencari akun dari pengenal login: nomor HP/WhatsApp (dibakukan) atau email.
+ * Mengembalikan null untuk pengenal yang tidak sah — diperlakukan sama dengan
+ * "tidak terdaftar" supaya balasan gagalnya seragam.
+ */
+const cariAkunLogin = (pengenal: string) => {
+  if (pengenal.includes('@')) return prisma.employee.findUnique({ where: { email: pengenal.toLowerCase() } });
+  const nomor = normalizePhoneNumber(pengenal);
+  if (!nomor) return Promise.resolve(null);
+  return prisma.employee.findUnique({ where: { phoneNumber: nomor } });
+};
 
-  const employee = await prisma.employee.findUnique({ where: { email } });
+export const login = async (req: Request, res: Response) => {
+  const { username, email, password } = req.body as LoginInput;
+  const pengenal = (username ?? email ?? '').trim();
+
+  const employee = await cariAkunLogin(pengenal);
 
   const isValid = await bcrypt.compare(password, employee?.password ?? DUMMY_HASH);
 
@@ -43,10 +57,10 @@ export const login = async (req: Request, res: Response) => {
       action: 'auth.login.gagal',
       entity: 'Employee',
       entityId: employee?.id,
-      summary: `Login gagal untuk ${email}`,
-      metadata: { email, alasan: !employee ? 'email_tidak_terdaftar' : 'password_salah' },
+      summary: `Login gagal untuk ${pengenal}`,
+      metadata: { pengenal, alasan: !employee ? 'tidak_terdaftar' : 'password_salah' },
     };
-    return res.status(401).json({ error: 'Email atau password salah' });
+    return res.status(401).json({ error: 'Nomor HP/email atau password salah' });
   }
 
   if (!ACTIVE_STATUSES.has(employee.status)) {

@@ -37,6 +37,7 @@ export const makeEmployee = async (
     departmentId?: string | null;
     positionId?: string | null;
     gender?: string | null;
+    phoneNumber?: string | null;
   } = {}
 ) => {
   counter += 1;
@@ -54,6 +55,7 @@ export const makeEmployee = async (
       departmentId: overrides.departmentId ?? null,
       positionId: overrides.positionId ?? null,
       gender: overrides.gender ?? null,
+      phoneNumber: overrides.phoneNumber ?? null,
     },
   });
 };

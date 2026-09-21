@@ -6,10 +6,10 @@ import 'package:integration_test/integration_test.dart';
 /// Alur karyawan terhadap backend sungguhan. Jalankan dengan:
 ///   flutter test integration_test/alur_karyawan_test.dart -d emulator-5554 \
 ///     --dart-define=API_URL=http://10.0.2.2:3000/api \
-///     --dart-define=UJI_EMAIL=m-emp@uji.local --dart-define=UJI_PASSWORD=UjiMobile#2026
+///     --dart-define=UJI_USERNAME=628111111111 --dart-define=UJI_PASSWORD=UjiMobile#2026
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-  const email = String.fromEnvironment('UJI_EMAIL');
+  const username = String.fromEnvironment('UJI_USERNAME');
   const password = String.fromEnvironment('UJI_PASSWORD');
 
   Future<void> tunggu(WidgetTester tester, Finder f, {int detik = 20}) async {
@@ -27,7 +27,7 @@ void main() {
 
     // Layar login.
     await tunggu(tester, find.text('HRD Nusantara'));
-    await tester.enterText(find.byType(TextFormField).at(0), email);
+    await tester.enterText(find.byType(TextFormField).at(0), username);
     await tester.enterText(find.byType(TextFormField).at(1), password);
     await tester.tap(find.widgetWithText(FilledButton, 'Masuk'));
 

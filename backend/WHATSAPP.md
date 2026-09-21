@@ -74,6 +74,11 @@ nomornya diperbarui.
 Dua karyawan yang saling berkirim pesan masing-masing punya salinan di
 arsipnya sendiri (`externalMessageId` unik **per akun**).
 
+Nomor WhatsApp yang tertaut juga **username login** karyawan: bila kolom
+nomor HP karyawan masih kosong di HR, nomor hasil pemindaian itu mengisinya
+(kecuali sudah dipakai karyawan lain). Nomor yang sudah diisi HR tidak
+ditimpa.
+
 ### Foto absensi ber-stempel ke grup
 
 Setelah tersambung, karyawan memilih **satu grup** dari daftar grup yang

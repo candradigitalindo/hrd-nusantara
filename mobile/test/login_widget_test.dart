@@ -20,13 +20,13 @@ void main() {
 
     await tester.tap(find.widgetWithText(FilledButton, 'Masuk'));
     await tester.pump();
-    expect(find.text('Masukkan email yang sah'), findsOneWidget);
+    expect(find.text('Masukkan nomor HP (08xx) atau email'), findsOneWidget);
     expect(find.text('Password wajib diisi'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextFormField).first, 'budi@resto.id');
+    await tester.enterText(find.byType(TextFormField).first, '0812 3456 7890');
     await tester.tap(find.widgetWithText(FilledButton, 'Masuk'));
     await tester.pump();
-    expect(find.text('Masukkan email yang sah'), findsNothing);
+    expect(find.text('Masukkan nomor HP (08xx) atau email'), findsNothing);
     expect(find.text('Password wajib diisi'), findsOneWidget);
   });
 

@@ -11,8 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { notifikasi } from "@/hooks/use-notifikasi";
 
+// Username = nomor HP/WhatsApp; email tetap diterima sebagai cadangan.
 const skema = z.object({
-  email: z.string().email("Format email tidak valid"),
+  username: z
+    .string()
+    .trim()
+    .min(1, "Nomor HP wajib diisi")
+    .refine((v) => v.includes("@") || v.replace(/\D/g, "").length >= 9, "Masukkan nomor HP (08xx / +62xx) atau email"),
   password: z.string().min(1, "Kata sandi wajib diisi"),
 });
 type Nilai = z.infer<typeof skema>;
@@ -41,14 +46,14 @@ function FormLogin() {
 
   return (
     <form onSubmit={handleSubmit(masuk)} className="space-y-4" noValidate>
-      <Field label="Email" error={errors.email?.message}>
+      <Field label="Nomor HP / WhatsApp" error={errors.username?.message} hint="Nomor yang terdaftar di HR, mis. 0812xxxx. Email juga bisa.">
         <Input
-          type="email"
-          autoComplete="email"
-          inputMode="email"
-          placeholder="nama@perusahaan.id"
-          aria-invalid={Boolean(errors.email)}
-          {...register("email")}
+          type="text"
+          autoComplete="username"
+          inputMode="tel"
+          placeholder="0812 3456 7890"
+          aria-invalid={Boolean(errors.username)}
+          {...register("username")}
         />
       </Field>
       <Field label="Kata sandi" error={errors.password?.message}>

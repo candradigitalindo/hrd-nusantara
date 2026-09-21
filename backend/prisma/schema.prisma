@@ -25,7 +25,9 @@ model Employee {
   nik         String    @unique
   name        String
   email       String    @unique
-  phoneNumber String?
+  /// Username login: nomor HP/WhatsApp dalam bentuk baku E.164 tanpa plus
+  /// (628…), unik. Email tetap diterima sebagai cadangan.
+  phoneNumber String?   @unique
   address     String?
   dateOfBirth DateTime?
   /// "female" | "male". Diperlukan untuk hak cuti yang dibatasi undang-undang

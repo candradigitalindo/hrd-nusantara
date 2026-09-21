@@ -1,12 +1,23 @@
 // src/schemas/authSchema.ts
 import { z } from 'zod';
 
+/**
+ * Username = nomor HP/WhatsApp (08xx, +62xx, 62xx) — sesuai kebijakan
+ * perusahaan. Email tetap diterima: akun admin awal dan akun lama mungkin
+ * belum punya nomor. `email` dipertahankan sebagai nama field lama.
+ */
 export const loginSchema = z
   .object({
-    email: z.email('Format email tidak valid').toLowerCase(),
+    username: z.string().trim().min(3, 'Nomor HP atau email wajib diisi').max(150).optional(),
+    // Field lama: bila dipakai, isinya memang harus email.
+    email: z.email('Format email tidak valid').toLowerCase().optional(),
     password: z.string().min(1, 'Password wajib diisi'),
   })
-  .strict();
+  .strict()
+  .refine((d) => Boolean(d.username || d.email), {
+    message: 'Nomor HP/WhatsApp atau email wajib diisi',
+    path: ['username'],
+  });
 
 export const changePasswordSchema = z
   .object({

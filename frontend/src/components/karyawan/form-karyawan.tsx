@@ -20,7 +20,13 @@ const skema = z.object({
   nik: z.string().trim().min(2, "NIK minimal 2 karakter").max(50),
   name: z.string().trim().min(2, "Nama minimal 2 karakter").max(150),
   email: z.string().trim().email("Format email tidak valid"),
-  phoneNumber: z.string().trim().max(25).optional().or(z.literal("")),
+  phoneNumber: z
+    .string()
+    .trim()
+    .max(25)
+    .refine((v) => v === "" || v.replace(/\D/g, "").length >= 10, "Nomor HP minimal 10 digit, mis. 0812xxxx")
+    .optional()
+    .or(z.literal("")),
   address: z.string().trim().max(500).optional().or(z.literal("")),
   dateOfBirth: z.string().optional().or(z.literal("")),
   joinDate: z.string().optional().or(z.literal("")),
@@ -156,8 +162,8 @@ export const FormKaryawan = ({
         <Field label="Email" error={errors.email?.message}>
           <Input type="email" inputMode="email" {...register("email")} aria-invalid={Boolean(errors.email)} />
         </Field>
-        <Field label="No. HP" error={errors.phoneNumber?.message}>
-          <Input inputMode="tel" placeholder="08xx" {...register("phoneNumber")} />
+        <Field label="No. HP / WhatsApp" error={errors.phoneNumber?.message} hint="Dipakai karyawan sebagai username login (08xx atau +62xx); disimpan dalam bentuk baku 62xx">
+          <Input inputMode="tel" placeholder="0812 3456 7890" {...register("phoneNumber")} />
         </Field>
         <Field label="Departemen">
           <Select {...register("departmentId")}>

@@ -51,10 +51,11 @@ class SesiNotifier extends Notifier<StatusSesi> {
     }
   }
 
-  Future<Pengguna> masuk(String email, String password) async {
+  /// [username] = nomor HP/WhatsApp (08xx, +62xx) atau email sebagai cadangan.
+  Future<Pengguna> masuk(String username, String password) async {
     final api = ref.read(klienApiProvider);
     final simpanan = ref.read(penyimpananSesiProvider);
-    final hasil = await api.post('/auth/login', {'email': email.trim(), 'password': password});
+    final hasil = await api.post('/auth/login', {'username': username.trim(), 'password': password});
     await simpanan.simpanToken(hasil['token'] as String);
     final profil = await api.getObjek('/auth/me');
     await simpanan.simpanPengguna(profil);

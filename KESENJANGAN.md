@@ -63,6 +63,11 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
 
+Login (21 September 2026): username adalah **nomor HP/WhatsApp** karyawan
+(08xx, +62xx, 62xx — dibakukan ke 62xx dan unik); email tetap diterima sebagai
+cadangan untuk akun admin awal. Nomor WhatsApp yang ditautkan otomatis mengisi
+nomor karyawan yang masih kosong.
+
 Warna brand (21 September 2026): hijau sage `#4a7c62` mengikuti pos.nbp.co.id,
 sekunder kuning emas `#d9a627`; keduanya dipakai web (token `--primary`,
 `--secondary`) dan mobile (`lib/core/tema.dart`). Grafik memakai hijau/kuning

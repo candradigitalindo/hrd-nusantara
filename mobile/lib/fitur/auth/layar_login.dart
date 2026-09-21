@@ -15,7 +15,7 @@ class LayarLogin extends ConsumerStatefulWidget {
 
 class _LayarLoginState extends ConsumerState<LayarLogin> {
   final _form = GlobalKey<FormState>();
-  final _email = TextEditingController();
+  final _username = TextEditingController();
   final _password = TextEditingController();
   bool _sembunyi = true;
   bool _memproses = false;
@@ -23,7 +23,7 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
 
   @override
   void dispose() {
-    _email.dispose();
+    _username.dispose();
     _password.dispose();
     super.dispose();
   }
@@ -35,7 +35,7 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
       _galat = null;
     });
     try {
-      final p = await ref.read(sesiProvider.notifier).masuk(_email.text, _password.text);
+      final p = await ref.read(sesiProvider.notifier).masuk(_username.text, _password.text);
       if (!mounted) return;
       tampilkanPesan(context, 'Selamat datang, ${p.nama.split(' ').first}', rincian: p.jabatan ?? p.departemen);
     } catch (e) {
@@ -75,12 +75,13 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
                       Text('Masuk dengan akun karyawan Anda', style: TextStyle(color: skema.onSurfaceVariant)),
                       const SizedBox(height: 28),
                       TextFormField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        autofillHints: const [AutofillHints.username, AutofillHints.email],
+                        controller: _username,
+                        keyboardType: TextInputType.phone,
+                        autofillHints: const [AutofillHints.username, AutofillHints.telephoneNumber],
                         textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.mail_outline)),
-                        validator: (v) => (v == null || !v.contains('@')) ? 'Masukkan email yang sah' : null,
+                        decoration: const InputDecoration(labelText: 'Nomor HP / WhatsApp', hintText: '0812 3456 7890', prefixIcon: Icon(Icons.phone_android_outlined)),
+                        // Nomor HP adalah username; email tetap diterima untuk akun lama.
+                        validator: (v) => (v == null || !(v.contains('@') || v.replaceAll(RegExp(r'\D'), '').length >= 9)) ? 'Masukkan nomor HP (08xx) atau email' : null,
                       ),
                       const SizedBox(height: 14),
                       TextFormField(

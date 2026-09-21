@@ -200,3 +200,33 @@ describe('Badan permintaan rusak', () => {
     expect(res.body.error).toMatch(/JSON/);
   });
 });
+
+describe('Login dengan nomor HP/WhatsApp sebagai username', () => {
+  beforeEach(async () => {
+    await makeEmployee({ email: 'siti@resto.id', nik: 'EMP-HP', name: 'Siti', phoneNumber: '628123456789' });
+  });
+
+  it.each(['08123456789', '+62 812-3456-789', '628123456789', '62 812 3456 789'])('menerima nomor dalam format %s', async (username) => {
+    const res = await request(app).post('/api/auth/login').send({ username, password: DEFAULT_PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.user.nik).toBe('EMP-HP');
+    expect(res.body.token).toBeTruthy();
+  });
+
+  it('email tetap diterima lewat field username maupun field lama', async () => {
+    expect((await request(app).post('/api/auth/login').send({ username: 'siti@resto.id', password: DEFAULT_PASSWORD })).status).toBe(200);
+    expect((await request(app).post('/api/auth/login').send({ email: 'Siti@Resto.id', password: DEFAULT_PASSWORD })).status).toBe(200);
+  });
+
+  it('nomor tidak terdaftar, nomor tidak sah, dan password salah dijawab sama (401)', async () => {
+    for (const badan of [{ username: '08999999999', password: DEFAULT_PASSWORD }, { username: '12', password: DEFAULT_PASSWORD }, { username: '08123456789', password: 'salah' }]) {
+      const res = await request(app).post('/api/auth/login').send(badan);
+      expect(res.status).toBe(badan.username === '12' ? 400 : 401);
+      if (res.status === 401) expect(res.body.error).toBe('Nomor HP/email atau password salah');
+    }
+  });
+
+  it('tanpa username maupun email ditolak 400', async () => {
+    expect((await request(app).post('/api/auth/login').send({ password: DEFAULT_PASSWORD })).status).toBe(400);
+  });
+});
