@@ -73,6 +73,14 @@ sekunder kuning emas `#d9a627`; keduanya dipakai web (token `--primary`,
 `--secondary`) dan mobile (`lib/core/tema.dart`). Grafik memakai hijau/kuning
 satu rumpun yang lebih jenuh dan tervalidasi (`--chart-1`, `--chart-2`).
 
+Dashboard (21 September 2026): tampilan manajemen dua kolom tetap (grafik
+di kiri, presensi hari ini / cuti menunggu / dokumen kedaluwarsa di kanan)
+sehingga tinggi kartu yang berbeda tidak menyisakan lubang; tampilan karyawan
+diisi ringkasan pribadi (presensi hari ini, sisa cuti, pengumuman belum dibaca,
+slip terakhir, riwayat 7 hari, pengumuman & cuti terakhir). Label kartu
+statistik boleh dua baris; label sumbu grafik dijarangkan otomatis di layar
+sempit.
+
 Sidebar (21 September 2026): menu dikelompokkan per kategori (Beranda,
 Komunikasi, Kepegawaian, Kehadiran & Cuti, Penggajian, Pengembangan, Kepatuhan,
 Analitik, Aplikasi Mobile) dengan sub-menu yang bisa dilipat; kategori halaman

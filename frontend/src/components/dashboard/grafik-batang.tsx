@@ -77,7 +77,8 @@ export const GrafikBatang = ({
               tickLine={false}
               axisLine={{ stroke: "var(--border)" }}
               tick={{ fill: "var(--muted)", fontSize: 12 }}
-              interval={0}
+              interval="preserveStartEnd"
+              minTickGap={8}
               tickFormatter={(v: string) => (v.length > 12 ? `${v.slice(0, 11)}…` : v)}
             />
             <YAxis

@@ -36,7 +36,7 @@ export const StatCard = ({
   <Card className={cn("p-4 sm:p-5 animate-fade-up", className)}>
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-sm text-muted truncate">{label}</p>
+        <p className="text-sm leading-snug text-muted line-clamp-2">{label}</p>
         <p className="mt-1 text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
         {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
       </div>
