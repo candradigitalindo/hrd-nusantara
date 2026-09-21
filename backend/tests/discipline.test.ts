@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { prisma, resetDatabase, makeEmployee, makeDepartment } from './helpers/db';
+import { prisma, resetDatabase, makeEmployee, makeDepartment, tungguJejakAudit } from './helpers/db';
 import { login, auth, expectStatus } from './helpers/api';
 import { bikinApp } from './helpers/app';
 import { tungguAuditSelesai } from '../src/services/audit/record';
@@ -223,9 +223,8 @@ describe('Tindakan disiplin', () => {
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "AuditLog" RESTART IDENTITY CASCADE');
 
     await request(app).get(`/api/cases/${res.body.id}`).set(auth(manajerDapurToken));
-    await tungguAuditSelesai();
 
-    const jejak = await prisma.auditLog.findFirst({ where: { action: 'discipline.case.read' } });
+    const jejak = await tungguJejakAudit({ action: 'discipline.case.read' });
     expect(jejak).not.toBeNull();
     expect(jejak!.actorEmail).toBe('chef@resto.id');
   });

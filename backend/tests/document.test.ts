@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { prisma, resetDatabase, makeEmployee } from './helpers/db';
+import { prisma, resetDatabase, makeEmployee, tungguJejakAudit } from './helpers/db';
 import { login, auth, expectStatus } from './helpers/api';
 import { bikinApp } from './helpers/app';
 import { env } from '../src/config/env';
@@ -183,10 +183,11 @@ describe('Melihat dan mengunduh', () => {
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "AuditLog" RESTART IDENTITY CASCADE');
 
     await request(app).get(`/api/documents/${dibuat.body.id}/download`).set(auth(hrToken));
-    await tungguAuditSelesai();
 
     // Ini GET, yang biasanya tidak dicatat — tapi ini akses ke data pribadi.
-    const jejak = await prisma.auditLog.findFirst({ where: { action: 'employee.document.download' } });
+    // Responsnya di-stream, jadi jejaknya ditunggu sampai muncul: lihat
+    // catatan di tungguJejakAudit.
+    const jejak = await tungguJejakAudit({ action: 'employee.document.download' });
     expect(jejak).not.toBeNull();
     expect(jejak!.entityId).toBe(dibuat.body.id);
     expect(jejak!.actorEmail).toBe('hr@resto.id');

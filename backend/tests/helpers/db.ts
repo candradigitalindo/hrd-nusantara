@@ -189,4 +189,29 @@ export const makeOpenAttendance = async (params: {
     },
   });
 
+/**
+ * Menunggu satu jejak audit benar-benar muncul di database.
+ *
+ * tungguAuditSelesai() saja tidak cukup: ia hanya menunggu penulisan yang
+ * SUDAH terdaftar, sedangkan pendaftarannya baru terjadi di res.on('finish').
+ * Untuk respons yang di-stream (unduhan dokumen), 'finish' di sisi server bisa
+ * berjalan setelah supertest menganggap responsnya selesai — penunggu lewat
+ * tanpa menunggu apa pun, dan jejaknya baru tertulis sesudah pemeriksaan.
+ *
+ * Menunggu datanya sendiri, bukan waktu yang dikira-kira, membuat test ini
+ * tidak bergantung pada kecepatan mesin yang menjalankannya.
+ */
+export const tungguJejakAudit = async (
+  where: Prisma.AuditLogWhereInput,
+  batasMs = 5000
+): Promise<Prisma.AuditLogGetPayload<object> | null> => {
+  const tenggat = Date.now() + batasMs;
+  for (;;) {
+    const jejak = await prisma.auditLog.findFirst({ where });
+    if (jejak) return jejak;
+    if (Date.now() > tenggat) return null;
+    await new Promise((lanjut) => setTimeout(lanjut, 25));
+  }
+};
+
 export { prisma };
