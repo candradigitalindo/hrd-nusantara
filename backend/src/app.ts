@@ -38,6 +38,8 @@ export const createApp = () => {
   const app = express();
 
   app.disable('x-powered-by');
+  // Harus sebelum rate limiter dan jejak audit: keduanya membaca req.ip.
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
   app.use(helmet());
 
   app.use(

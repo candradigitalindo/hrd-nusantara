@@ -10,12 +10,24 @@ dotenv.config();
  * daripada JWT_SECRET kosong yang baru ketahuan sebagai 401 misterius
  * di tengah produksi.
  */
+/**
+ * Docker Compose selalu meneruskan variabel yang disebut di `environment:`,
+ * termasuk ketika nilainya kosong: `BELLYS_WEBHOOK_SECRET: ${BELLYS_WEBHOOK_SECRET:-}`
+ * menjadi string kosong di dalam container, bukan variabel yang tidak ada.
+ *
+ * Untuk variabel opsional keduanya harus diperlakukan sama. Tanpa ini,
+ * BELLYS_WEBHOOK_SECRET kosong gagal pada `min(32)` dan backend menolak boot
+ * walaupun pemantauan WhatsApp dimatikan — yaitu justru keadaan di mana kunci
+ * itu memang tidak diperlukan.
+ */
+const kosongBerartiTakDiisi = (nilai: unknown) => (nilai === '' ? undefined : nilai);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL wajib diisi'),
-  REDIS_URL: z.string().optional(),
+  REDIS_URL: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
 
   JWT_SECRET: z
     .string()
@@ -23,6 +35,22 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('8h'),
 
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
+
+  /**
+   * Berapa lapis proxy tepercaya di depan aplikasi.
+   *
+   * Tanpa ini Express memakai IP soket, yang di belakang proxy selalu IP
+   * proxy-nya. Dua akibatnya nyata: express-rate-limit menaruh SELURUH
+   * pengguna dalam satu ember — sepuluh login gagal dari siapa pun mengunci
+   * semua orang selama 15 menit — dan jejak audit mencatat IP proxy, bukan
+   * IP orang yang melakukannya.
+   *
+   * Bawaannya 0 karena stack pengembangan mengekspos backend langsung.
+   * Di produksi di belakang nginx, setel 1. Jangan asal dinaikkan: tiap
+   * lapis yang dipercaya adalah satu entri X-Forwarded-For yang boleh
+   * dipalsukan klien kalau proxy-nya ternyata tidak menimpanya.
+   */
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
   // Zona waktu operasional. Jadwal shift disimpan sebagai tanggal + "HH:mm"
@@ -91,10 +119,13 @@ const envSchema = z.object({
   // --- Integrasi WhatsApp (Belly's) ---
   // Kunci bersama untuk memverifikasi tanda tangan webhook. Endpoint webhook
   // dipanggil mesin, bukan pengguna, jadi tidak bisa memakai token JWT.
-  BELLYS_WEBHOOK_SECRET: z
-    .string()
-    .min(32, 'BELLYS_WEBHOOK_SECRET minimal 32 karakter. Generate: openssl rand -base64 48')
-    .optional(),
+  BELLYS_WEBHOOK_SECRET: z.preprocess(
+    kosongBerartiTakDiisi,
+    z
+      .string()
+      .min(32, 'BELLYS_WEBHOOK_SECRET minimal 32 karakter. Generate: openssl rand -base64 48')
+      .optional()
+  ),
 
   // Kalau dimatikan, webhook menolak semua kiriman alih-alih diam-diam
   // menerimanya tanpa verifikasi.
@@ -134,7 +165,7 @@ const envSchema = z.object({
 
   // Berkas JSON service account Firebase. Isinya kunci privat: simpan di luar
   // repo dan jangan disajikan lewat HTTP.
-  FIREBASE_SERVICE_ACCOUNT_PATH: z.string().optional(),
+  FIREBASE_SERVICE_ACCOUNT_PATH: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
 
   // --- Enkripsi kolom ---
   // Kunci induk untuk data pribadi yang tersimpan di database: isi pesan

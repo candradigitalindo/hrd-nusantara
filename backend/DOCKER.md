@@ -1,10 +1,12 @@
 # Menjalankan dengan Docker
 
-> **Status: belum pernah benar-benar dijalankan.** Docker tidak terpasang di
-> mesin tempat backend ini dikembangkan. Isi berkas ini adalah hasil
-> pemeriksaan statis dan pengujian bagian-bagian yang bisa diuji tanpa Docker.
-> Bagian "Yang masih harus diuji" di bawah wajib dijalankan sekali sebelum
-> dipakai produksi.
+> **Status: sudah dijalankan di produksi** (hrd.nbp.co.id, 21 September 2026).
+> Catatan di bawah semula ditulis dari pemeriksaan statis karena Docker tidak
+> terpasang di mesin pengembangan; yang sudah terbukti kini ditandai, dan yang
+> masih belum diuji tetap dibiarkan terbuka.
+>
+> Untuk stack produksinya sendiri lihat `DEPLOY.md` di akar repo — compose
+> produksi terpisah dari `docker-compose.yml` yang ada di sini.
 
 ## Menjalankan
 
@@ -20,8 +22,12 @@ Migrasi database dijalankan otomatis saat container start.
 Akun pertama dibuat sekali secara manual:
 
 ```bash
-docker compose exec backend npx ts-node src/seed.ts
+docker compose exec backend node dist/seed.js
 ```
+
+`node dist/seed.js`, bukan `npx ts-node src/seed.ts`: image dipasang dengan
+`npm ci --omit=dev` dan hanya membawa `dist/`, jadi `ts-node` maupun `src/`
+tidak ada di dalam container.
 
 ## Yang sudah diperiksa tanpa Docker
 
@@ -107,17 +113,66 @@ notifikasi push mati dengan galat izin:
 sudo chown -R 1000:1000 backend/secrets
 ```
 
+## Menjalankan test tanpa Node di host
+
+Mesin produksi tidak memasang Node, jadi `npm test` dijalankan di dalam
+container. Tahap `builder` pada Dockerfile sudah memuat devDependencies dan
+bobot model, tapi `tests/` sengaja dikecualikan `.dockerignore` — berkasnya
+di-mount saat menjalankan, bukan ikut ke dalam image.
+
+```bash
+cd backend
+
+# Database test, terpisah dari produksi dan tanpa port ke host.
+docker network create hrd-test-net
+docker run -d --name hrd-test-db --network hrd-test-net --cpus 1 --memory 512m \
+  -e POSTGRES_USER=uji -e POSTGRES_PASSWORD=uji -e POSTGRES_DB=hrd_db_test \
+  postgres:16-alpine
+
+# .env.test menunjuk ke container itu, bukan ke localhost.
+sed 's|^DATABASE_URL=.*|DATABASE_URL="postgresql://uji:uji@hrd-test-db:5432/hrd_db_test?schema=public"|' \
+  .env.test.example > .env.test
+
+docker build --target builder -t hrd-backend-test .
+
+# cpuset dan cpu-shares menjaga agar test tidak menyendat aplikasi lain
+# di server yang sama.
+docker run --rm --network hrd-test-net --cpuset-cpus 2,3 --cpu-shares 256 --memory 3g \
+  -v "$PWD/tests:/app/tests:ro" \
+  -v "$PWD/jest.config.ts:/app/jest.config.ts:ro" \
+  -v "$PWD/tsconfig.test.json:/app/tsconfig.test.json:ro" \
+  -v "$PWD/.env.test:/app/.env.test:ro" \
+  hrd-backend-test npm test
+
+# Bereskan setelah selesai.
+docker rm -f hrd-test-db && docker network rm hrd-test-net
+```
+
+Satu jebakan: berkas yang di-mount harus berada di dalam direktori repo.
+Berkas di `/tmp` milik sesi yang ter-namespace tidak terlihat oleh daemon
+Docker, dan bind mount-nya akan berubah jadi direktori kosong — gejalanya
+`.env.test tidak ditemukan` padahal berkasnya jelas ada.
+
+Seluruh suite: 46 berkas, 957 test, sekitar 11 menit dengan dua core.
+
 ## Yang masih harus diuji
 
-Belum ada satu pun dari ini yang pernah dijalankan:
+Terbukti saat deploy pertama ke hrd.nbp.co.id:
 
-- [ ] `docker compose build` berhasil sampai selesai
-- [ ] Unduhan bobot model saat build berhasil, termasuk verifikasi sha256
-- [ ] Container backend mencapai status `healthy`
-- [ ] Migrasi berjalan pada database kosong
-- [ ] `POST /api/auth/login` menjawab dari dalam container
-- [ ] Pendaftaran wajah berhasil — ini yang membuktikan onnxruntime benar-benar
-      jalan di base image yang baru
-- [ ] Sesi WhatsApp bertahan setelah `docker compose restart backend`
-      (tidak menuntut scan QR ulang)
-- [ ] `npm run push:test` dari dalam container membaca kredensial Firebase
+- [x] Build berhasil sampai selesai
+- [x] Unduhan bobot model saat build berhasil, termasuk verifikasi sha256
+- [x] Container backend mencapai status `healthy`
+- [x] Migrasi berjalan pada database kosong — 29 migrasi, volume baru
+- [x] `POST /api/auth/login` menjawab dari dalam container
+- [x] Seluruh test suite lolos di dalam container: 46 berkas, 957 test
+
+Belum terbukti:
+
+- [ ] Pendaftaran wajah sungguhan di produksi. `faceEnrollment.test.ts` dan
+      `faceRecognition.test.ts` lolos di dalam container `node:22-bookworm-slim`,
+      jadi onnxruntime memang termuat di base image ini — tapi itu tahap
+      `builder`, belum pendaftaran sungguhan lewat image runtime.
+- [ ] Sesi WhatsApp bertahan setelah `docker compose restart backend`. Belum
+      bisa diuji: `WHATSAPP_BAILEYS_ENABLED=false`, jadi belum ada sesi.
+- [ ] `npm run push:test` membaca kredensial Firebase. Belum ada berkas
+      service account yang dipasang.
