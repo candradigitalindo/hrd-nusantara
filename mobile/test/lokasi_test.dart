@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart' show LocationAccuracyStatus;
 import 'package:hrd_nusantara/fitur/presensi/layanan_lokasi.dart';
 import 'package:hrd_nusantara/fitur/presensi/model_presensi.dart';
 
@@ -41,5 +42,12 @@ void main() {
     final stempel = PermintaanAbsen(metode: MetodeAbsen.gps, latitude: -6.1, longitude: 106.8, lokasiId: 'a', fotoStempelBase64: 'data:image/jpeg;base64,AAAA');
     expect(stempel.keJson()['photo'], 'data:image/jpeg;base64,AAAA');
     expect(stempel.keJson().containsKey('faceImage'), isFalse);
+  });
+  test('izin lokasi "perkiraan" ditolak dengan petunjuk ke pengaturan aplikasi', () {
+    final g = periksaKetelitian(LocationAccuracyStatus.reduced)!;
+    expect(g.pesan, contains('lokasi akurat'));
+    expect(g.bukaPengaturan, isTrue);
+    expect(g.pengaturanAplikasi, isTrue);
+    expect(periksaKetelitian(LocationAccuracyStatus.precise), isNull);
   });
 }

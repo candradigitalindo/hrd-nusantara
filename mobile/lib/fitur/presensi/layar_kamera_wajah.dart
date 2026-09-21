@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart' show Geolocator;
 
 /// Mengambil selfie dengan kamera depan dan mengembalikan data URI base64
 /// (JPEG) untuk dikirim ke backend. Pengenalan wajah dikerjakan server.
@@ -18,6 +19,7 @@ class LayarKameraWajah extends StatefulWidget {
 class _LayarKameraWajahState extends State<LayarKameraWajah> with WidgetsBindingObserver {
   CameraController? _kamera;
   String? _galat;
+  bool _izinDitolak = false;
   bool _memotret = false;
 
   @override
@@ -39,6 +41,15 @@ class _LayarKameraWajahState extends State<LayarKameraWajah> with WidgetsBinding
         return;
       }
       setState(() => _kamera = c);
+    } on CameraException catch (e) {
+      // Izin ditolak: beri jalan ke pengaturan, bukan sekadar kode galat.
+      final ditolak = e.code.toLowerCase().contains('denied') || e.code.toLowerCase().contains('permission');
+      if (mounted) {
+        setState(() {
+          _izinDitolak = ditolak;
+          _galat = ditolak ? 'Izin kamera ditolak. Aplikasi butuh kamera untuk verifikasi wajah dan memindai QR.' : 'Kamera tidak bisa dibuka: ${e.description ?? e.code}';
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _galat = 'Kamera tidak bisa dibuka: $e');
     }
@@ -89,7 +100,21 @@ class _LayarKameraWajahState extends State<LayarKameraWajah> with WidgetsBinding
       backgroundColor: Colors.black,
       appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: const Text('Verifikasi Wajah')),
       body: _galat != null
-          ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_galat!, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center)))
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(_galat!, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
+                    if (_izinDitolak) ...[
+                      const SizedBox(height: 16),
+                      FilledButton(onPressed: () => Geolocator.openAppSettings(), child: const Text('Buka pengaturan aplikasi')),
+                    ],
+                  ],
+                ),
+              ),
+            )
           : c == null
               ? const Center(child: CircularProgressIndicator(color: Colors.white))
               : Column(

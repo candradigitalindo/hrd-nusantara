@@ -81,6 +81,30 @@ dan ditolak lagi di server (422). Laporan lengkap ikut dikirim di field
 `integrity`; server menyimpan penanda di `integrityFlags` dan HR melihatnya
 di halaman Presensi web sebagai "Dicurigai".
 
+## Izin (permission)
+
+Izin yang benar-benar masuk ke APK (hasil merge manifest) dan gunanya:
+
+| Izin | Dipakai untuk | Diminta saat |
+|---|---|---|
+| `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | radius lokasi kerja saat presensi; pembanding lokasi jaringan untuk deteksi fake GPS | check-in/out pertama |
+| `CAMERA` | selfie verifikasi wajah, pindai QR, foto stempel ke grup WhatsApp | kamera dibuka pertama kali |
+| `POST_NOTIFICATIONS` (Android 13+) | push: presensi, cuti, sesi WhatsApp putus | setelah login (bila Firebase aktif) |
+| `QUERY_ALL_PACKAGES` | mendeteksi aplikasi lokasi palsu yang terpasang (distribusi APK internal; bila ke Play Store harus dibenarkan atau dihapus) | tidak ada dialog |
+| `INTERNET`, `ACCESS_NETWORK_STATE`, `VIBRATE`, `WAKE_LOCK`, `c2dm.RECEIVE` | jaringan dan notifikasi (ditambahkan plugin) | tidak ada dialog |
+
+Tidak dipakai dan sengaja dicabut: `RECORD_AUDIO` (plugin kamera menyertakannya,
+aplikasi tidak pernah merekam suara). Tidak ada izin lokasi latar belakang,
+penyimpanan, atau kontak.
+
+Perilaku bila izin kurang: lokasi hanya "perkiraan" (Android 12+/iOS 14+)
+ditolak dengan petunjuk mengaktifkan lokasi akurat; izin ditolak permanen
+atau kamera ditolak menampilkan tombol ke pengaturan aplikasi.
+
+iOS: `NSCameraUsageDescription`, `NSLocationWhenInUseUsageDescription`,
+`UIBackgroundModes: remote-notification`. Capability Push Notifications
+(entitlement `aps-environment`) diaktifkan lewat Xcode saat Firebase dipasang.
+
 ## Push (Firebase Cloud Messaging)
 
 Build ini berjalan penuh tanpa Firebase; push saja yang belum aktif.

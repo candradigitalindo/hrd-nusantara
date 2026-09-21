@@ -1,10 +1,19 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Presensi: lokasi & kamera. Push: notifikasi (Android 13+). -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Deteksi fake GPS: memindai aplikasi terpasang yang meminta ACCESS_MOCK_LOCATION.
+         Aplikasi ini didistribusikan sebagai APK internal (bukan Play Store); bila
+         suatu saat dipublikasikan ke Play, izin ini wajib dibenarkan atau dihapus
+         dan deteksi kembali mengandalkan daftar paket di <queries>. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+    <!-- Plugin kamera menyertakan izin mikrofon walau aplikasi tidak pernah merekam
+         suara; dicabut supaya karyawan tidak diminta izin yang tidak dipakai. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.front" android:required="false"/>
     <uses-feature android:name="android.hardware.location.gps" android:required="false"/>

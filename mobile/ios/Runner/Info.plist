@@ -70,6 +70,10 @@
 	<string>Kamera dipakai untuk verifikasi wajah saat presensi dan memindai QR lokasi kerja.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Lokasi dipakai untuk memastikan Anda berada di lokasi kerja saat presensi.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

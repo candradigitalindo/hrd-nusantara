@@ -5,12 +5,23 @@ import 'package:geolocator/geolocator.dart';
 import 'model_presensi.dart';
 
 class GalatLokasi implements Exception {
-  GalatLokasi(this.pesan, {this.bukaPengaturan = false});
+  GalatLokasi(this.pesan, {this.bukaPengaturan = false, this.pengaturanAplikasi = false});
   final String pesan;
+  /// Tawarkan membuka pengaturan setelah pesan ditampilkan.
   final bool bukaPengaturan;
+  /// true = pengaturan izin aplikasi ini; false = pengaturan lokasi sistem.
+  final bool pengaturanAplikasi;
   @override
   String toString() => pesan;
 }
+
+/// Android 12+ / iOS 14+ membolehkan pengguna memberi lokasi "perkiraan"
+/// (±1–3 km). Geofence radius 50–100 m mustahil dinilai dari itu, jadi
+/// presensi ditolak lebih awal dengan petunjuk, bukan gagal dengan pesan
+/// "di luar radius" yang membingungkan. Murni, supaya bisa diuji.
+GalatLokasi? periksaKetelitian(LocationAccuracyStatus status) => status == LocationAccuracyStatus.reduced
+    ? GalatLokasi('Izin lokasi hanya "perkiraan". Aktifkan "Gunakan lokasi akurat" untuk aplikasi HRD di pengaturan ponsel.', bukaPengaturan: true, pengaturanAplikasi: true)
+    : null;
 
 class PosisiSaatIni {
   const PosisiSaatIni(this.latitude, this.longitude, this.akurasiMeter, {this.mocked = false, this.waktu});
@@ -58,9 +69,11 @@ Future<PosisiSaatIni> ambilPosisi() async {
   var izin = await Geolocator.checkPermission();
   if (izin == LocationPermission.denied) izin = await Geolocator.requestPermission();
   if (izin == LocationPermission.deniedForever) {
-    throw GalatLokasi('Izin lokasi ditolak permanen. Izinkan lewat pengaturan aplikasi.', bukaPengaturan: true);
+    throw GalatLokasi('Izin lokasi ditolak permanen. Izinkan lewat pengaturan aplikasi.', bukaPengaturan: true, pengaturanAplikasi: true);
   }
   if (izin == LocationPermission.denied) throw GalatLokasi('Izin lokasi dibutuhkan untuk presensi.');
+  final ketelitian = periksaKetelitian(await Geolocator.getLocationAccuracy());
+  if (ketelitian != null) throw ketelitian;
   final p = await Geolocator.getCurrentPosition(
     locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, timeLimit: Duration(seconds: 15)),
   );

@@ -111,7 +111,13 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
     } on GalatLokasi catch (e) {
       if (!mounted) return;
       tampilkanPesan(context, 'Lokasi belum bisa dipakai', rincian: e.pesan, nada: Nada.peringatan);
-      if (e.bukaPengaturan) Geolocator.openLocationSettings();
+      if (e.bukaPengaturan) {
+        if (e.pengaturanAplikasi) {
+          Geolocator.openAppSettings();
+        } else {
+          Geolocator.openLocationSettings();
+        }
+      }
       _batal();
     } catch (e) {
       if (!mounted) return;
