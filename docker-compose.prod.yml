@@ -1,0 +1,232 @@
+# Stack produksi HRD Nusantara — hrd.nbp.co.id
+#
+# Terpisah penuh dari docker-compose.yml (yang untuk pengembangan lokal):
+# nama project sendiri, network sendiri, volume sendiri, dan TIDAK
+# mempublikasikan satu port pun ke host. Di server ini port 3000, 5432, dan
+# 6379 sudah dipakai stack lain; stack dev akan bentrok, stack ini tidak bisa.
+#
+# Satu-satunya pintu masuk adalah container hrd_nginx yang menempel di network
+# 'web' bersama proxy_nginx di depan.
+#
+# Jalankan lewat ./deploy.sh, bukan `docker compose up --build` langsung —
+# skrip itu yang membatasi resource saat build supaya aplikasi lain di server
+# tidak ikut tersendat.
+
+name: hrd
+
+# Daemon Docker di server ini tidak memasang rotasi log sama sekali — salah
+# satu container milik stack lain sudah menumpuk 171 MB. Batasnya dipasang
+# per service di sini supaya stack HRD tidak ikut menghabiskan disk bersama.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hrd_postgres
+    logging: *logging
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER wajib diisi di .env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-hrd_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - hrd_internal
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1g
+
+  redis:
+    image: redis:7-alpine
+    container_name: hrd_redis
+    logging: *logging
+    restart: unless-stopped
+    # Disiapkan untuk cache dan pencabutan token, tapi belum ada kode backend
+    # yang membacanya — lihat catatan di DEPLOY.md. Tetap dijalankan supaya
+    # REDIS_URL langsung bekerja begitu fiturnya dipakai; appendonly menjaga
+    # datanya kalau nanti dipakai untuk daftar token yang dicabut.
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - hrd_internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256m
+
+  backend:
+    # Image dibangun lebih dulu oleh deploy.sh dengan batas CPU/memori.
+    # `build` tetap ditulis supaya konteksnya terdokumentasi dan compose bisa
+    # membangunnya sendiri kalau diperlukan.
+    image: hrd-backend:latest
+    build:
+      context: ./backend
+    container_name: hrd_backend
+    logging: *logging
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hrd_db}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET wajib diisi, minimal 32 karakter}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      # Browser mengakses API lewat BFF Next satu origin, jadi yang perlu
+      # diizinkan hanya origin publiknya sendiri.
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://hrd.nbp.co.id}
+      # Satu lapis tepercaya: hrd_nginx (untuk aplikasi Android) atau
+      # hrd_frontend (untuk web). Keduanya meneruskan tepat satu entri
+      # X-Forwarded-For berisi IP asli pengunjung.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
+      ATTENDANCE_LATE_TOLERANCE_MINUTES: ${ATTENDANCE_LATE_TOLERANCE_MINUTES:-5}
+      ATTENDANCE_MIN_OVERTIME_MINUTES: ${ATTENDANCE_MIN_OVERTIME_MINUTES:-30}
+      ATTENDANCE_MAX_SHIFT_HOURS: ${ATTENDANCE_MAX_SHIFT_HOURS:-16}
+      FACE_MODEL_DIR: /app/models/${FACE_MODEL_PACK:-buffalo_s}
+      FACE_MODEL_NAME: ${FACE_MODEL_PACK:-buffalo_s}
+      FACE_MATCH_THRESHOLD: ${FACE_MATCH_THRESHOLD:-0.45}
+      FACE_RECOGNITION_ENABLED: ${FACE_RECOGNITION_ENABLED:-true}
+      FACE_STORE_CHECKIN_IMAGES: ${FACE_STORE_CHECKIN_IMAGES:-false}
+      FACE_ANTISPOOF_MODEL: /app/models/antispoof/minifasnet_v2.onnx
+      FACE_LIVENESS_THRESHOLD: ${FACE_LIVENESS_THRESHOLD:-0.6}
+      FACE_LIVENESS_ENABLED: ${FACE_LIVENESS_ENABLED:-true}
+      # Server ini 4 core dan dipakai bersama aplikasi lain; jangan biarkan
+      # ONNX mengambil semua thread saat ada presensi berbarengan.
+      FACE_ONNX_THREADS: ${FACE_ONNX_THREADS:-2}
+      UPLOAD_DIR: /app/uploads
+      DOCUMENT_MAX_BYTES: ${DOCUMENT_MAX_BYTES:-5000000}
+      BELLYS_WEBHOOK_SECRET: ${BELLYS_WEBHOOK_SECRET:-}
+      WHATSAPP_MONITORING_ENABLED: ${WHATSAPP_MONITORING_ENABLED:-false}
+      WHATSAPP_RETENTION_DAYS: ${WHATSAPP_RETENTION_DAYS:-0}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY wajib diisi (openssl rand -base64 32)}
+      WHATSAPP_BAILEYS_ENABLED: ${WHATSAPP_BAILEYS_ENABLED:-false}
+      WHATSAPP_SESSION_DIR: /app/whatsapp-sessions
+      PUSH_NOTIFICATIONS_ENABLED: ${PUSH_NOTIFICATIONS_ENABLED:-false}
+      FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/secrets/firebase-service-account.json}
+    volumes:
+      # Foto pendaftaran wajah, dokumen karyawan, dan APK rilis mobile.
+      - uploads:/app/uploads
+      # Kredensial sesi WhatsApp: tanpa ini setiap deploy menuntut scan QR ulang.
+      - whatsappsessions:/app/whatsapp-sessions
+      # Kunci privat, read-only, di-mount dari host dan tidak ikut ke image.
+      - ./backend/secrets:/app/secrets:ro
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      # Migrasi Prisma jalan saat start; pada database besar bisa lama.
+      start_period: 90s
+    networks:
+      - hrd_internal
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 3g
+
+  frontend:
+    image: hrd-frontend:latest
+    build:
+      context: ./frontend
+    container_name: hrd_frontend
+    logging: *logging
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: 0.0.0.0
+      # Dipakai route handler /api/backend/[...path] di sisi server Next.
+      # Nama container, bukan domain publik: panggilannya tidak keluar server.
+      BACKEND_URL: http://backend:3000
+    healthcheck:
+      # Next tidak punya endpoint kesehatan sendiri; yang diuji adalah bahwa
+      # servernya menjawab sama sekali, jadi status < 500 dianggap sehat.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3001/login',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - hrd_internal
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 1g
+
+  nginx:
+    image: nginx:alpine
+    container_name: hrd_nginx
+    logging: *logging
+    restart: unless-stopped
+    volumes:
+      - ./nginx/hrd.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      # 'web' hanya di sini: inilah satu-satunya container stack ini yang
+      # bisa dijangkau proxy_nginx.
+      - hrd_internal
+      - web
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128m
+
+networks:
+  hrd_internal:
+    driver: bridge
+  # Network bersama reverse-proxy. Sudah ada di server ini; kalau belum:
+  #   docker network create web
+  web:
+    external: true
+    name: web
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  whatsappsessions:
