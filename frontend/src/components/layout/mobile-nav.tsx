@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { menuUntuk } from "./nav-config";
+import { menuUntuk, aktifDi } from "./nav-config";
 import type { PenggunaSesi } from "@/lib/types";
 
 /**
@@ -21,7 +21,7 @@ export const MobileNav = ({ pengguna }: { pengguna: PenggunaSesi | undefined }) 
     >
       <ul className="grid" style={{ gridTemplateColumns: `repeat(${menu.length}, 1fr)` }}>
         {menu.map(({ href, label, icon: Icon }) => {
-          const aktif = href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const aktif = aktifDi(pathname, href);
           return (
             <li key={href}>
               <Link

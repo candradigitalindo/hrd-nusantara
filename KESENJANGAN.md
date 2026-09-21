@@ -73,6 +73,12 @@ sekunder kuning emas `#d9a627`; keduanya dipakai web (token `--primary`,
 `--secondary`) dan mobile (`lib/core/tema.dart`). Grafik memakai hijau/kuning
 satu rumpun yang lebih jenuh dan tervalidasi (`--chart-1`, `--chart-2`).
 
+Sidebar (21 September 2026): menu dikelompokkan per kategori (Beranda,
+Komunikasi, Kepegawaian, Kehadiran & Cuti, Penggajian, Pengembangan, Kepatuhan,
+Analitik, Aplikasi Mobile) dengan sub-menu yang bisa dilipat; kategori halaman
+aktif selalu terbuka, lipatan lain diingat di browser. Item aktif dicocokkan per
+segmen jalur (`/whatsapp` tidak lagi menyala saat membuka `/whatsapp-saya`).
+
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
 ponsel, area aman perangkat ber-notch, fokus keyboard terlihat, notifikasi
