@@ -6,6 +6,7 @@ import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
 import { decryptField } from '../src/utils/fieldCrypto';
 import { setPembuatSoket, shutdownSessions, tungguEventSelesai, type SesiDibuat } from '../src/services/whatsapp/session';
+import { ALASAN_PUTUS } from '../src/services/whatsapp/reconnect';
 import { setPengirimPush, type PesanPush } from '../src/services/notification/push';
 
 const app = bikinApp();
@@ -221,7 +222,13 @@ describe('Nomor yang dipindai harus benar', () => {
     const kejadian = await prisma.whatsAppSessionEvent.findFirst({ where: { accountId }, orderBy: { occurredAt: 'desc' } });
     expect(kejadian?.eventType).toBe('scan_required');
     expect(kejadian?.note).toContain('CS Outlet Kemang');
-    expect((await saya(budiToken)).status).toBe('pending_scan');
+    // Tidak ada QR yang bisa dipindai setelah tautan dibatalkan, jadi ini
+    // bukan 'pending_scan' — itu akan menampilkan tempat QR kosong di bawah
+    // peringatan pembatalan. Kembali ke "belum ditautkan" beserta alasannya.
+    const t = await saya(budiToken);
+    expect(t.status).toBe('never_linked');
+    expect(t.qr).toBeNull();
+    expect(t.catatan).toContain('CS Outlet Kemang');
   });
 
   it('menolak QR nomor perusahaan yang dipindai ponsel bernomor lain', async () => {
@@ -253,6 +260,63 @@ describe('Nomor yang dipindai harus benar', () => {
     expect(sama).toBe(accountId);
     const akun = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id: accountId } });
     expect(akun.phoneNumber).toBe('628133333333');
+  });
+});
+
+describe('Status tautan harus jujur: pending_scan berarti ada QR yang bisa dipindai', () => {
+  const mintaQr = async (token: string) => {
+    const res = await request(app).post('/api/whatsapp/me/connect').set(auth(token)).send({});
+    expectStatus(res, 202);
+    const accountId = res.body.account.id as string;
+    soket.get(accountId)!.pancarkan('connection.update', { qr: 'QR-1' });
+    await tungguEventSelesai();
+    return accountId;
+  };
+
+  it('backend restart saat menunggu scan tidak meninggalkan QR hantu', async () => {
+    const accountId = await mintaQr(budiToken);
+    expect((await saya(budiToken)).status).toBe('pending_scan');
+
+    // Proses berhenti. Bootstrap sengaja tidak membuka ulang akun tanpa
+    // kredensial, jadi tidak akan ada QR baru sampai karyawan memintanya.
+    await shutdownSessions();
+
+    const t = await saya(budiToken);
+    // Sebelum diperbaiki: 'pending_scan' dari kolom tersimpan, qr null —
+    // halaman menampilkan skeleton QR selamanya dan mem-poll tiap 3 detik.
+    expect(t.status).toBe('never_linked');
+    expect(t.qr).toBeNull();
+    expect(t.account.id).toBe(accountId);
+  });
+
+  it('di-logout dari ponsel: terputus beserta alasannya, bukan menunggu QR yang tidak ada', async () => {
+    const { soket: s } = await tautkan(budiToken, '628111111111');
+    s.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.loggedOut } } },
+    });
+    await tungguEventSelesai();
+
+    const t = await saya(budiToken);
+    // Pernah tersambung, jadi "terputus" — tombolnya "Pindai Ulang".
+    expect(t.status).toBe('disconnected');
+    expect(t.qr).toBeNull();
+    expect(t.catatan).toContain('scan QR ulang');
+  });
+
+  it('laporan kepatuhan tidak menghitung QR yang sudah mati sebagai "menunggu scan"', async () => {
+    await mintaQr(budiToken);
+    let laporan = await request(app).get('/api/whatsapp/compliance').set(auth(hrToken));
+    expectStatus(laporan, 200);
+    expect(laporan.body.summary.pendingScan).toBe(1);
+
+    await shutdownSessions();
+
+    laporan = await request(app).get('/api/whatsapp/compliance').set(auth(hrToken));
+    // Sebelum diperbaiki: Budi terhitung "menunggu scan" selamanya setelah
+    // tiap restart, padahal tidak ada QR yang sedang ia tunggu.
+    expect(laporan.body.summary.pendingScan).toBe(0);
+    expect(laporan.body.summary.neverLinked).toBe(3);
   });
 });
 
@@ -312,6 +376,8 @@ describe('Pemberitahuan putus sesi nomor pribadi', () => {
     expect(pushTerkirim).toHaveLength(1);
     expect(pushTerkirim[0].pesan.title).toBe('WhatsApp perlu discan ulang');
     expect(pushTerkirim[0].pesan.body).toContain('WhatsApp Anda');
-    expect((await saya(budiToken)).status).toBe('pending_scan');
+    // Pernah tersambung lalu di-logout: tidak ada QR yang bisa dipindai, jadi
+    // "terputus" (tombol Pindai Ulang), bukan "menunggu scan" yang kosong.
+    expect((await saya(budiToken)).status).toBe('disconnected');
   });
 });

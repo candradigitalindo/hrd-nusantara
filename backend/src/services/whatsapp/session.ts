@@ -336,6 +336,11 @@ export const connectAccount = async (
   sesi.phoneNumber = phoneNumber;
   sesi.status = 'connecting';
   sesi.percobaan = 0;
+  // Sesi yang sebelumnya ditutup sengaja (diputus HR, tautan dibatalkan)
+  // kini dibuka lagi atas permintaan: putus berikutnya harus disambung ulang
+  // seperti biasa. Tanpa reset ini penanda lama membuat penanganan 'close'
+  // berhenti diam-diam, dan nomor itu tidak pernah menyambung sendiri lagi.
+  sesi.ditutupSengaja = false;
   bersihkanTimer(sesi);
   sesiAktif.set(accountId, sesi);
 
@@ -351,6 +356,35 @@ export const getSession = (accountId: string): RingkasanSesi | null => {
 /** String QR mentah, untuk diubah menjadi gambar oleh pemanggilnya. */
 export const getQrString = (accountId: string): string | null =>
   sesiAktif.get(accountId)?.qr ?? null;
+
+/**
+ * Status yang boleh ditindaklanjuti klien, dari keadaan di memori dan kolom
+ * tersimpan.
+ *
+ * 'pending_scan' dipakai untuk dua keadaan yang bagi pengguna sangat berbeda:
+ * "QR sedang hidup, pindai sekarang" dan "perlu scan, tapi tidak ada QR" —
+ * sesudah backend restart (bootstrap sengaja tidak membuka ulang akun tanpa
+ * kredensial), sesudah tautan dibatalkan karena salah nomor, sesudah di-logout
+ * dari ponsel atau oleh HR. Halaman web dan aplikasi mobile hanya mengenal
+ * arti pertama: keduanya menampilkan tempat QR yang tidak pernah terisi,
+ * instruksi memindai kode yang tidak ada, dan terus mem-poll tiap 3 detik.
+ *
+ * Aturannya: pending_scan tanpa QR bukan "menunggu scan". Nomor yang belum
+ * pernah tersambung kembali ke never_linked (tombol "Tautkan WhatsApp");
+ * yang pernah tersambung menjadi disconnected (tombol "Pindai Ulang").
+ * Keduanya nilai yang sudah dikenal semua klien — kontraknya tidak berubah,
+ * hanya jadi jujur.
+ */
+export const statusEfektif = (
+  akun: { sessionStatus: string; lastConnectedAt: Date | null; isActive: boolean },
+  sesi: RingkasanSesi | null
+): string => {
+  if (!akun.isActive) return 'inactive';
+  const mentah = sesi?.status ?? akun.sessionStatus;
+  if (mentah !== 'pending_scan') return mentah;
+  if (sesi?.qrTersedia) return 'pending_scan';
+  return akun.lastConnectedAt ? 'disconnected' : 'never_linked';
+};
 
 export const disconnectAccount = async (
   accountId: string,

@@ -6,6 +6,7 @@ import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
 import { decryptField } from '../src/utils/fieldCrypto';
 import {
+  getSession,
   setPembuatSoket,
   shutdownSessions,
   tungguEventSelesai,
@@ -312,6 +313,33 @@ describe('Memutus sesi dari HR', () => {
 
     const akun = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id } });
     expect(akun.sessionStatus).toBe('disconnected');
+  });
+
+  it('sesi yang diputus HR lalu disambungkan lagi tetap menyambung ulang sendiri saat putus', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    await request(app).post(`/api/whatsapp/accounts/${id}/disconnect`).set(auth(hrToken)).send({ logout: false });
+    await sambungkan(id);
+    const soketBaru = soketTerakhir!;
+    soketBaru.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    // Gangguan jaringan biasa pada sesi yang sudah dibuka ulang.
+    soketBaru.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.connectionClosed } } },
+    });
+    await tungguEventSelesai();
+
+    // Sebelum diperbaiki: penanda "ditutup sengaja" dari pemutusan pertama
+    // masih terpasang, penanganan putus berhenti diam-diam tanpa mencatat
+    // apa pun, dan nomor ini tidak pernah menyambung sendiri lagi.
+    expect(getSession(id)?.status).toBe('connecting');
+    const kejadian = await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id }, orderBy: { occurredAt: 'asc' } });
+    expect(kejadian.map((k) => k.eventType)).toEqual(['connected', 'disconnected', 'connected', 'disconnected']);
   });
 
   it('logout adalah pilihan, bukan bawaan', async () => {

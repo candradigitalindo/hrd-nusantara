@@ -7,7 +7,7 @@ import { normalizePhoneNumber, resolveScope } from '../utils/whatsappRules';
 import { decryptField, tokenizeText, blindIndex } from '../utils/fieldCrypto';
 import { retentionCutoff } from '../utils/whatsappRetention';
 import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
-import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, GalatSesiWhatsApp } from '../services/whatsapp/session';
+import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, statusEfektif, GalatSesiWhatsApp } from '../services/whatsapp/session';
 import { kirimKeKaryawan } from '../services/notification/push';
 import { toDataURL } from 'qrcode';
 import { env } from '../config/env';
@@ -563,9 +563,7 @@ const ringkasSaya = async (akun: AkunPribadi | null) => {
   const sesi = driverAktif ? getSession(akun.id) : null;
   const qr = sesi?.qrTersedia ? getQrString(akun.id) : null;
   return {
-    // Keadaan di memori lebih segar daripada kolom tersimpan; kolomnya
-    // dipakai saat proses baru restart dan sesinya belum dibuka lagi.
-    status: !akun.isActive ? 'inactive' : (sesi?.status ?? akun.sessionStatus),
+    status: statusEfektif(akun, sesi),
     driverAktif,
     account: {
       id: akun.id,
@@ -655,7 +653,9 @@ const daftarKepatuhan = async (departmentId?: string) => {
     const a = k.whatsappAccounts[0];
     return {
       employee: { id: k.id, nik: k.nik, name: k.name, department: k.department },
-      status: a ? a.sessionStatus : 'never_linked',
+      // Kolom tersimpan bisa basi: 'pending_scan' yang tertinggal setelah
+      // restart akan terhitung "menunggu scan" di ringkasan HR selamanya.
+      status: a ? statusEfektif({ ...a, isActive: true }, getSession(a.id)) : 'never_linked',
       accountId: a?.id ?? null,
       phoneNumber: a?.phoneNumber ?? null,
       lastConnectedAt: a?.lastConnectedAt ?? null,

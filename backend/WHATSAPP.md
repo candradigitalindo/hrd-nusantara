@@ -64,6 +64,15 @@ GET  /api/whatsapp/me            -> { status: "never_linked" | "connecting" | "p
 POST /api/whatsapp/me/connect    -> 202, akun personal dibuat bila belum ada
 ```
 
+`pending_scan` **selalu** berarti `qr` terisi dan bisa dipindai saat itu juga.
+Keadaan "perlu scan tapi tidak ada QR" — sesudah backend restart, sesudah
+tautan dibatalkan karena salah nomor, sesudah di-logout dari ponsel atau oleh
+HR — tidak pernah dilaporkan sebagai `pending_scan`: nomor yang belum pernah
+tersambung kembali ke `never_linked`, yang pernah tersambung menjadi
+`disconnected`, keduanya dengan `catatan` berisi alasannya. Klien cukup
+menampilkan tombol tautkan/pindai ulang; tidak perlu mem-poll menunggu QR
+yang tidak akan datang. Aturannya ada di `statusEfektif` (`session.ts`).
+
 Nomornya **tidak diminta di awal**: akun dibuat tanpa nomor, dan nomor diisi
 dari laporan WhatsApp saat QR tertaut (`sock.user.id`). Kalau nomor itu
 ternyata sudah terdaftar sebagai akun lain (mis. nomor perusahaan), tautan
