@@ -10,7 +10,10 @@ WhatsApp (pemindaian QR dilakukan di web), dan notifikasi push. Memakai API back
 cd mobile
 flutter pub get
 
-# Emulator Android (backend di mesin ini, port 3000)
+# Backend produksi (bawaan, tanpa --dart-define): https://hrd.nbp.co.id/api
+flutter run
+
+# Emulator Android dengan backend di mesin ini, port 3000
 flutter run --dart-define=API_URL=http://10.0.2.2:3000/api
 
 # Simulator iOS
@@ -20,7 +23,7 @@ flutter run --dart-define=API_URL=http://localhost:3000/api
 flutter run --dart-define=API_URL=http://192.168.0.100:3000/api
 ```
 
-Tanpa `--dart-define`, alamat bawaan adalah `http://10.0.2.2:3000/api`.
+Tanpa `--dart-define`, alamat bawaan adalah backend produksi `https://hrd.nbp.co.id/api`.
 
 HTTP polos hanya diizinkan untuk `10.0.2.2`, `localhost`, dan `192.168.0.100`
 (lihat `android/app/src/main/res/xml/network_security_config.xml`). Produksi
@@ -145,8 +148,8 @@ terdekat, model dari JSON server, rute push, dan validasi layar login.
 ## Build rilis dan distribusi
 
 ```bash
-flutter build apk --release --dart-define=API_URL=https://api.domain-anda.id/api
-flutter build ipa --release --dart-define=API_URL=https://api.domain-anda.id/api
+flutter build apk --release --dart-define=API_URL=https://hrd.nbp.co.id/api
+flutter build ipa --release --dart-define=API_URL=https://hrd.nbp.co.id/api
 ```
 
 APK yang dihasilkan (`build/app/outputs/flutter-apk/app-release.apk`) diunggah
