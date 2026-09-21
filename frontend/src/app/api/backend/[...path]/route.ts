@@ -61,7 +61,7 @@ const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...pa
   const res = new NextResponse(jawaban.body, { status: jawaban.status });
   // Header yang menentukan cara browser memperlakukan isi: tanpa
   // content-disposition, unduhan dokumen terbuka sebagai halaman kosong.
-  for (const h of ["content-type", "content-length", "content-disposition", "cache-control", "x-content-type-options"]) {
+  for (const h of ["content-type", "content-length", "content-disposition", "cache-control", "x-content-type-options", "x-checksum-sha256"]) {
     const v = jawaban.headers.get(h);
     if (v) res.headers.set(h, v);
   }

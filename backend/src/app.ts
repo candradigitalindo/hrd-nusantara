@@ -31,6 +31,7 @@ import disciplineRoutes from './routes/disciplineRoutes';
 import psychometricRoutes from './routes/psychometricRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
+import mobileReleaseRoutes from './routes/mobileReleaseRoutes';
 
 export const createApp = () => {
   const app = express();
@@ -98,6 +99,8 @@ export const createApp = () => {
   app.use('/api', auditTrail);
 
   app.use('/api/webhook', webhookRoutes);
+  // Unduh APK juga publik (lihat komentar di mobileReleaseRoutes).
+  app.use('/api/mobile', mobileReleaseRoutes);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/employees', employeeRoutes);

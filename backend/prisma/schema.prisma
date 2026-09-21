@@ -108,6 +108,7 @@ model Employee {
   evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
   deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
   documents             EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
+  mobileReleases        MobileRelease[]    @relation("MobileReleaseUploader")
 
   @@index([departmentId])
   @@index([positionId])
@@ -1821,4 +1822,30 @@ model CollectiveLeaveDeduction {
   /// Satu hari libur memotong satu saldo paling banyak sekali.
   @@unique([holidayId, leaveBalanceId])
   @@index([leaveBalanceId])
+}
+
+/// Rilis aplikasi mobile (APK Android) yang diunggah HR lewat web, untuk
+/// diunduh karyawan dari halaman publik. Berkasnya tidak dienkripsi: ini
+/// artefak yang memang dibagikan, bukan data pribadi.
+model MobileRelease {
+  id          String @id
+  /// Versi yang dibaca manusia, mis. "1.2.0".
+  versionName String
+  /// Nomor versi Android; harus naik tiap rilis, unik.
+  versionCode Int    @unique
+  fileName    String
+  storagePath String
+  sizeBytes   Int
+  sha256      String
+  notes       String?
+  /// Rilis nonaktif tidak lagi ditawarkan sebagai "terbaru".
+  isActive      Boolean @default(true)
+  downloadCount Int     @default(0)
+
+  uploadedBy   Employee? @relation("MobileReleaseUploader", fields: [uploadedById], references: [id])
+  uploadedById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([isActive, versionCode])
 }

@@ -6,6 +6,8 @@ import {
   CalendarOff,
   MessageCircle,
   Smartphone,
+  TabletSmartphone,
+  Download,
   ScrollText,
   ShieldAlert,
   Wallet,
@@ -52,6 +54,8 @@ export const MENU: MenuNav[] = [
   { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert },
   { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle, roles: HR },
   { href: "/laporan", label: "Laporan", icon: BarChart3, roles: MANAJEMEN },
+  { href: "/aplikasi", label: "Aplikasi Mobile", icon: TabletSmartphone, roles: HR },
+  { href: "/unduh", label: "Unduh Aplikasi", icon: Download },
   { href: "/audit", label: "Jejak Audit", icon: ScrollText, roles: ["SUPER_ADMIN"] },
 ];
 

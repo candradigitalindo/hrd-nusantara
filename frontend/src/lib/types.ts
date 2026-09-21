@@ -907,3 +907,20 @@ export interface GrupWhatsApp {
   nama: string;
   jumlahAnggota: number;
 }
+
+/** Rilis aplikasi mobile (APK) yang diunggah HR. */
+export interface RilisMobile {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  fileName: string;
+  sizeBytes: number;
+  sha256: string;
+  notes: string | null;
+  isActive: boolean;
+  downloadCount: number;
+  createdAt: string;
+  uploadedBy: { id: string; name: string } | null;
+  /** Hanya pada /mobile/releases/latest. */
+  downloadPath?: string;
+}

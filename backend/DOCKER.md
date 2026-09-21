@@ -75,6 +75,9 @@ registry.
 
 `secrets/`, `whatsapp-sessions/`, `uploads/`, dan `models/` kini dikecualikan.
 
+Folder unggahan yang sama juga menyimpan APK rilis aplikasi mobile (`apk/`),
+jadi rilis tidak hilang saat kontainer dibuat ulang.
+
 ### 4. Backend tidak punya healthcheck
 
 `postgres` dan `redis` punya, backend tidak. Padahal container yang hidup

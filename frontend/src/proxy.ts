@@ -16,6 +16,10 @@ export function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Halaman unduh aplikasi mobile terbuka untuk siapa pun: karyawan
+  // mengunduh APK sebelum punya sesi di ponselnya.
+  if (pathname.startsWith("/unduh")) return NextResponse.next();
+
   if (!adaSesi) {
     const ke = new URL("/login", req.url);
     if (pathname !== "/") ke.searchParams.set("kembali", pathname);

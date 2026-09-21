@@ -115,12 +115,18 @@ flutter test
 Tes mencakup pemformat, pemetaan galat API, haversine & pemilihan lokasi
 terdekat, model dari JSON server, rute push, dan validasi layar login.
 
-## Build rilis
+## Build rilis dan distribusi
 
 ```bash
 flutter build apk --release --dart-define=API_URL=https://api.domain-anda.id/api
 flutter build ipa --release --dart-define=API_URL=https://api.domain-anda.id/api
 ```
+
+APK yang dihasilkan (`build/app/outputs/flutter-apk/app-release.apk`) diunggah
+HR lewat web di menu **Aplikasi Mobile** (nama versi + versionCode yang naik).
+Karyawan mengunduh versi terbaru dari halaman publik `<web>/unduh` tanpa
+login; HR bisa memajang QR tautannya di outlet. Setiap rilis menyimpan
+sha256 dan jumlah unduhan; versi bermasalah bisa dinonaktifkan.
 
 Catatan: `flutter build ios --no-codesign` berhasil di mesin pengembang
 (Xcode 27, target iOS 15); simulator iOS belum terpasang, jadi uji jalan di
