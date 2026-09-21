@@ -18,7 +18,8 @@ String formatWaktu(Object? nilai) {
   return t == null ? '—' : DateFormat('HH:mm', 'id_ID').format(t);
 }
 
-String formatTanggalWaktu(Object? nilai) => formatTanggal(nilai, pola: 'd MMM yyyy HH:mm');
+String formatTanggalWaktu(Object? nilai) =>
+    formatTanggal(nilai, pola: 'd MMM yyyy HH:mm');
 
 /// Tanggal hanya-tanggal dari server ("2026-09-20" atau ISO tengah malam UTC)
 /// diformat tanpa digeser ke zona lokal, supaya 20 September tetap 20 September.
@@ -28,18 +29,27 @@ String formatTanggalSaja(Object? nilai, {String pola = 'd MMM yyyy'}) {
   final t = DateTime.tryParse(s);
   if (t == null) return '—';
   final utc = s.endsWith('Z') || s.contains('T') ? t.toUtc() : t;
-  return DateFormat(pola, 'id_ID').format(DateTime(utc.year, utc.month, utc.day));
+  return DateFormat(
+    pola,
+    'id_ID',
+  ).format(DateTime(utc.year, utc.month, utc.day));
 }
 
 String formatRupiah(Object? nilai) {
   final angka = nilai is num ? nilai : num.tryParse(nilai?.toString() ?? '');
   if (angka == null) return '—';
-  return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(angka);
+  return NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp ',
+    decimalDigits: 0,
+  ).format(angka);
 }
 
 String formatAngka(Object? nilai) {
   final angka = nilai is num ? nilai : num.tryParse(nilai?.toString() ?? '');
-  return angka == null ? '—' : NumberFormat.decimalPattern('id_ID').format(angka);
+  return angka == null
+      ? '—'
+      : NumberFormat.decimalPattern('id_ID').format(angka);
 }
 
 /// "2 jam 15 menit" dari menit.
@@ -59,7 +69,9 @@ String formatRelatif(Object? nilai) {
   final selisih = DateTime.now().difference(t);
   if (selisih.inSeconds < 60) return 'Baru saja';
   if (selisih.inMinutes < 60) return '${selisih.inMinutes} menit lalu';
-  if (selisih.inHours < 24 && t.day == DateTime.now().day) return 'Hari ini ${formatWaktu(t)}';
+  if (selisih.inHours < 24 && t.day == DateTime.now().day) {
+    return 'Hari ini ${formatWaktu(t)}';
+  }
   if (selisih.inHours < 48) return 'Kemarin ${formatWaktu(t)}';
   return formatTanggal(t);
 }
@@ -99,6 +111,9 @@ const Map<String, String> labelStatus = {
   'normal': 'Normal',
   'important': 'Penting',
   'urgent': 'Mendesak',
+  'registered': 'Terdaftar',
+  'waitlisted': 'Daftar tunggu',
+  'attended': 'Hadir',
 };
 
 String labelUntuk(String? kode) {
@@ -106,4 +121,8 @@ String labelUntuk(String? kode) {
   return labelStatus[kode] ?? kode.replaceAll('_', ' ');
 }
 
-const Map<String, String> labelMetode = {'gps': 'GPS', 'qr': 'QR', 'face': 'Wajah'};
+const Map<String, String> labelMetode = {
+  'gps': 'GPS',
+  'qr': 'QR',
+  'face': 'Wajah',
+};

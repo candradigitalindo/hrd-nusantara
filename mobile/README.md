@@ -36,7 +36,8 @@ lib/
   core/            konfigurasi, klien API (dio + token), penyimpanan aman, format, tema, widget umum
   fitur/
     auth/          login, sesi (Riverpod Notifier), model pengguna
-    beranda/       beranda + cangkang navigasi bawah
+    beranda/       beranda karyawan (shift & presensi hari ini, perlu tindakan, ringkasan kehadiran, jadwal, cuti & gaji, pelatihan, akses cepat, pengumuman) + cangkang navigasi bawah
+    pelatihan/     pendaftaran pelatihan milik pengguna (untuk beranda)
     presensi/      check-in/out GPS · wajah (kamera depan) · QR, riwayat
     cuti/          saldo, riwayat, ajukan, batalkan
     gaji/          daftar slip, rincian
