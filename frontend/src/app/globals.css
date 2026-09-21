@@ -7,17 +7,24 @@
  * data-theme pada <html>.
  */
 :root {
-  --background: #f7f8fb;
+  --background: #f4f7f5;
   --surface: #ffffff;
-  --surface-2: #f1f3f8;
-  --foreground: #0f172a;
-  --muted: #64748b;
-  --border: #e2e8f0;
+  --surface-2: #eef3f0;
+  --foreground: #16261e;
+  --muted: #5f6f66;
+  --border: #dbe4de;
 
-  --primary: #4f46e5;
-  --primary-hover: #4338ca;
-  --primary-soft: #eef2ff;
+  /* Hijau brand mengikuti pos.nbp.co.id (brand-600 / 700 / 500). */
+  --primary: #4a7c62;
+  --primary-hover: #3a6350;
+  --primary-soft: #e6efe9;
   --on-primary: #ffffff;
+
+  /* Sekunder: kuning emas hangat, pasangan hijau sage. */
+  --secondary: #d9a627;
+  --secondary-hover: #c2921f;
+  --secondary-soft: #fdf3d7;
+  --on-secondary: #1c3829;
 
   --success: #059669;
   --success-soft: #ecfdf5;
@@ -28,26 +35,33 @@
   --info: #0284c7;
   --info-soft: #f0f9ff;
 
-  --ring: #6366f1;
+  --ring: #5a9170;
   --radius: 0.75rem;
 
-  /* Hue mark grafik (tervalidasi: L-band, chroma, kontras >= 3:1 vs permukaan). */
-  --chart-1: #4f46e5;
+  /* Hue mark grafik: hijau brand yang lebih jenuh + kuning sekunder gelap
+     (tervalidasi: L-band, chroma, kontras >= 3:1 vs permukaan). */
+  --chart-1: #2f8a5b;
+  --chart-2: #b8860b;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #0b1020;
-    --surface: #111827;
-    --surface-2: #1a2236;
-    --foreground: #e5e7eb;
-    --muted: #94a3b8;
-    --border: #253044;
+    --background: #0c1512;
+    --surface: #12201a;
+    --surface-2: #1a2b23;
+    --foreground: #e6ede8;
+    --muted: #97a89f;
+    --border: #26392f;
 
-    --primary: #818cf8;
-    --primary-hover: #a5b4fc;
-    --primary-soft: #1e1b4b;
-    --on-primary: #0b1020;
+    --primary: #7fb897;
+    --primary-hover: #9ccbb0;
+    --primary-soft: #1d3327;
+    --on-primary: #0c1512;
+
+    --secondary: #e6b93f;
+    --secondary-hover: #f0c95f;
+    --secondary-soft: #3d2f0b;
+    --on-secondary: #1c1a10;
 
     --success: #34d399;
     --success-soft: #052e22;
@@ -58,22 +72,30 @@
     --info: #38bdf8;
     --info-soft: #082f49;
 
-    --ring: #a5b4fc;
-    --chart-1: #6366f1;
+    --ring: #9ccbb0;
+    --chart-1: #37a96f;
+    --chart-2: #b8860b;
   }
 }
 
 :root[data-theme="dark"] {
-  --background: #0b1020;
-  --surface: #111827;
-  --surface-2: #1a2236;
-  --foreground: #e5e7eb;
-  --muted: #94a3b8;
-  --border: #253044;
-  --primary: #818cf8;
-  --primary-hover: #a5b4fc;
-  --primary-soft: #1e1b4b;
-  --on-primary: #0b1020;
+  --background: #0c1512;
+  --surface: #12201a;
+  --surface-2: #1a2b23;
+  --foreground: #e6ede8;
+  --muted: #97a89f;
+  --border: #26392f;
+
+  --primary: #7fb897;
+  --primary-hover: #9ccbb0;
+  --primary-soft: #1d3327;
+  --on-primary: #0c1512;
+
+  --secondary: #e6b93f;
+  --secondary-hover: #f0c95f;
+  --secondary-soft: #3d2f0b;
+  --on-secondary: #1c1a10;
+
   --success: #34d399;
   --success-soft: #052e22;
   --warning: #fbbf24;
@@ -82,8 +104,10 @@
   --danger-soft: #4c0519;
   --info: #38bdf8;
   --info-soft: #082f49;
-  --ring: #a5b4fc;
-  --chart-1: #6366f1;
+
+  --ring: #9ccbb0;
+  --chart-1: #37a96f;
+  --chart-2: #b8860b;
 }
 
 @theme inline {
@@ -97,6 +121,10 @@
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);
   --color-on-primary: var(--on-primary);
+  --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
+  --color-secondary-soft: var(--secondary-soft);
+  --color-on-secondary: var(--on-secondary);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);

@@ -29,7 +29,7 @@ export const MobileNav = ({ pengguna }: { pengguna: PenggunaSesi | undefined }) 
                 aria-current={aktif ? "page" : undefined}
                 className={cn(
                   "flex flex-col items-center gap-1 py-2 text-[11px] font-medium",
-                  aktif ? "text-primary" : "text-muted"
+                  aktif ? "relative text-primary after:absolute after:-top-1 after:left-1/2 after:h-1 after:w-6 after:-translate-x-1/2 after:rounded-full after:bg-secondary" : "text-muted"
                 )}
               >
                 <Icon className="h-5 w-5" aria-hidden />

@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 
-/// Warna utama sama dengan aplikasi web (indigo), supaya karyawan mengenali
-/// keduanya sebagai satu sistem.
-const Color warnaUtama = Color(0xFF4F46E5);
+/// Warna brand sama dengan aplikasi web: hijau sage mengikuti
+/// pos.nbp.co.id (brand-600), dengan kuning emas hangat sebagai sekunder.
+const Color warnaUtama = Color(0xFF4A7C62);
+const Color warnaUtamaGelap = Color(0xFF3A6350);
+const Color warnaUtamaModeGelap = Color(0xFF7FB897);
+const Color warnaUtamaLembut = Color(0xFFE6EFE9);
+const Color warnaUtamaLembutModeGelap = Color(0xFF1D3327);
+const Color warnaSekunder = Color(0xFFD9A627);
+const Color warnaSekunderModeGelap = Color(0xFFE6B93F);
+const Color warnaSekunderLembut = Color(0xFFFDF3D7);
+const Color warnaTeksDiSekunder = Color(0xFF1C3829);
 const Color warnaSukses = Color(0xFF16A34A);
 const Color warnaPeringatan = Color(0xFFD97706);
 const Color warnaBahaya = Color(0xFFDC2626);
@@ -12,11 +20,26 @@ ThemeData temaTerang() => _tema(Brightness.light);
 ThemeData temaGelap() => _tema(Brightness.dark);
 
 ThemeData _tema(Brightness brightness) {
-  final skema = ColorScheme.fromSeed(seedColor: warnaUtama, brightness: brightness);
+  final terang = brightness == Brightness.light;
+  // Skema diturunkan dari hijau brand, lalu warna kuncinya dipatok persis
+  // supaya tidak digeser oleh algoritma seed.
+  final skema = ColorScheme.fromSeed(seedColor: warnaUtama, brightness: brightness).copyWith(
+    primary: terang ? warnaUtama : warnaUtamaModeGelap,
+    onPrimary: terang ? Colors.white : const Color(0xFF0C1512),
+    primaryContainer: terang ? warnaUtamaLembut : warnaUtamaLembutModeGelap,
+    onPrimaryContainer: terang ? warnaTeksDiSekunder : const Color(0xFFDDEBE2),
+    secondary: terang ? warnaSekunder : warnaSekunderModeGelap,
+    onSecondary: terang ? warnaTeksDiSekunder : const Color(0xFF1C1A10),
+    secondaryContainer: terang ? warnaSekunderLembut : const Color(0xFF3D2F0B),
+    onSecondaryContainer: terang ? warnaTeksDiSekunder : const Color(0xFFF6E7B5),
+    surface: terang ? Colors.white : const Color(0xFF12201A),
+    surfaceContainerHighest: terang ? const Color(0xFFEEF3F0) : const Color(0xFF1A2B23),
+    outlineVariant: terang ? const Color(0xFFDBE4DE) : const Color(0xFF26392F),
+  );
   return ThemeData(
     useMaterial3: true,
     colorScheme: skema,
-    scaffoldBackgroundColor: brightness == Brightness.light ? const Color(0xFFF6F7FB) : const Color(0xFF0F1117),
+    scaffoldBackgroundColor: terang ? const Color(0xFFF4F7F5) : const Color(0xFF0C1512),
     appBarTheme: AppBarTheme(
       centerTitle: false,
       elevation: 0,
@@ -46,6 +69,10 @@ ThemeData _tema(Brightness brightness) {
       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
     ),
     snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+    // Aksi kedua yang menonjol (mis. Ajukan Cuti) memakai kuning sekunder.
+    floatingActionButtonTheme: FloatingActionButtonThemeData(backgroundColor: skema.secondary, foregroundColor: skema.onSecondary),
+    chipTheme: ChipThemeData(selectedColor: skema.secondaryContainer, checkmarkColor: skema.onSecondaryContainer),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: skema.primary),
     navigationBarTheme: NavigationBarThemeData(
       height: 64,
       indicatorColor: skema.primaryContainer,

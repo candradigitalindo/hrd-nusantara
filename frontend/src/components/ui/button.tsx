@@ -9,7 +9,7 @@ type Ukuran = "sm" | "md" | "lg" | "icon";
 
 const VARIAN: Record<Varian, string> = {
   primary: "bg-primary text-on-primary hover:bg-primary-hover shadow-sm",
-  secondary: "bg-surface-2 text-foreground hover:bg-border",
+  secondary: "bg-secondary text-on-secondary hover:bg-secondary-hover shadow-sm",
   outline: "border border-border bg-surface text-foreground hover:bg-surface-2",
   ghost: "text-foreground hover:bg-surface-2",
   danger: "bg-danger text-white hover:opacity-90 shadow-sm",

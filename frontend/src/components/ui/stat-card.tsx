@@ -3,10 +3,11 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card } from "./card";
 
-type Nada = "primary" | "success" | "warning" | "danger" | "info";
+type Nada = "primary" | "secondary" | "success" | "warning" | "danger" | "info";
 
 const IKON: Record<Nada, string> = {
   primary: "bg-primary-soft text-primary",
+  secondary: "bg-secondary-soft text-on-secondary",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",

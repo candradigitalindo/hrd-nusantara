@@ -62,6 +62,11 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Keluhan & disiplin — ajukan, catat SP, tindak lanjuti | ✅ |
 | Analisis & laporan — perputaran (alasan, departemen, masa kerja saat keluar), biaya SDM (komposisi, biaya per rekrutan), produktivitas (terhadap shift terjadwal; manajer dibatasi departemennya), data mentah 5 kumpulan dengan unduh CSV untuk laporan kustom | ✅ | CSV maksimal 5.000 baris per unduhan. |
 
+Warna brand (21 September 2026): hijau sage `#4a7c62` mengikuti pos.nbp.co.id,
+sekunder kuning emas `#d9a627`; keduanya dipakai web (token `--primary`,
+`--secondary`) dan mobile (`lib/core/tema.dart`). Grafik memakai hijau/kuning
+satu rumpun yang lebih jenuh dan tervalidasi (`--chart-1`, `--chart-2`).
+
 Yang dijamin di seluruh halaman yang ada: tiga pola navigasi menurut lebar
 layar, tabel menjadi kartu di bawah 768px, dialog menjadi lembar-bawah di
 ponsel, area aman perangkat ber-notch, fokus keyboard terlihat, notifikasi

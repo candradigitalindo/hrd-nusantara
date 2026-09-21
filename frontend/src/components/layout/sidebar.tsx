@@ -41,7 +41,7 @@ export const Sidebar = ({
                 aria-current={aktif ? "page" : undefined}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                  aktif ? "bg-primary-soft text-primary" : "text-muted hover:bg-surface-2 hover:text-foreground"
+                  aktif ? "border-l-[3px] border-secondary bg-primary-soft text-primary" : "border-l-[3px] border-transparent text-muted hover:bg-surface-2 hover:text-foreground"
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" aria-hidden />
