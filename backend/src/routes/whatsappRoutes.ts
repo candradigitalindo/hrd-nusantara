@@ -16,6 +16,8 @@ import {
   connectMyWhatsApp,
   getCompliance,
   remindCompliance,
+  getMyGroups,
+  setMyAttendanceGroup,
 } from '../controllers/whatsappController';
 import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -31,6 +33,7 @@ import {
   disconnectSchema,
   complianceQuerySchema,
   remindSchema,
+  attendanceGroupSchema,
 } from '../schemas/whatsappSchema';
 
 const router = express.Router();
@@ -45,6 +48,9 @@ router.use(authenticateToken);
 // Tanpa requireRole: setiap karyawan menautkan nomornya sendiri.
 router.get('/whatsapp/me', asyncHandler(getMyWhatsApp));
 router.post('/whatsapp/me/connect', asyncHandler(connectMyWhatsApp));
+// Grup tujuan foto absensi ber-stempel — dipilih dari grup yang diikuti nomor itu.
+router.get('/whatsapp/me/groups', asyncHandler(getMyGroups));
+router.put('/whatsapp/me/attendance-group', validate(attendanceGroupSchema), asyncHandler(setMyAttendanceGroup));
 
 // Kepatuhan hanya untuk HR: daftar siapa yang belum/putus, plus pengingat.
 router.get(

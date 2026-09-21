@@ -24,10 +24,21 @@ import { normalizeBaileysMessage, nomorDariJid, type PesanBaileys } from './bail
 import { normalizePhoneNumber } from '../../utils/whatsappRules';
 import { putuskanReconnect } from './reconnect';
 
+export interface MetadataGrup {
+  id: string;
+  subject: string;
+  size?: number;
+  participants?: unknown[];
+}
+
 export interface SoketWhatsApp {
   ev: { on: (nama: string, penangan: (data: unknown) => void) => void };
   logout: () => Promise<void>;
   end: (error?: Error) => void;
+  /** Grup yang diikuti nomor ini; dipakai untuk memilih grup tujuan foto absensi. */
+  groupFetchAllParticipating?: () => Promise<Record<string, MetadataGrup>>;
+  /** Mengirim pesan (gambar + keterangan) atas nama nomor ini. */
+  sendMessage?: (jid: string, content: { image: Buffer; caption?: string } | { text: string }) => Promise<unknown>;
   /** Identitas akun WhatsApp yang tertaut, terisi setelah koneksi terbuka: "628…:12@s.whatsapp.net". */
   user?: { id?: string } | null;
 }
@@ -401,4 +412,46 @@ export const shutdownSessions = async () => {
   sesiAktif.clear();
 
   await tungguEventSelesai();
+};
+
+// --- Grup dan pengiriman pesan (foto absensi ber-stempel) ---
+
+export class GalatSesiWhatsApp extends Error {
+  constructor(pesan: string, public readonly kode: 'tidak_tersambung' | 'tidak_didukung') {
+    super(pesan);
+    this.name = 'GalatSesiWhatsApp';
+  }
+}
+
+export interface GrupWhatsApp {
+  jid: string;
+  nama: string;
+  jumlahAnggota: number;
+}
+
+const soketTersambung = (accountId: string): SoketWhatsApp => {
+  const sesi = sesiAktif.get(accountId);
+  if (!sesi || sesi.status !== 'connected' || !sesi.sock) {
+    throw new GalatSesiWhatsApp('Sesi WhatsApp tidak tersambung', 'tidak_tersambung');
+  }
+  return sesi.sock;
+};
+
+/** Grup yang diikuti nomor ini, diurutkan namanya. Butuh sesi tersambung. */
+export const listGroups = async (accountId: string): Promise<GrupWhatsApp[]> => {
+  const sock = soketTersambung(accountId);
+  if (!sock.groupFetchAllParticipating) {
+    throw new GalatSesiWhatsApp('Driver WhatsApp ini tidak mendukung daftar grup', 'tidak_didukung');
+  }
+  const peta = await sock.groupFetchAllParticipating();
+  return Object.values(peta)
+    .map((g) => ({ jid: g.id, nama: g.subject, jumlahAnggota: g.participants?.length ?? g.size ?? 0 }))
+    .sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
+};
+
+/** Mengirim gambar berketerangan ke sebuah grup atas nama nomor ini. */
+export const sendImageToGroup = async (accountId: string, jid: string, image: Buffer, caption: string) => {
+  const sock = soketTersambung(accountId);
+  if (!sock.sendMessage) throw new GalatSesiWhatsApp('Driver WhatsApp ini tidak mendukung pengiriman pesan', 'tidak_didukung');
+  await sock.sendMessage(jid, { image, caption });
 };

@@ -93,11 +93,14 @@ export default function HalamanPresensi() {
       key: "verifikasi",
       header: "Wajah",
       cell: (p) =>
-        p.faceVerified ? (
-          <span className="inline-flex items-center gap-1 text-xs text-success"><ShieldCheck className="h-4 w-4" aria-hidden /> Terverifikasi</span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-muted"><ShieldOff className="h-4 w-4" aria-hidden /> {p.checkInMethod ?? "—"}</span>
-        ),
+        <span className="inline-flex flex-col gap-0.5">
+          {p.faceVerified ? (
+            <span className="inline-flex items-center gap-1 text-xs text-success"><ShieldCheck className="h-4 w-4" aria-hidden /> Terverifikasi</span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-muted"><ShieldOff className="h-4 w-4" aria-hidden /> {p.checkInMethod ?? "—"}</span>
+          )}
+          {p.stampStatus && <span className={`text-[11px] ${p.stampStatus === "sent" ? "text-success" : p.stampStatus === "failed" ? "text-danger" : "text-muted"}`} title={p.stampNote ?? undefined}>{p.stampStatus === "sent" ? "Foto ke grup WA ✓" : p.stampStatus === "failed" ? "Foto ke grup WA gagal" : "Foto ke grup WA dilewati"}</span>}
+        </span>,
     },
     {
       key: "keaslian",

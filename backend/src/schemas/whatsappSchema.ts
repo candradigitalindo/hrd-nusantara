@@ -133,3 +133,11 @@ export const remindSchema = z
 
 export type ComplianceQuery = z.infer<typeof complianceQuerySchema>;
 export type RemindInput = z.infer<typeof remindSchema>;
+
+/** Grup tujuan foto absensi. null = berhenti mengirim. */
+export const attendanceGroupSchema = z
+  .object({
+    jid: z.string().trim().regex(/^\d+(-\d+)?@g\.us$/, 'Bukan JID grup WhatsApp').nullable(),
+  })
+  .strict();
+export type AttendanceGroupInput = z.infer<typeof attendanceGroupSchema>;

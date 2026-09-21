@@ -4,6 +4,7 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { decryptBytes, encryptJson, decryptJson } from '../utils/fieldCrypto';
 import { evaluateIntegrity, type PreviousFix } from '../utils/locationIntegrity';
+import { jadwalkanStempel } from '../services/whatsapp/attendanceStamp';
 
 type Koordinat = { lat: number; lng: number };
 
@@ -61,6 +62,9 @@ const attendanceSelect = {
   integrityFlags: true,
   integrityReport: true,
   checkOutIntegrityReport: true,
+  stampStatus: true,
+  stampSentAt: true,
+  stampNote: true,
   status: true,
   notes: true,
   createdAt: true,
@@ -113,6 +117,17 @@ const tolakIntegritas = (res: Response, reason: string | null, flags: string[], 
     metadata: { flags },
   };
   return res.status(422).json({ error: `Presensi ditolak. ${reason}.`, details: { integrityFlags: flags } });
+};
+
+/** Foto untuk stempel: selfie verifikasi wajah, atau foto khusus dari klien. */
+const fotoStempel = (input: { faceImage?: string; photo?: string }): Buffer | null => {
+  const sumber = input.faceImage ?? input.photo;
+  if (!sumber) return null;
+  try {
+    return decodeBase64Image(sumber).buffer;
+  } catch {
+    return null;
+  }
 };
 
 const findOpenAttendance = (employeeId: string) =>
@@ -390,6 +405,27 @@ export const checkIn = async (req: Request, res: Response) => {
   });
 
   res.status(201).json(toDTO(attendance));
+
+  // Foto absensi ber-stempel ke grup WhatsApp pilihan karyawan — di latar,
+  // setelah presensi tercatat dan dijawab.
+  jadwalkanStempel({
+    attendanceId: attendance.id,
+    employeeId,
+    foto: fotoStempel(input),
+    data: {
+      jenis: 'masuk',
+      nama: attendance.employee.name,
+      nik: attendance.employee.nik,
+      waktu: now,
+      lokasi: attendance.workLocation?.name ?? null,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      metode: input.method,
+      wajahTerverifikasi: wajah.faceVerified,
+      status: penilaian.status,
+      menitTerlambat: penilaian.lateMinutes,
+    },
+  });
 };
 
 export const checkOut = async (req: Request, res: Response) => {
@@ -469,6 +505,25 @@ export const checkOut = async (req: Request, res: Response) => {
   });
 
   res.json(toDTO(attendance));
+
+  jadwalkanStempel({
+    attendanceId: attendance.id,
+    employeeId,
+    foto: fotoStempel(input),
+    data: {
+      jenis: 'pulang',
+      nama: attendance.employee.name,
+      nik: attendance.employee.nik,
+      waktu: now,
+      lokasi: attendance.workLocation?.name ?? null,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      metode: input.method,
+      wajahTerverifikasi: input.method === 'face',
+      status: attendance.status,
+      menitKerja: penilaian.workedMinutes,
+    },
+  });
 };
 
 const buildAttendanceWhere = (

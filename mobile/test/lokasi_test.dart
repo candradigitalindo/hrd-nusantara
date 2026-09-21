@@ -37,5 +37,9 @@ void main() {
     expect(gps.keJson(sertakanLokasiId: false).containsKey('workLocationId'), isFalse);
     final qr = PermintaanAbsen(metode: MetodeAbsen.qr, qrToken: 'tok', catatan: 'ganti shift');
     expect(qr.keJson(), {'method': 'qr', 'qrToken': 'tok', 'notes': 'ganti shift'});
+    // Foto stempel untuk grup WhatsApp dikirim sebagai 'photo', terpisah dari faceImage.
+    final stempel = PermintaanAbsen(metode: MetodeAbsen.gps, latitude: -6.1, longitude: 106.8, lokasiId: 'a', fotoStempelBase64: 'data:image/jpeg;base64,AAAA');
+    expect(stempel.keJson()['photo'], 'data:image/jpeg;base64,AAAA');
+    expect(stempel.keJson().containsKey('faceImage'), isFalse);
   });
 }

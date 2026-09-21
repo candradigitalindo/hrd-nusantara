@@ -108,6 +108,8 @@ export const checkInSchema = z
     faceImage: base64ImageField.optional(),
     notes: z.string().trim().max(500).optional(),
     integrity: integritySchema.optional(),
+    /// Foto untuk stempel absensi ke grup WhatsApp, bila metodenya bukan wajah.
+    photo: base64ImageField.optional(),
   })
   .strict()
   .superRefine(requireByMethod);
@@ -121,6 +123,7 @@ export const checkOutSchema = z
     faceImage: base64ImageField.optional(),
     notes: z.string().trim().max(500).optional(),
     integrity: integritySchema.optional(),
+    photo: base64ImageField.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {

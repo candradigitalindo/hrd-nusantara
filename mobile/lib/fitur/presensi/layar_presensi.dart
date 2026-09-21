@@ -6,6 +6,7 @@ import '../../core/widget/widget_umum.dart';
 import 'layar_absen.dart';
 import 'model_presensi.dart';
 import 'repo_presensi.dart';
+import '../whatsapp/repo_whatsapp.dart';
 
 class LayarPresensi extends ConsumerWidget {
   const LayarPresensi({super.key});
@@ -13,15 +14,17 @@ class LayarPresensi extends ConsumerWidget {
   Future<void> _absen(BuildContext context, WidgetRef ref, {required bool pulang}) async {
     final hasil = await LayarAbsen.buka(context, pulang: pulang);
     if (hasil == null || !context.mounted) return;
+    final grup = ref.read(tautanWhatsAppProvider).value;
+    final keGrup = grup?.adaGrup == true && grup?.tersambung == true ? ' · foto dikirim ke grup ${grup!.grupNama}' : '';
     if (pulang) {
       tampilkanPesan(context, 'Check-out tercatat ${formatWaktu(hasil.jamPulang)}',
-          rincian: 'Jam kerja ${formatDurasiMenit(hasil.menitKerja)}${(hasil.jamLembur ?? 0) > 0 ? ' · lembur ${hasil.jamLembur} jam menunggu persetujuan' : ''}');
+          rincian: 'Jam kerja ${formatDurasiMenit(hasil.menitKerja)}${(hasil.jamLembur ?? 0) > 0 ? ' · lembur ${hasil.jamLembur} jam menunggu persetujuan' : ''}$keGrup');
     } else {
       final telat = (hasil.menitTerlambat ?? 0) > 0;
       tampilkanPesan(
         context,
         telat ? 'Check-in tercatat, terlambat ${hasil.menitTerlambat} menit' : 'Check-in tercatat ${formatWaktu(hasil.jamMasuk)}',
-        rincian: '${hasil.namaLokasi ?? 'Lokasi terverifikasi'} · ${labelMetode[hasil.metodeMasuk] ?? ''}${hasil.wajahTerverifikasi ? ' · wajah cocok' : ''}',
+        rincian: '${hasil.namaLokasi ?? 'Lokasi terverifikasi'} · ${labelMetode[hasil.metodeMasuk] ?? ''}${hasil.wajahTerverifikasi ? ' · wajah cocok' : ''}$keGrup',
         nada: telat ? Nada.peringatan : Nada.sukses,
       );
     }

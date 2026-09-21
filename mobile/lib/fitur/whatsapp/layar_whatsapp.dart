@@ -155,6 +155,16 @@ class _KartuStatus extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(keterangan, style: TextStyle(fontSize: 13, height: 1.5, color: skema.onSurfaceVariant)),
+            if (t.tersambung) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(t.adaGrup ? Icons.groups : Icons.group_off, size: 18, color: warnaNada(t.adaGrup ? Nada.sukses : Nada.peringatan, skema)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(t.adaGrup ? 'Foto absensi dikirim ke grup "${t.grupNama}"' : 'Grup foto absensi belum dipilih — pilih di aplikasi web (WhatsApp Saya)', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                ],
+              ),
+            ],
             if (t.catatan != null && !t.tersambung) Padding(padding: const EdgeInsets.only(top: 8), child: Text(t.catatan!, style: TextStyle(fontSize: 12, color: skema.error))),
           ],
         ),

@@ -34,8 +34,10 @@ RUN bash scripts/download-models.sh
 # ---------- Tahap runtime ----------
 FROM node:22-bookworm-slim AS runner
 
+# fontconfig + DejaVu: teks pada foto absensi ber-stempel dirender sharp
+# lewat SVG; tanpa font, hurufnya jadi kotak.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates fontconfig fonts-dejavu-core \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

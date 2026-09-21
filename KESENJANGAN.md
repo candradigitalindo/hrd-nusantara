@@ -22,7 +22,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | 7 | Pelatihan — program, jadwal, pendaftaran, evaluasi, riwayat | ✅ | |
 | 8 | Kompetensi & sertifikasi | ✅ | |
 | 9 | Komunikasi — pengumuman, chat, survei | ✅ | |
-| 10 | WhatsApp — setiap karyawan terdaftar menautkan nomor pribadinya lewat login web (halaman WhatsApp Saya, QR), seluruh pesan teksnya tersinkron; arsip sentral & pencarian (HR); notifikasi putus sesi ke ponsel; wajib scan ulang; laporan kepatuhan & pengingat (HR); nomor perusahaan tetap didukung | ✅ | Baileys, bukan Belly's. Keputusan 21 September 2026: menyesuaikan ke dokumen — sebelumnya hanya nomor perusahaan. Dasar hukum persetujuan karyawan (UU PDP) adalah urusan perusahaan. |
+| 10 | WhatsApp — setiap karyawan terdaftar menautkan nomor pribadinya lewat login web (halaman WhatsApp Saya, QR), seluruh pesan teksnya tersinkron; arsip sentral & pencarian (HR); notifikasi putus sesi ke ponsel; wajib scan ulang; laporan kepatuhan & pengingat (HR); nomor perusahaan tetap didukung; foto absensi ber-stempel (nama, jam, lokasi, metode) dikirim otomatis dari WhatsApp karyawan ke grup pilihannya | ✅ | Baileys, bukan Belly's. Keputusan 21 September 2026: menyesuaikan ke dokumen — sebelumnya hanya nomor perusahaan. Dasar hukum persetujuan karyawan (UU PDP) adalah urusan perusahaan. |
 | 11 | Analisis — dashboard, turnover, biaya, produktivitas, data mentah | ✅ | |
 | 12 | Integrasi POS / PMS / akuntansi | ➖ | Tidak ada sistem luar yang ditentukan untuk diintegrasikan. |
 | 13 | Enkripsi — percakapan | ✅ | AES-256-GCM + indeks buta. |

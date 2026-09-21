@@ -74,6 +74,26 @@ nomornya diperbarui.
 Dua karyawan yang saling berkirim pesan masing-masing punya salinan di
 arsipnya sendiri (`externalMessageId` unik **per akun**).
 
+### Foto absensi ber-stempel ke grup
+
+Setelah tersambung, karyawan memilih **satu grup** dari daftar grup yang
+diikuti nomornya (halaman *WhatsApp Saya* di web):
+
+```
+GET /api/whatsapp/me/groups            -> { data: [{ jid, nama, jumlahAnggota }], terpilih }
+PUT /api/whatsapp/me/attendance-group  -> { jid: "1203…@g.us" | null }
+```
+
+Grup diverifikasi benar-benar diikuti nomor itu (JID bebas ditolak 404).
+Setiap check-in/out, WhatsApp karyawan sendiri mengirim foto (selfie
+verifikasi wajah, atau foto khusus `photo` untuk metode GPS/QR; tanpa foto
+dibuat latar polos) dengan **pita stempel** — nama, NIK, jam zona aplikasi,
+lokasi + koordinat, metode, status — plus keterangan yang sama. Pengiriman
+berjalan di latar setelah presensi dijawab; hasilnya di
+`Attendance.stampStatus` (`sent` / `failed` / `skipped`) dan terlihat HR di
+halaman Presensi. Teks stempel dirender sharp lewat SVG; Dockerfile memasang
+`fonts-dejavu-core` supaya hurufnya tidak jadi kotak.
+
 ### Kepatuhan (HR)
 
 ```

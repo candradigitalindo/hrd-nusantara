@@ -49,7 +49,7 @@ class SesiWhatsApp {
 
 /// Keadaan tautan WhatsApp pribadi pengguna yang login (GET /whatsapp/me).
 class TautanWhatsApp {
-  const TautanWhatsApp({required this.status, required this.driverAktif, this.phoneNumber, this.label, this.qrDataUrl, this.catatan, this.tersambungPada, this.terputusPada});
+  const TautanWhatsApp({required this.status, required this.driverAktif, this.phoneNumber, this.label, this.qrDataUrl, this.catatan, this.tersambungPada, this.terputusPada, this.grupJid, this.grupNama});
   /// never_linked · connecting · pending_scan · connected · disconnected · inactive
   final String status;
   final bool driverAktif;
@@ -59,7 +59,11 @@ class TautanWhatsApp {
   final String? catatan;
   final DateTime? tersambungPada;
   final DateTime? terputusPada;
+  /// Grup tujuan foto absensi ber-stempel (dipilih di web).
+  final String? grupJid;
+  final String? grupNama;
 
+  bool get adaGrup => grupJid != null;
   bool get tersambung => status == 'connected';
   bool get belumPernah => status == 'never_linked';
   bool get menungguScan => status == 'pending_scan' || status == 'connecting';
@@ -76,6 +80,8 @@ class TautanWhatsApp {
       catatan: j['catatan'] as String?,
       tersambungPada: parseTanggal(akun?['lastConnectedAt']),
       terputusPada: parseTanggal(akun?['lastDisconnectedAt']),
+      grupJid: (akun?['attendanceGroup'] as Map?)?['jid'] as String?,
+      grupNama: (akun?['attendanceGroup'] as Map?)?['name'] as String?,
     );
   }
 }

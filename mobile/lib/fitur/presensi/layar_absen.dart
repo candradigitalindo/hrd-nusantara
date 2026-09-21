@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../core/widget/widget_umum.dart';
+import '../whatsapp/repo_whatsapp.dart';
 import 'integritas_lokasi.dart';
 import 'layanan_lokasi.dart';
 import 'layar_kamera_wajah.dart';
@@ -44,12 +45,23 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
       _langkah = 'Menyiapkan…';
     });
     try {
+      // Bila grup foto absensi sudah dipilih (di web), metode selain wajah
+      // ikut memotret selfie sebagai foto stempel yang dikirim ke grup.
+      final tautan = ref.read(tautanWhatsAppProvider).value;
+      final perluFotoStempel = tautan?.adaGrup == true && tautan?.tersambung == true;
+      String? fotoStempel;
       PermintaanAbsen permintaan;
       switch (metode) {
         case MetodeAbsen.qr:
           final token = await LayarPindaiQr.buka(context);
           if (token == null) return _batal();
-          permintaan = PermintaanAbsen(metode: metode, qrToken: token, catatan: _catatan.text);
+          if (perluFotoStempel) {
+            if (!mounted) return;
+            setState(() => _langkah = 'Foto untuk grup WhatsApp…');
+            fotoStempel = await LayarKameraWajah.buka(context);
+            if (fotoStempel == null) return _batal();
+          }
+          permintaan = PermintaanAbsen(metode: metode, qrToken: token, catatan: _catatan.text, fotoStempelBase64: fotoStempel);
         case MetodeAbsen.gps:
         case MetodeAbsen.wajah:
           setState(() => _langkah = 'Mengambil lokasi GPS…');
@@ -71,9 +83,9 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
             );
           }
           String? foto;
-          if (metode == MetodeAbsen.wajah) {
+          if (metode == MetodeAbsen.wajah || perluFotoStempel) {
             if (!mounted) return;
-            setState(() => _langkah = 'Buka kamera…');
+            setState(() => _langkah = metode == MetodeAbsen.wajah ? 'Buka kamera…' : 'Foto untuk grup WhatsApp…');
             foto = await LayarKameraWajah.buka(context);
             if (foto == null) return _batal();
           }
@@ -82,7 +94,8 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
             latitude: posisi.latitude,
             longitude: posisi.longitude,
             lokasiId: terdekat.lokasi.id,
-            fotoWajahBase64: foto,
+            fotoWajahBase64: metode == MetodeAbsen.wajah ? foto : null,
+            fotoStempelBase64: metode == MetodeAbsen.wajah ? null : foto,
             catatan: _catatan.text,
             integritas: integritas.keJson(),
           );

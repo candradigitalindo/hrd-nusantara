@@ -51,6 +51,14 @@ lib/
 Alur data: layar → provider Riverpod → repo → `KlienApi` (dio). Token JWT
 disimpan di Keychain/Keystore; 401 dari server otomatis mengeluarkan sesi.
 
+## Foto absensi ke grup WhatsApp
+
+Bila karyawan sudah memilih grup tujuan (di web, halaman WhatsApp Saya),
+setiap check-in/out mengirim foto ber-stempel dari WhatsApp-nya sendiri.
+Untuk metode wajah dipakai selfie verifikasi; untuk GPS/QR aplikasi
+meminta selfie tambahan (`photo`). Pengiriman dilakukan server di latar;
+beranda mengingatkan bila grup belum dipilih.
+
 ## Deteksi fake GPS
 
 Sebelum check-in/out berbasis GPS atau wajah, aplikasi mengumpulkan sinyal

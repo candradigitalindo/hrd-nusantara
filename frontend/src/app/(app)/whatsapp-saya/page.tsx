@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { QrCode, Link2, Link2Off, ShieldCheck, History, RefreshCw } from "lucide-react";
+import { QrCode, Link2, Link2Off, ShieldCheck, History, RefreshCw, Users, Camera } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
@@ -13,7 +13,7 @@ import { Skeleton, SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { tautanWhatsAppQuery } from "@/components/whatsapp/peringatan-tautan";
 import { formatTanggal, formatRelatif, labelStatus } from "@/lib/utils";
-import type { Halaman, TautanWhatsApp } from "@/lib/types";
+import type { Halaman, TautanWhatsApp, GrupWhatsApp } from "@/lib/types";
 
 interface KejadianSesi { id: string; eventType: string; occurredAt: string; note: string | null; account: { label: string; phoneNumber: string | null } }
 
@@ -38,6 +38,18 @@ export default function HalamanWhatsAppSaya() {
     mutationFn: async () => (await api.post<TautanWhatsApp>("/whatsapp/me/connect", {})).data,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["wa", "saya"] }); qc.invalidateQueries({ queryKey: ["wa", "kejadian-saya"] }); notifikasi.info("Menyiapkan kode QR", "Siapkan WhatsApp di ponsel Anda; kode muncul beberapa detik lagi."); },
     onError: (e) => notifikasi.galat(e, "Belum bisa menautkan"),
+  });
+
+  const grup = useQuery({
+    queryKey: ["wa", "grup-saya"],
+    queryFn: async () => (await api.get<{ data: GrupWhatsApp[]; terpilih: string | null }>("/whatsapp/me/groups")).data,
+    enabled: tautan.data?.status === "connected",
+    retry: false,
+  });
+  const pilihGrup = useMutation({
+    mutationFn: async (jid: string | null) => (await api.put<TautanWhatsApp>("/whatsapp/me/attendance-group", { jid })).data,
+    onSuccess: (r, jid) => { qc.invalidateQueries({ queryKey: ["wa", "saya"] }); qc.invalidateQueries({ queryKey: ["wa", "grup-saya"] }); notifikasi.sukses(jid ? `Foto absensi akan dikirim ke "${r.account?.attendanceGroup?.name}"` : "Pengiriman foto absensi dihentikan", jid ? "Setiap check-in dan check-out mengirim foto ber-stempel dari WhatsApp Anda." : undefined); },
+    onError: (e) => notifikasi.galat(e, "Grup gagal dipilih"),
   });
 
   const t = tautan.data;
@@ -87,6 +99,35 @@ export default function HalamanWhatsAppSaya() {
             )}
             {t.status === "inactive" && <p className="text-sm text-muted">HR menonaktifkan tautan WhatsApp Anda. Hubungi HR untuk mengaktifkannya kembali.</p>}
             {(t.status === "pending_scan" || t.status === "connecting") && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><RefreshCw className="h-4 w-4" aria-hidden /> Minta kode baru</Button>}
+          </CardContent>
+        </Card>
+      )}
+
+      {t?.status === "connected" && (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3">
+            <div><CardTitle className="flex items-center gap-2"><Camera className="h-4 w-4 text-primary" aria-hidden /> Grup tujuan foto absensi</CardTitle><CardDescription>Setiap check-in dan check-out, WhatsApp Anda mengirim foto ber-stempel (nama, jam, lokasi, metode) ke grup ini</CardDescription></div>
+            <Button variant="ghost" size="sm" onClick={() => grup.refetch()} loading={grup.isFetching}><RefreshCw className="h-4 w-4" aria-hidden /> Muat ulang</Button>
+          </CardHeader>
+          <CardContent>
+            {t.account?.attendanceGroup ? (
+              <Alert tone="success" title={`Terpilih: ${t.account.attendanceGroup.name ?? t.account.attendanceGroup.jid}`} action={<Button size="sm" variant="outline" onClick={() => pilihGrup.mutate(null)} loading={pilihGrup.isPending && pilihGrup.variables === null}>Berhenti mengirim</Button>}>Pilih grup lain di bawah untuk mengganti.</Alert>
+            ) : (
+              <Alert tone="warning" title="Belum ada grup tujuan">Pilih grup outlet atau tim Anda; tanpa ini foto absensi tidak dikirim.</Alert>
+            )}
+            {grup.isLoading ? <SkeletonBaris jumlah={3} /> : grup.isError ? <p className="mt-3 text-sm text-muted">Daftar grup belum bisa dimuat. Pastikan sesi tersambung, lalu muat ulang.</p> : !grup.data?.data.length ? <p className="mt-3 text-sm text-muted">WhatsApp ini belum bergabung ke grup mana pun.</p> : (
+              <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
+                {grup.data.data.map((g) => (
+                  <li key={g.jid}>
+                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-surface-2">
+                      <input type="radio" name="grup-absensi" className="h-4 w-4 accent-[var(--color-primary)]" checked={t.account?.attendanceGroup?.jid === g.jid} onChange={() => pilihGrup.mutate(g.jid)} disabled={pilihGrup.isPending} />
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{g.nama}</span>
+                      <span className="inline-flex items-center gap-1 text-xs text-muted"><Users className="h-3.5 w-3.5" aria-hidden /> {g.jumlahAnggota}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )}

@@ -79,6 +79,18 @@ class LayarBeranda extends ConsumerWidget {
                   ),
                 ),
               if (tautanWa != null && tautanWa.perluTindakan && tautanWa.driverAktif) const SizedBox(height: 12),
+              if (tautanWa != null && tautanWa.tersambung && !tautanWa.adaGrup)
+                Card(
+                  color: warnaNada(Nada.info, skema).withValues(alpha: 0.12),
+                  child: ListTile(
+                    onTap: () => context.push('/whatsapp'),
+                    leading: Icon(Icons.groups_outlined, color: warnaNada(Nada.info, skema)),
+                    title: const Text('Pilih grup WhatsApp untuk foto absensi', style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: const Text('Dipilih sekali di aplikasi web; setiap absensi mengirim foto ber-stempel ke grup itu.'),
+                    trailing: const Icon(Icons.chevron_right),
+                  ),
+                ),
+              if (tautanWa != null && tautanWa.tersambung && !tautanWa.adaGrup) const SizedBox(height: 12),
               // Kartu presensi hari ini — tindakan utama karyawan tiap hari.
               Card(
                 color: skema.primary,

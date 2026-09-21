@@ -81,6 +81,9 @@ export interface Presensi {
   faceVerified: boolean;
   /** Penanda kecurangan lokasi; kosong = wajar. Lihat LABEL_INTEGRITAS. */
   integrityFlags: string[];
+  /** Pengiriman foto absensi ber-stempel ke grup WhatsApp: sent | failed | skipped. */
+  stampStatus: string | null;
+  stampNote: string | null;
   status: string;
   notes: string | null;
   employee: { id: string; nik: string; name: string; departmentId: string | null };
@@ -882,6 +885,7 @@ export interface BarisKepatuhanWa {
   phoneNumber: string | null;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
+  attendanceGroupName: string | null;
 }
 
 export interface KepatuhanWa {
@@ -893,7 +897,13 @@ export interface KepatuhanWa {
 export interface TautanWhatsApp {
   status: "never_linked" | "connecting" | "pending_scan" | "connected" | "disconnected" | "inactive";
   driverAktif: boolean;
-  account: { id: string; kind: string; label: string; phoneNumber: string | null; sessionStatus: string; lastConnectedAt: string | null; lastDisconnectedAt: string | null; isActive: boolean } | null;
+  account: { id: string; kind: string; label: string; phoneNumber: string | null; sessionStatus: string; lastConnectedAt: string | null; lastDisconnectedAt: string | null; isActive: boolean; attendanceGroup: { jid: string; name: string | null } | null } | null;
   qr: string | null;
   catatan: string | null;
+}
+
+export interface GrupWhatsApp {
+  jid: string;
+  nama: string;
+  jumlahAnggota: number;
 }

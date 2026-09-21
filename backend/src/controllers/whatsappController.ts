@@ -7,7 +7,7 @@ import { normalizePhoneNumber, resolveScope } from '../utils/whatsappRules';
 import { decryptField, tokenizeText, blindIndex } from '../utils/fieldCrypto';
 import { retentionCutoff } from '../utils/whatsappRetention';
 import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
-import { connectAccount, disconnectAccount, getSession, getQrString } from '../services/whatsapp/session';
+import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, GalatSesiWhatsApp } from '../services/whatsapp/session';
 import { kirimKeKaryawan } from '../services/notification/push';
 import { toDataURL } from 'qrcode';
 import { env } from '../config/env';
@@ -23,6 +23,7 @@ import type {
   DisconnectInput,
   ComplianceQuery,
   RemindInput,
+  AttendanceGroupInput,
 } from '../schemas/whatsappSchema';
 
 const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
@@ -575,6 +576,7 @@ const ringkasSaya = async (akun: AkunPribadi | null) => {
       lastConnectedAt: akun.lastConnectedAt,
       lastDisconnectedAt: akun.lastDisconnectedAt,
       isActive: akun.isActive,
+      attendanceGroup: akun.attendanceGroupJid ? { jid: akun.attendanceGroupJid, name: akun.attendanceGroupName } : null,
     },
     session: sesi,
     qr: qr ? await toDataURL(qr) : null,
@@ -641,7 +643,7 @@ const daftarKepatuhan = async (departmentId?: string) => {
       department: { select: { id: true, name: true } },
       whatsappAccounts: {
         where: { kind: 'personal', isActive: true },
-        select: { id: true, phoneNumber: true, sessionStatus: true, lastConnectedAt: true, lastDisconnectedAt: true },
+        select: { id: true, phoneNumber: true, sessionStatus: true, lastConnectedAt: true, lastDisconnectedAt: true, attendanceGroupName: true },
         orderBy: { createdAt: 'desc' },
         take: 1,
       },
@@ -658,8 +660,75 @@ const daftarKepatuhan = async (departmentId?: string) => {
       phoneNumber: a?.phoneNumber ?? null,
       lastConnectedAt: a?.lastConnectedAt ?? null,
       lastDisconnectedAt: a?.lastDisconnectedAt ?? null,
+      attendanceGroupName: a?.attendanceGroupName ?? null,
     };
   });
+};
+
+// ============ Grup tujuan foto absensi ============
+
+const tanpaSesi = (res: Response, error: unknown) => {
+  if (error instanceof GalatSesiWhatsApp) {
+    return res.status(409).json({
+      error:
+        error.kode === 'tidak_tersambung'
+          ? 'WhatsApp belum tersambung. Pindai QR dulu, lalu muat ulang daftar grup.'
+          : error.message,
+    });
+  }
+  throw error;
+};
+
+/** Grup yang diikuti WhatsApp pengguna, untuk memilih tujuan foto absensi. */
+export const getMyGroups = async (req: Request, res: Response) => {
+  if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+  const akun = await akunPribadi(req.user!.id);
+  if (!akun) return res.status(409).json({ error: 'WhatsApp belum ditautkan' });
+  try {
+    res.json({ data: await listGroups(akun.id), terpilih: akun.attendanceGroupJid });
+  } catch (error) {
+    return tanpaSesi(res, error);
+  }
+};
+
+/**
+ * Memilih grup tujuan. Grupnya diperiksa benar-benar diikuti nomor ini —
+ * JID yang diketik bebas bisa mengirim foto karyawan ke grup orang lain.
+ */
+export const setMyAttendanceGroup = async (req: Request, res: Response) => {
+  const { jid } = req.body as AttendanceGroupInput;
+  const actor = req.user!;
+  const akun = await akunPribadi(actor.id);
+  if (!akun) return res.status(409).json({ error: 'WhatsApp belum ditautkan' });
+
+  let nama: string | null = null;
+  if (jid !== null) {
+    if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+    let grup;
+    try {
+      grup = await listGroups(akun.id);
+    } catch (error) {
+      return tanpaSesi(res, error);
+    }
+    const pilih = grup.find((g) => g.jid === jid);
+    if (!pilih) return res.status(404).json({ error: 'Grup tidak ditemukan di WhatsApp Anda. Muat ulang daftar grup.' });
+    nama = pilih.nama;
+  }
+
+  const diperbarui = await prisma.whatsAppAccount.update({
+    where: { id: akun.id },
+    data: { attendanceGroupJid: jid, attendanceGroupName: nama },
+  });
+
+  res.locals.audit = {
+    action: 'whatsapp.attendance_group.set',
+    entity: 'WhatsAppAccount',
+    entityId: akun.id,
+    summary: jid ? `Grup foto absensi: ${nama}` : 'Berhenti mengirim foto absensi ke grup',
+    metadata: { jid, nama },
+  };
+
+  res.json(await ringkasSaya(diperbarui));
 };
 
 /** HR: siapa yang sudah, belum, atau putus — kewajiban ini harus terlihat, bukan diasumsikan. */

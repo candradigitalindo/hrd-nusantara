@@ -77,5 +77,9 @@ void main() {
     expect(ok.perluTindakan, isFalse);
     expect(ok.phoneNumber, '628111111111');
     expect(TautanWhatsApp.dariJson({'status': 'inactive', 'driverAktif': true}).perluTindakan, isFalse);
+    final grup = TautanWhatsApp.dariJson({'status': 'connected', 'driverAktif': true, 'account': {'phoneNumber': '628', 'attendanceGroup': {'jid': '1@g.us', 'name': 'Absensi Kemang'}}});
+    expect(grup.adaGrup, isTrue);
+    expect(grup.grupNama, 'Absensi Kemang');
+    expect(ok.adaGrup, isFalse);
   });
 }

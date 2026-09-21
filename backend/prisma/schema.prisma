@@ -201,6 +201,12 @@ model Attendance {
   /// audit bila ada sengketa.
   integrityReport         Json?
   checkOutIntegrityReport Json?
+  /// Pengiriman foto absensi ber-stempel ke grup WhatsApp karyawan:
+  /// sent, failed, skipped (belum pilih grup / sesi putus). Untuk check-out
+  /// nilainya ditimpa oleh pengiriman terakhir.
+  stampStatus String?
+  stampSentAt DateTime?
+  stampNote   String?
 
   status    String   @default("present") // present, late, absent, no_checkout
   notes     String?
@@ -1441,6 +1447,10 @@ model WhatsAppAccount {
   department   Department? @relation(fields: [departmentId], references: [id])
   departmentId String?
 
+  /// Grup WhatsApp tujuan foto absensi ber-stempel, dipilih pemegang nomor
+  /// dari daftar grup yang diikutinya. Nama disalin untuk ditampilkan.
+  attendanceGroupJid  String?
+  attendanceGroupName String?
   /// connected, disconnected, pending_scan
   sessionStatus      String    @default("pending_scan")
   lastConnectedAt    DateTime?
