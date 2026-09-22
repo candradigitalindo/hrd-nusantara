@@ -3,10 +3,9 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { KonteksIdLabel } from "./field-context";
+import { KELAS_KONTROL } from "./panel-mengambang";
 
-const dasar =
-  "w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted " +
-  "transition-colors focus:border-ring disabled:opacity-60 aria-[invalid=true]:border-danger";
+const dasar = `${KELAS_KONTROL} placeholder:text-muted`;
 
 export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {
@@ -23,6 +22,8 @@ export const Textarea = React.forwardRef<
 
 // Select kini punya kotak pencarian; implementasinya di select.tsx.
 export { Select } from "./select";
+// Input teks bebas dengan saran bertema, pengganti <datalist> bawaan browser.
+export { InputSaran } from "./input-saran";
 
 /** Label + kontrol + pesan galat, dalam satu blok yang konsisten di semua formulir. */
 export const Field = ({

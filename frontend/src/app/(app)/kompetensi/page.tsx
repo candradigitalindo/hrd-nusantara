@@ -10,7 +10,7 @@ import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Select, Textarea, Field } from "@/components/ui/input";
+import { Input, InputSaran, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { StatCard } from "@/components/ui/stat-card";
@@ -260,7 +260,7 @@ export default function HalamanKompetensi() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Kode" error={fk.formState.errors.code?.message}><Input className="font-mono uppercase" {...fk.register("code", { required: "Wajib diisi", pattern: { value: /^[A-Za-z0-9_]{2,40}$/, message: "Huruf, angka, garis bawah (2–40)" } })} placeholder="FOOD_SAFETY" /></Field>
             <Field label="Nama" error={fk.formState.errors.name?.message}><Input {...fk.register("name", { required: "Wajib diisi" })} placeholder="Food Safety" /></Field>
-            <Field label="Kategori"><Input {...fk.register("category")} placeholder="Teknis / Perilaku" list="kategori-kompetensi" /><datalist id="kategori-kompetensi">{kategori.map((k) => <option key={k} value={k} />)}</datalist></Field>
+            <Field label="Kategori" hint="Pilih yang sudah dipakai, atau ketik kategori baru"><InputSaran {...fk.register("category")} saran={kategori} placeholder="Teknis / Perilaku" /></Field>
             <Field label="Tingkat tertinggi (1–20)"><Input type="number" min={1} max={20} {...fk.register("maxLevel")} /></Field>
             <Field label="Deskripsi" className="sm:col-span-2"><Textarea rows={2} {...fk.register("description")} /></Field>
           </div>

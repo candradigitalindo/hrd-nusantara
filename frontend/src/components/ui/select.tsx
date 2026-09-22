@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIdLabelField } from "./field-context";
+import { usePanelMengambang, KELAS_PANEL, KELAS_KONTROL, normal } from "./panel-mengambang";
 
 /**
  * Select dengan kotak pencarian, pengganti <select> bawaan browser.
@@ -56,24 +57,6 @@ const kumpulkanOpsi = (children: React.ReactNode, grup?: string, keluar: Opsi[] 
   return keluar;
 };
 
-const normal = (s: string) =>
-  s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-
-const KELAS_KONTROL =
-  "w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground " +
-  "transition-colors focus:border-ring disabled:opacity-60 aria-[invalid=true]:border-danger";
-
-interface Posisi {
-  left: number;
-  width: number;
-  top?: number;
-  bottom?: number;
-  tinggiMaks: number;
-}
-
 export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   /** Placeholder kotak pencarian di dalam panel. */
   placeholderCari?: string;
@@ -93,7 +76,6 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
   const [buka, setBuka] = React.useState(false);
   const [cari, setCari] = React.useState("");
   const [sorot, setSorot] = React.useState(0);
-  const [posisi, setPosisi] = React.useState<Posisi | null>(null);
 
   const opsi = React.useMemo(() => kumpulkanOpsi(children), [children]);
   const terkontrol = value !== undefined;
@@ -132,22 +114,8 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
     return tampak.filter((o) => normal(o.label).includes(q) || normal(o.value).includes(q));
   }, [opsi, cari]);
 
-  const hitungPosisi = React.useCallback(() => {
-    const el = pemicuRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const ruangBawah = window.innerHeight - r.bottom - 8;
-    const ruangAtas = r.top - 8;
-    const keAtas = ruangBawah < 220 && ruangAtas > ruangBawah;
-    const ruang = keAtas ? ruangAtas : ruangBawah;
-    setPosisi({
-      left: r.left,
-      width: r.width,
-      top: keAtas ? undefined : r.bottom + 4,
-      bottom: keAtas ? window.innerHeight - r.top + 4 : undefined,
-      tinggiMaks: Math.max(160, Math.min(340, ruang)),
-    });
-  }, []);
+  const tutupSaja = React.useCallback(() => setBuka(false), []);
+  const { posisi, hitungPosisi } = usePanelMengambang({ pemicuRef, panelRef, buka, tutup: tutupSaja });
 
   const bukaPanel = React.useCallback(() => {
     if (disabled) return;
@@ -161,26 +129,12 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
     if (kembalikanFokus) pemicuRef.current?.focus();
   }, []);
 
-  // Saat panel terbuka: sorot nilai aktif, fokus ke kotak cari, ikuti gulir/ubah ukuran.
+  // Saat panel terbuka: sorot nilai aktif dan fokuskan kotak cari.
   React.useEffect(() => {
     if (!buka) return;
     const idx = tersaring.findIndex((o) => o.value === nilaiKini);
     setSorot(idx >= 0 ? idx : 0);
     cariRef.current?.focus();
-    const ulang = () => hitungPosisi();
-    window.addEventListener("resize", ulang);
-    document.addEventListener("scroll", ulang, true);
-    const luar = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (panelRef.current?.contains(t) || pemicuRef.current?.contains(t)) return;
-      setBuka(false);
-    };
-    document.addEventListener("pointerdown", luar);
-    return () => {
-      window.removeEventListener("resize", ulang);
-      document.removeEventListener("scroll", ulang, true);
-      document.removeEventListener("pointerdown", luar);
-    };
     // Hanya saat membuka; pencarian mengatur sorotnya sendiri.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buka]);
@@ -291,7 +245,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(function 
             id={idPanel}
             onKeyDown={tombolPanel}
             style={{ position: "fixed", left: posisi.left, width: posisi.width, top: posisi.top, bottom: posisi.bottom, maxHeight: posisi.tinggiMaks }}
-            className="z-[60] flex min-w-48 flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-lg animate-fade-up"
+            className={KELAS_PANEL}
           >
             <div className="relative shrink-0 border-b border-border">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
