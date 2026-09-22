@@ -41,14 +41,14 @@ router.get('/:id', validate(employeeIdParamSchema, 'params'), asyncHandler(getEm
 
 router.post(
   '/',
-  requirePermission('karyawan.kelola'),
+  requirePermission('karyawan.buat'),
   validate(createEmployeeSchema),
   asyncHandler(createEmployee)
 );
 
 router.put(
   '/:id',
-  requirePermission('karyawan.kelola'),
+  requirePermission('karyawan.ubah'),
   validate(employeeIdParamSchema, 'params'),
   validate(updateEmployeeSchema),
   asyncHandler(updateEmployee)
@@ -57,7 +57,7 @@ router.put(
 // Bukan DELETE: data kepegawaian diarsipkan, bukan dihapus.
 router.patch(
   '/:id/deactivate',
-  requirePermission('karyawan.kelola'),
+  requirePermission('karyawan.hapus'),
   validate(employeeIdParamSchema, 'params'),
   validate(deactivateEmployeeSchema),
   asyncHandler(deactivateEmployee)

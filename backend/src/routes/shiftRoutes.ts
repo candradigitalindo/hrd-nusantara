@@ -17,38 +17,39 @@ import {
   updateShiftSchema,
   listShiftQuerySchema,
 } from '../schemas/shiftSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
 router.use(authenticateToken);
 
 // Didaftarkan sebelum '/:id' supaya "me" tidak tertangkap sebagai ULID.
-router.get('/me', requirePermission('halaman.presensi'), validate(listShiftQuerySchema, 'query'), asyncHandler(getMyShifts));
+router.get('/me', requirePermission('presensi.lihat'), validate(listShiftQuerySchema, 'query'), asyncHandler(getMyShifts));
 
 router.get(
   '/',
-  requirePermission('shift.kelola'),
+  requirePermission(...lihatAtauKelola('shift')),
   validate(listShiftQuerySchema, 'query'),
   asyncHandler(getAllShifts)
 );
 
 router.post(
   '/',
-  requirePermission('shift.kelola'),
+  requirePermission('shift.buat'),
   validate(createShiftSchema),
   asyncHandler(createShift)
 );
 
 router.post(
   '/bulk',
-  requirePermission('shift.kelola'),
+  requirePermission('shift.buat'),
   validate(bulkCreateShiftSchema),
   asyncHandler(bulkCreateShifts)
 );
 
 router.put(
   '/:id',
-  requirePermission('shift.kelola'),
+  requirePermission('shift.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateShiftSchema),
   asyncHandler(updateShift)
@@ -56,7 +57,7 @@ router.put(
 
 router.delete(
   '/:id',
-  requirePermission('shift.kelola'),
+  requirePermission('shift.hapus'),
   validate(idParamSchema, 'params'),
   asyncHandler(cancelShift)
 );

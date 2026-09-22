@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { MessagesSquare, Plus, Send, ArrowLeft, UserPlus, Trash2, Lock, Users, Search } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, bolehHr } from "@/hooks/use-sesi";
+import { useSesi, bolehHr, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -25,6 +25,8 @@ export default function HalamanChat() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const hr = bolehHr(saya?.role);
+  const bolehBuatRuang = punyaIzin(saya, "chat.buat");
+  const bolehHapusPesan = punyaIzin(saya, "chat.hapus");
   const [aktif, setAktif] = React.useState<string | null>(null);
   const [teks, setTeks] = React.useState("");
   const [buatBuka, setBuatBuka] = React.useState(false);
@@ -69,17 +71,17 @@ export default function HalamanChat() {
   });
 
   const kirimTeks = () => { const t = teks.trim(); if (t && aktif && !kirim.isPending) kirim.mutate(t); };
-  const bolehKelola = ruangAktif?.myRole === "moderator" || hr;
+  const bolehKelola = (ruangAktif?.myRole === "moderator" || hr) && bolehBuatRuang;
   const kandidat = (direktori.data ?? []).filter((k) => k.id !== saya?.id && (!cariAnggota || `${k.name} ${k.nik} ${k.department?.name ?? ""}`.toLowerCase().includes(cariAnggota.toLowerCase())));
 
   return (
     <>
-      <PageHeader title="Chat Tim" description="Koordinasi antar departemen atau tim — tercatat, bisa dibaca anggota ruang" actions={<Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Ruang</Button>} />
+      <PageHeader title="Chat Tim" description="Koordinasi antar departemen atau tim — tercatat, bisa dibaca anggota ruang" actions={bolehBuatRuang && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Ruang</Button>} />
 
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
         <Card className={cn("overflow-hidden", aktif && "hidden lg:block")}>
           {ruang.isLoading ? <SkeletonBaris /> : !ruang.data?.length ? (
-            <EmptyState icon={MessagesSquare} title="Belum ada ruang" description="Buat ruang untuk tim atau departemen Anda, lalu tambahkan anggotanya." action={<Button onClick={() => setBuatBuka(true)}>Buat Ruang</Button>} />
+            <EmptyState icon={MessagesSquare} title="Belum ada ruang" description="Buat ruang untuk tim atau departemen Anda, lalu tambahkan anggotanya." action={bolehBuatRuang && <Button onClick={() => setBuatBuka(true)}>Buat Ruang</Button>} />
           ) : (
             <ul className="divide-y divide-border lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto">
               {ruang.data.map((r) => (
@@ -119,7 +121,7 @@ export default function HalamanChat() {
                     {urut.map((m, i) => {
                       const milikku = m.senderId === saya?.id;
                       const gantiHari = i === 0 || formatTanggal(urut[i - 1].timestamp) !== formatTanggal(m.timestamp);
-                      const bolehHapus = !m.isDeleted && (milikku || bolehKelola);
+                      const bolehHapus = bolehHapusPesan && !m.isDeleted && (milikku || ruangAktif?.myRole === "moderator" || hr);
                       return (
                         <React.Fragment key={m.id}>
                           {gantiHari && <p className="py-2 text-center text-[11px] uppercase tracking-wide text-muted">{formatTanggal(m.timestamp, "EEEE, d MMM yyyy")}</p>}

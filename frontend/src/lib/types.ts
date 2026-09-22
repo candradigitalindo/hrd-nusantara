@@ -16,14 +16,29 @@ export interface PenggunaSesi {
   permissions: string[];
 }
 
+export type AksiIzin = "lihat" | "buat" | "ubah" | "hapus";
+
 export interface DefinisiIzin {
   key: string;
   label: string;
   modul: string;
+  halaman: string;
+  aksi: AksiIzin;
+}
+
+/** Satu baris matriks izin: item sidebar (atau bagiannya) beserta aksi yang tersedia. */
+export interface DefinisiHalamanIzin {
+  halaman: string;
+  label: string;
+  kelompok: string;
+  induk?: string;
+  aksi: Partial<Record<AksiIzin, string>>;
 }
 
 export interface KatalogIzin {
   permissions: DefinisiIzin[];
+  pages: DefinisiHalamanIzin[];
+  actions: AksiIzin[];
   scopes: { role: Role; label: string }[];
 }
 

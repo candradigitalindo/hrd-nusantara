@@ -38,7 +38,8 @@ const BadgeMasaBerlaku = ({ tanggal }: { tanggal: string | null }) => {
   return <Badge tone="neutral">Berlaku s/d {formatTanggal(tanggal)}</Badge>;
 };
 
-export const PanelDokumen = ({ employeeId, hr }: { employeeId: string; hr: boolean }) => {
+export const PanelDokumen = ({ employeeId, bolehUnggah, bolehHapus }: { employeeId: string; bolehUnggah: boolean; bolehHapus: boolean }) => {
+  const hr = bolehUnggah || bolehHapus;
   const qc = useQueryClient();
   const [unggahBuka, setUnggahBuka] = React.useState(false);
   const [berkas, setBerkas] = React.useState<File | null>(null);
@@ -110,7 +111,7 @@ export const PanelDokumen = ({ employeeId, hr }: { employeeId: string; hr: boole
             {kedaluwarsa > 0 && <span className="text-warning"> · {kedaluwarsa} perlu diperbarui</span>}
           </CardDescription>
         </div>
-        {hr && (
+        {bolehUnggah && (
           <Button size="sm" onClick={() => setUnggahBuka(true)}>
             <Upload className="h-4 w-4" aria-hidden /> Unggah
           </Button>
@@ -144,7 +145,7 @@ export const PanelDokumen = ({ employeeId, hr }: { employeeId: string; hr: boole
                   >
                     <Download className="h-4 w-4" aria-hidden />
                   </a>
-                  {hr && (
+                  {bolehHapus && (
                     <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => setHapus(d)} aria-label={`Hapus ${d.title}`}>
                       <Trash2 className="h-4 w-4" aria-hidden />
                     </Button>

@@ -56,6 +56,7 @@ import {
   listWorkPatternQuerySchema,
   assignWorkPatternSchema,
 } from '../schemas/leaveSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -65,17 +66,17 @@ router.use(authenticateToken);
 // --- Jenis cuti ---
 // Semua karyawan boleh membaca daftarnya; dibutuhkan untuk mengisi form.
 router.get('/leave-types', validate(listLeaveTypeQuerySchema, 'query'), asyncHandler(getAllLeaveTypes));
-router.post('/leave-types', requirePermission('cuti.kelola'), validate(createLeaveTypeSchema), asyncHandler(createLeaveType));
+router.post('/leave-types', requirePermission('pengaturan_cuti.buat'), validate(createLeaveTypeSchema), asyncHandler(createLeaveType));
 router.put(
   '/leave-types/:id',
-  requirePermission('cuti.kelola'),
+  requirePermission('pengaturan_cuti.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateLeaveTypeSchema),
   asyncHandler(updateLeaveType)
 );
 router.delete(
   '/leave-types/:id',
-  requirePermission('cuti.kelola'),
+  requirePermission('pengaturan_cuti.hapus'),
   validate(idParamSchema, 'params'),
   asyncHandler(deactivateLeaveType)
 );
@@ -84,24 +85,24 @@ router.delete(
 // Kantor memakai hari tetap; outlet dan hotel mengikuti roster.
 router.get('/work-patterns/me', asyncHandler(getMyWorkPattern));
 router.get('/work-patterns', validate(listWorkPatternQuerySchema, 'query'), asyncHandler(getAllWorkPatterns));
-router.post('/work-patterns', requirePermission('cuti.kelola'), validate(createWorkPatternSchema), asyncHandler(createWorkPattern));
+router.post('/work-patterns', requirePermission('pengaturan_cuti.buat'), validate(createWorkPatternSchema), asyncHandler(createWorkPattern));
 router.put(
   '/work-patterns/:id',
-  requirePermission('cuti.kelola'),
+  requirePermission('pengaturan_cuti.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateWorkPatternSchema),
   asyncHandler(updateWorkPattern)
 );
 router.patch(
   '/employees/:id/work-pattern',
-  requirePermission('cuti.kelola'),
+  requirePermission('pengaturan_cuti.ubah'),
   validate(idParamSchema, 'params'),
   validate(assignWorkPatternSchema),
   asyncHandler(assignEmployeeWorkPattern)
 );
 router.patch(
   '/departments/:id/work-pattern',
-  requirePermission('cuti.kelola'),
+  requirePermission('pengaturan_cuti.ubah'),
   validate(idParamSchema, 'params'),
   validate(assignWorkPatternSchema),
   asyncHandler(assignDepartmentWorkPattern)
@@ -109,22 +110,22 @@ router.patch(
 
 // --- Hari libur ---
 router.get('/holidays', validate(listHolidayQuerySchema, 'query'), asyncHandler(getAllHolidays));
-router.post('/holidays', requirePermission('cuti.kelola'), validate(createHolidaySchema), asyncHandler(createHoliday));
-router.post('/holidays/bulk', requirePermission('cuti.kelola'), validate(bulkCreateHolidaySchema), asyncHandler(bulkCreateHolidays));
+router.post('/holidays', requirePermission('pengaturan_cuti.buat'), validate(createHolidaySchema), asyncHandler(createHoliday));
+router.post('/holidays/bulk', requirePermission('pengaturan_cuti.buat'), validate(bulkCreateHolidaySchema), asyncHandler(bulkCreateHolidays));
 router.delete(
   '/holidays/:id',
-  requirePermission('cuti.kelola'),
+  requirePermission('pengaturan_cuti.hapus'),
   validate(idParamSchema, 'params'),
   asyncHandler(deleteHoliday)
 );
 
 // --- Saldo cuti ---
-router.get('/leave-balances', requirePermission('cuti.kelola'), validate(listAllLeaveBalanceQuerySchema, 'query'), asyncHandler(listLeaveBalances));
-router.get('/leave-balances/me', requirePermission('halaman.cuti'), validate(listLeaveBalanceQuerySchema, 'query'), asyncHandler(getMyLeaveBalances));
-router.post('/leave-balances', requirePermission('cuti.kelola'), validate(upsertLeaveBalanceSchema), asyncHandler(upsertLeaveBalance));
+router.get('/leave-balances', requirePermission(...lihatAtauKelola('pengaturan_cuti')), validate(listAllLeaveBalanceQuerySchema, 'query'), asyncHandler(listLeaveBalances));
+router.get('/leave-balances/me', requirePermission('cuti.lihat'), validate(listLeaveBalanceQuerySchema, 'query'), asyncHandler(getMyLeaveBalances));
+router.post('/leave-balances', requirePermission('pengaturan_cuti.buat', 'pengaturan_cuti.ubah'), validate(upsertLeaveBalanceSchema), asyncHandler(upsertLeaveBalance));
 router.get(
   '/employees/:id/leave-balances',
-  requirePermission('cuti.setujui'),
+  requirePermission('cuti_tim.lihat', 'cuti_tim.ubah', ...lihatAtauKelola('pengaturan_cuti')),
   validate(idParamSchema, 'params'),
   validate(listLeaveBalanceQuerySchema, 'query'),
   asyncHandler(getEmployeeLeaveBalances)
@@ -132,29 +133,29 @@ router.get(
 
 // --- Pengajuan cuti ---
 // Rute literal didaftarkan sebelum '/:id'.
-router.get('/leaves/me', requirePermission('halaman.cuti'), validate(listLeaveQuerySchema, 'query'), asyncHandler(getMyLeaves));
+router.get('/leaves/me', requirePermission('cuti.lihat'), validate(listLeaveQuerySchema, 'query'), asyncHandler(getMyLeaves));
 router.get(
   '/leaves/calendar',
-  requirePermission('cuti.setujui'),
+  requirePermission('cuti_tim.lihat', 'cuti_tim.ubah'),
   validate(leaveCalendarQuerySchema, 'query'),
   asyncHandler(getLeaveCalendar)
 );
 router.get(
   '/leaves',
-  requirePermission('cuti.setujui'),
+  requirePermission('cuti_tim.lihat', 'cuti_tim.ubah'),
   validate(listLeaveQuerySchema, 'query'),
   asyncHandler(getAllLeaves)
 );
 
 // Pengajuan selalu untuk diri sendiri: identitas diambil dari token, tidak
 // dari body, supaya tidak ada yang bisa mengajukan cuti atas nama orang lain.
-router.post('/leaves', requirePermission('halaman.cuti'), validate(createLeaveSchema), asyncHandler(createLeave));
+router.post('/leaves', requirePermission('cuti.lihat'), validate(createLeaveSchema), asyncHandler(createLeave));
 
-router.get('/leaves/:id', requirePermission('halaman.cuti', 'cuti.setujui'), validate(idParamSchema, 'params'), asyncHandler(getLeaveById));
+router.get('/leaves/:id', requirePermission('cuti.lihat', 'cuti_tim.lihat', 'cuti_tim.ubah'), validate(idParamSchema, 'params'), asyncHandler(getLeaveById));
 
 router.patch(
   '/leaves/:id/decision',
-  requirePermission('cuti.setujui'),
+  requirePermission('cuti_tim.ubah'),
   validate(idParamSchema, 'params'),
   validate(decideLeaveSchema),
   asyncHandler(decideLeave)
@@ -163,7 +164,7 @@ router.patch(
 // Tanpa requireRole: karyawan boleh membatalkan pengajuannya sendiri.
 router.patch(
   '/leaves/:id/cancel',
-  requirePermission('halaman.cuti'),
+  requirePermission('cuti.lihat'),
   validate(idParamSchema, 'params'),
   validate(cancelLeaveSchema),
   asyncHandler(cancelLeave)

@@ -51,7 +51,7 @@ const IsiPertanyaan = ({ q, nilai, onUbah, galat }: { q: Survei["questions"][num
   );
 };
 
-export const PanelSurvei = ({ hr }: { hr: boolean }) => {
+export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean }) => {
   const qc = useQueryClient();
   const [buatBuka, setBuatBuka] = React.useState(false);
   const [isi, setIsi] = React.useState<Survei | null>(null);
@@ -111,7 +111,7 @@ export const PanelSurvei = ({ hr }: { hr: boolean }) => {
     <>
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted">{survei.data ? `${survei.data.filter(aktif).length} survei sedang berjalan` : ""}</p>
-        {hr && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Survei</Button>}
+        {bolehBuat && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Survei</Button>}
       </div>
 
       {survei.isLoading ? <SkeletonBaris /> : !survei.data?.length ? (

@@ -32,6 +32,7 @@ import {
   listInterviewQuerySchema,
   recruitmentReportQuerySchema,
 } from '../schemas/recruitmentSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -48,20 +49,20 @@ router.get(
 );
 router.post(
   '/job-postings',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.buat'),
   validate(createJobPostingSchema),
   asyncHandler(createJobPosting)
 );
 router.put(
   '/job-postings/:id',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateJobPostingSchema),
   asyncHandler(updateJobPosting)
 );
 router.patch(
   '/job-postings/:id/status',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.ubah'),
   validate(idParamSchema, 'params'),
   validate(changeJobPostingStatusSchema),
   asyncHandler(changeJobPostingStatus)
@@ -70,32 +71,32 @@ router.patch(
 // --- Pelamar ---
 router.get(
   '/candidates',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission(...lihatAtauKelola('rekrutmen')),
   validate(listCandidateQuerySchema, 'query'),
   asyncHandler(getAllCandidates)
 );
 router.post(
   '/candidates',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.buat'),
   validate(createCandidateSchema),
   asyncHandler(createCandidate)
 );
 router.get(
   '/candidates/:id',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission(...lihatAtauKelola('rekrutmen')),
   validate(idParamSchema, 'params'),
   asyncHandler(getCandidateById)
 );
 router.patch(
   '/candidates/:id/stage',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.ubah'),
   validate(idParamSchema, 'params'),
   validate(changeCandidateStageSchema),
   asyncHandler(changeCandidateStage)
 );
 router.post(
   '/candidates/:id/hire',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.ubah'),
   validate(idParamSchema, 'params'),
   validate(hireCandidateSchema),
   asyncHandler(hireCandidate)
@@ -111,7 +112,7 @@ router.get(
 );
 router.post(
   '/interviews',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission('rekrutmen.buat'),
   validate(scheduleInterviewSchema),
   asyncHandler(scheduleInterview)
 );
@@ -125,7 +126,7 @@ router.patch(
 // --- Laporan ---
 router.get(
   '/recruitment/funnel',
-  requirePermission('rekrutmen.kelola'),
+  requirePermission(...lihatAtauKelola('rekrutmen')),
   validate(recruitmentReportQuerySchema, 'query'),
   asyncHandler(getRecruitmentFunnel)
 );

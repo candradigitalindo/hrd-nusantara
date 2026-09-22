@@ -3,8 +3,9 @@ import { Role } from '@prisma/client';
 import { prisma, resetDatabase, makeEmployee, makeDepartment } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
-import { pastikanPeranSistem } from '../src/services/roles/system';
-import { IZIN, IZIN_MENU, DEFAULT_PERMISSIONS } from '../src/utils/permissions';
+import { pastikanPeranSistem, migrasiIzinPeranLama } from '../src/services/roles/system';
+import { IZIN, IZIN_MENU, DEFAULT_PERMISSIONS, migrasiIzin } from '../src/utils/permissions';
+import { generateULID } from '../src/utils/generateULID';
 
 const app = bikinApp();
 
@@ -29,8 +30,11 @@ describe('Katalog izin dan peran sistem', () => {
     expectStatus(res, 200);
     const kunci = (res.body.permissions as { key: string }[]).map((p) => p.key);
     expect(kunci).toEqual(IZIN.map((i) => i.key));
-    expect(kunci).toEqual(expect.arrayContaining(['karyawan.kelola', 'payroll.kelola', 'peran.kelola', 'audit.lihat']));
+    expect(kunci).toEqual(expect.arrayContaining(['karyawan.buat', 'payroll.ubah', 'peran.buat', 'audit.lihat']));
     expect(res.body.scopes).toHaveLength(4);
+    // Matriks halaman × aksi ikut dikirim: urutannya mengikuti sidebar.
+    expect(res.body.actions).toEqual(['lihat', 'buat', 'ubah', 'hapus']);
+    expect((res.body.pages as { halaman: string }[]).map((p) => p.halaman)).toEqual(expect.arrayContaining(['dashboard', 'karyawan', 'presensi_tim', 'peran']));
   });
 
   it('empat peran sistem tersedia dan tidak dibuat ganda saat dipanggil ulang', async () => {
@@ -47,10 +51,10 @@ describe('Katalog izin dan peran sistem', () => {
     const hr = await peranSistem(Role.HR_ADMIN);
     expect(hr.permissions).toEqual([...DEFAULT_PERMISSIONS.HR_ADMIN]);
     expect(hr.permissions).not.toContain('audit.lihat');
-    expect(hr.permissions).not.toContain('peran.kelola');
+    expect(hr.permissions).not.toContain('peran.buat');
     const mgr = await peranSistem(Role.MANAGER);
-    expect(mgr.permissions).toContain('cuti.setujui');
-    expect(mgr.permissions).not.toContain('payroll.kelola');
+    expect(mgr.permissions).toContain('cuti_tim.ubah');
+    expect(mgr.permissions).not.toContain('payroll.ubah');
   });
 
   it('karyawan biasa tidak boleh melihat daftar peran maupun katalog', async () => {
@@ -78,9 +82,9 @@ describe('Peran kustom menentukan izin', () => {
     const buat = await request(app)
       .post('/api/roles')
       .set(auth(owner))
-      .send({ name: 'Staf Payroll', description: 'Hanya payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.kelola'] });
+      .send({ name: 'Staf Payroll', description: 'Hanya payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.lihat'] });
     expectStatus(buat, 201);
-    expect(buat.body).toMatchObject({ name: 'Staf Payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.kelola'], isSystem: false });
+    expect(buat.body).toMatchObject({ name: 'Staf Payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.lihat'], isSystem: false });
 
     const staf = await makeEmployee({ email: 'staf@resto.id' });
     const tugaskan = await request(app)
@@ -96,7 +100,7 @@ describe('Peran kustom menentukan izin', () => {
 
     const me = await request(app).get('/api/auth/me').set(auth(token));
     expectStatus(me, 200);
-    expect(me.body.permissions).toEqual(['payroll.kelola']);
+    expect(me.body.permissions).toEqual(['payroll.lihat']);
     expect(me.body.customRole).toEqual({ id: buat.body.id, name: 'Staf Payroll' });
     expect(me.body.role).toBe('EMPLOYEE');
   });
@@ -106,7 +110,9 @@ describe('Peran kustom menentukan izin', () => {
     const res = await request(app).post('/api/auth/login').send({ email: 'owner@resto.id', password: 'RahasiaUji123' });
     expectStatus(res, 200);
     expect(res.body.user.customRole.name).toBe('Super Admin');
-    expect(res.body.user.permissions).toEqual(IZIN.map((i) => i.key));
+    expect(res.body.user.permissions).toEqual(expect.arrayContaining(IZIN.map((i) => i.key)));
+    // Alias kunci lama ikut dikirim supaya aplikasi mobile yang sudah terpasang tetap membaca menunya.
+    expect(res.body.user.permissions).toEqual(expect.arrayContaining(['halaman.presensi', 'halaman.cuti', 'halaman.gaji']));
     expect(owner).toBeTruthy();
   });
 
@@ -157,7 +163,7 @@ describe('Peran kustom menentukan izin', () => {
     expectStatus(await request(app).get('/api/payroll-runs').set(auth(hr)), 200);
     expectStatus(await request(app).get('/api/payroll-runs').set(auth(hrLama)), 200);
 
-    const tanpaPayroll = hrRole.permissions.filter((k) => k !== 'payroll.kelola');
+    const tanpaPayroll = hrRole.permissions.filter((k) => !k.startsWith('payroll.'));
     expectStatus(await request(app).put(`/api/roles/${hrRole.id}`).set(auth(owner)).send({ permissions: tanpaPayroll }), 200);
 
     expectStatus(await request(app).get('/api/payroll-runs').set(auth(hr)), 403);
@@ -232,7 +238,7 @@ describe('Perlindungan peran', () => {
     const adminAkses = await request(app)
       .post('/api/roles')
       .set(auth(owner))
-      .send({ name: 'Admin Akses', baseRole: 'MANAGER', permissions: ['peran.kelola', 'karyawan.kelola', 'karyawan.lihat'] });
+      .send({ name: 'Admin Akses', baseRole: 'MANAGER', permissions: ['peran.lihat', 'peran.buat', 'peran.ubah', 'karyawan.buat', 'karyawan.ubah', 'karyawan.lihat'] });
     expectStatus(adminAkses, 201);
     await makeEmployee({ email: 'akses@resto.id', role: Role.MANAGER, customRoleId: adminAkses.body.id });
     const token = await login(app, 'akses@resto.id');
@@ -249,7 +255,7 @@ describe('Perlindungan peran', () => {
     );
     // Peran yang sedang ia pegang tidak bisa ia ubah sendiri.
     expectStatus(
-      await request(app).put(`/api/roles/${adminAkses.body.id}`).set(auth(token)).send({ permissions: ['peran.kelola', 'payroll.kelola'] }),
+      await request(app).put(`/api/roles/${adminAkses.body.id}`).set(auth(token)).send({ permissions: ['peran.buat', 'payroll.ubah'] }),
       403
     );
     // Peran sistem HR Admin (lingkup tinggi) tidak bisa ia sunting.
@@ -267,7 +273,7 @@ describe('Perlindungan peran', () => {
     const payrollRole = await request(app)
       .post('/api/roles')
       .set(auth(owner))
-      .send({ name: 'Staf Payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.kelola'] });
+      .send({ name: 'Staf Payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.lihat'] });
     const staf = await makeEmployee({ email: 'staf@resto.id' });
     expectStatus(await request(app).put(`/api/employees/${staf.id}`).set(auth(token)).send({ customRoleId: payrollRole.body.id }), 403);
     expectStatus(await request(app).put(`/api/employees/${staf.id}`).set(auth(token)).send({ customRoleId: wajar.body.id }), 200);
@@ -291,14 +297,14 @@ describe('Perlindungan peran', () => {
 describe('Izin akses menu (halaman layanan mandiri)', () => {
   it('katalog memuat satu kunci per menu layanan mandiri dan semua peran sistem memilikinya', async () => {
     expect(IZIN_MENU).toEqual(
-      expect.arrayContaining(['halaman.dashboard', 'halaman.presensi', 'halaman.cuti', 'halaman.gaji', 'halaman.pengumuman', 'halaman.chat', 'halaman.whatsapp_saya', 'halaman.unduh'])
+      expect.arrayContaining(['dashboard.lihat', 'presensi.lihat', 'cuti.lihat', 'gaji.lihat', 'pengumuman.lihat', 'chat.lihat', 'whatsapp_saya.lihat', 'unduh.lihat'])
     );
     for (const code of [Role.EMPLOYEE, Role.MANAGER, Role.HR_ADMIN, Role.SUPER_ADMIN]) {
       const peran = await peranSistem(code);
       expect(peran.permissions).toEqual(expect.arrayContaining([...IZIN_MENU]));
     }
     expect(DEFAULT_PERMISSIONS.EMPLOYEE).toEqual([...IZIN_MENU]);
-    expect(DEFAULT_PERMISSIONS.MANAGER).toContain('rekrutmen.wawancara');
+    expect(DEFAULT_PERMISSIONS.MANAGER).toContain('wawancara.lihat');
   });
 
   it('karyawan biasa tetap bisa memakai layanan mandiri', async () => {
@@ -318,7 +324,7 @@ describe('Izin akses menu (halaman layanan mandiri)', () => {
     const buat = await request(app)
       .post('/api/roles')
       .set(auth(owner))
-      .send({ name: 'Staf Harian', baseRole: 'EMPLOYEE', permissions: ['halaman.presensi', 'halaman.pengumuman'] });
+      .send({ name: 'Staf Harian', baseRole: 'EMPLOYEE', permissions: ['presensi.lihat', 'pengumuman.lihat'] });
     expectStatus(buat, 201);
     await makeEmployee({ email: 'harian@resto.id', customRoleId: buat.body.id });
     const token = await login(app, 'harian@resto.id');
@@ -341,12 +347,37 @@ describe('Izin akses menu (halaman layanan mandiri)', () => {
     const buat = await request(app)
       .post('/api/roles')
       .set(auth(owner))
-      .send({ name: 'Penyetuju Cuti', baseRole: 'MANAGER', permissions: ['cuti.setujui'] });
+      .send({ name: 'Penyetuju Cuti', baseRole: 'MANAGER', permissions: ['cuti_tim.lihat', 'cuti_tim.ubah'] });
     expectStatus(buat, 201);
     await makeEmployee({ email: 'penyetuju@resto.id', role: Role.MANAGER, customRoleId: buat.body.id });
     const token = await login(app, 'penyetuju@resto.id');
     expectStatus(await request(app).get('/api/leaves').set(auth(token)), 200);
     // Layanan mandiri cuti miliknya sendiri tetap tertutup tanpa kunci menu.
     expectStatus(await request(app).get('/api/leaves/me').set(auth(token)), 403);
+  });
+});
+
+describe('Migrasi kunci izin generasi sebelumnya', () => {
+  it('memetakan kunci lama ke kunci matriks persis sesuai yang dulu dibukanya', () => {
+    expect(migrasiIzin(['karyawan.kelola'])).toEqual(['karyawan.buat', 'karyawan.ubah', 'karyawan.hapus']);
+    expect(migrasiIzin(['halaman.cuti', 'cuti.setujui'])).toEqual(['cuti.lihat', 'cuti_tim.lihat', 'cuti_tim.ubah']);
+    // Kunci yang sudah benar dipertahankan, yang tidak dikenal dibuang, tanpa duplikat.
+    expect(migrasiIzin(['payroll.ubah', 'payroll.kelola', 'dewa.semua'])).toEqual(['payroll.lihat', 'payroll.buat', 'payroll.ubah', 'payroll.hapus']);
+  });
+
+  it('peran yang tersimpan dengan kunci lama dimigrasi saat server mulai, dan hanya sekali', async () => {
+    await prisma.customRole.create({
+      data: { id: generateULID(), name: 'Peran Lama', baseRole: Role.MANAGER, permissions: ['karyawan.lihat', 'presensi.lihat_tim', 'presensi.lembur', 'halaman.presensi'] },
+    });
+    expect(await migrasiIzinPeranLama()).toBe(1);
+    const sesudah = await prisma.customRole.findFirstOrThrow({ where: { name: 'Peran Lama' } });
+    expect(sesudah.permissions).toEqual(['karyawan.lihat', 'presensi.lihat', 'presensi_tim.lihat', 'lembur.ubah']);
+    expect(await migrasiIzinPeranLama()).toBe(0);
+
+    // Pemegangnya langsung memakai kunci baru tanpa login ulang.
+    await makeEmployee({ email: 'lama@resto.id', role: Role.MANAGER, customRoleId: sesudah.id });
+    const token = await login(app, 'lama@resto.id');
+    expectStatus(await request(app).get('/api/attendance').set(auth(token)), 200);
+    expectStatus(await request(app).get('/api/leaves').set(auth(token)), 403);
   });
 });

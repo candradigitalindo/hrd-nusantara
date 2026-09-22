@@ -6,7 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { format, subMonths, startOfMonth } from "date-fns";
 import { Briefcase, Plus, Pencil, Users, CalendarClock, MessageSquareText } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -38,7 +38,9 @@ const normalkanCorong = (f: CorongRekrutmen["funnel"]) =>
 export default function HalamanRekrutmen() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "rekrutmen.kelola");
+  const hr = punyaIzin(saya, "rekrutmen.lihat") || bolehKelola(saya, "rekrutmen");
+  const bolehBuat = punyaIzin(saya, "rekrutmen.buat");
+  const bolehUbah = punyaIzin(saya, "rekrutmen.ubah");
   // Sesi belum tentu sudah termuat saat render pertama, jadi tab bawaan
   // dihitung tiap render; hanya pilihan pengguna yang disimpan.
   const [tabDipilih, setTab] = React.useState<Tab | null>(null);
@@ -78,7 +80,7 @@ export default function HalamanRekrutmen() {
   return (
     <>
       <PageHeader title="Rekrutmen" description={hr ? "Lowongan, pelamar, wawancara, dan corong seleksi" : "Wawancara yang dijadwalkan untuk Anda"}
-        actions={hr && tab === "lowongan" && <Button onClick={() => setFormBuka({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Lowongan</Button>} />
+        actions={bolehBuat && tab === "lowongan" && <Button onClick={() => setFormBuka({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Lowongan</Button>} />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TABS.filter((t) => !t.hrSaja || hr).map((t) => (
@@ -88,7 +90,7 @@ export default function HalamanRekrutmen() {
 
       {tab === "lowongan" && (
         lowongan.isLoading ? <SkeletonBaris /> : !lowongan.data?.data.length ? (
-          <Card><EmptyState icon={Briefcase} title="Belum ada lowongan" description="Buat lowongan, lalu tayangkan agar pelamar bisa dicatat." action={hr && <Button onClick={() => setFormBuka({ open: true, item: null })}>Buat Lowongan</Button>} /></Card>
+          <Card><EmptyState icon={Briefcase} title="Belum ada lowongan" description="Buat lowongan, lalu tayangkan agar pelamar bisa dicatat." action={bolehBuat && <Button onClick={() => setFormBuka({ open: true, item: null })}>Buat Lowongan</Button>} /></Card>
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -109,8 +111,8 @@ export default function HalamanRekrutmen() {
                     </p>
                     {hr && (
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" variant="ghost" onClick={() => setFormBuka({ open: true, item: l })}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>
-                        {TRANSISI[l.status].map((s) => <Button key={s} size="sm" variant={s === "open" ? "primary" : "outline"} onClick={() => ubahStatus.mutate({ l, status: s })}>{s === "open" ? "Tayangkan" : labelStatus(s)}</Button>)}
+                        {bolehUbah && <Button size="sm" variant="ghost" onClick={() => setFormBuka({ open: true, item: l })}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>}
+                        {bolehUbah && TRANSISI[l.status].map((s) => <Button key={s} size="sm" variant={s === "open" ? "primary" : "outline"} onClick={() => ubahStatus.mutate({ l, status: s })}>{s === "open" ? "Tayangkan" : labelStatus(s)}</Button>)}
                         {(l._count?.candidates ?? 0) > 0 && <Button size="sm" variant="ghost" onClick={() => setTab("pelamar")}><Users className="h-4 w-4" aria-hidden /> Pelamar</Button>}
                       </div>
                     )}
@@ -145,7 +147,7 @@ export default function HalamanRekrutmen() {
                     <div className="flex items-center gap-2">
                       {w.score !== null && <span className="tabular-nums text-sm">{w.score}/100</span>}
                       <Badge tone={nadaStatus(w.result ?? w.status)} dot>{w.result ? LABEL_HASIL_WAWANCARA[w.result] : labelStatus(w.status)}</Badge>
-                      {w.status === "scheduled" && (hr || w.interviewerId === saya?.id) && <Button size="sm" onClick={() => { setUmpan(w); fu.reset(); }}><MessageSquareText className="h-4 w-4" aria-hidden /> Umpan balik</Button>}
+                      {w.status === "scheduled" && (bolehUbah || w.interviewerId === saya?.id) && <Button size="sm" onClick={() => { setUmpan(w); fu.reset(); }}><MessageSquareText className="h-4 w-4" aria-hidden /> Umpan balik</Button>}
                     </div>
                   </li>
                 ))}

@@ -3,11 +3,11 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Plus, KeyRound, Pencil, Trash2, Lock, Users, ShieldCheck } from "lucide-react";
+import { Plus, KeyRound, Pencil, Trash2, Lock, Users, ShieldCheck, Eye, FilePlus2, PencilLine, Eraser, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
-import { LABEL_LINGKUP } from "@/lib/utils";
+import { LABEL_LINGKUP, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -17,21 +17,42 @@ import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Alert } from "@/components/ui/alert";
-import type { KatalogIzin, PeranKustom, Role } from "@/lib/types";
+import type { KatalogIzin, PeranKustom, Role, AksiIzin, DefinisiHalamanIzin } from "@/lib/types";
 
 type FormPeran = { name: string; description: string; baseRole: Role; permissions: string[] };
 
 const URUTAN_LINGKUP: Role[] = ["EMPLOYEE", "MANAGER", "HR_ADMIN", "SUPER_ADMIN"];
 
-/** Izin dikelompokkan per modul, mengikuti urutan katalog. */
-const kelompokkan = (katalog: KatalogIzin | undefined) => {
-  const peta = new Map<string, KatalogIzin["permissions"]>();
-  for (const izin of katalog?.permissions ?? []) {
-    const ada = peta.get(izin.modul) ?? [];
-    ada.push(izin);
-    peta.set(izin.modul, ada);
+const KOLOM: { aksi: AksiIzin; label: string; icon: LucideIcon }[] = [
+  { aksi: "lihat", label: "Lihat", icon: Eye },
+  { aksi: "buat", label: "Buat", icon: FilePlus2 },
+  { aksi: "ubah", label: "Ubah", icon: PencilLine },
+  { aksi: "hapus", label: "Hapus", icon: Eraser },
+];
+
+/** Baris matriks dikelompokkan per kelompok sidebar, urutannya mengikuti katalog. */
+const kelompokkan = (pages: DefinisiHalamanIzin[] | undefined) => {
+  const peta = new Map<string, DefinisiHalamanIzin[]>();
+  for (const p of pages ?? []) {
+    const ada = peta.get(p.kelompok) ?? [];
+    ada.push(p);
+    peta.set(p.kelompok, ada);
   }
-  return [...peta.entries()].map(([modul, izin]) => ({ modul, izin }));
+  return [...peta.entries()].map(([kelompok, halaman]) => ({ kelompok, halaman }));
+};
+
+const kunciHalaman = (p: DefinisiHalamanIzin) => KOLOM.map((k) => k.aksi).filter((a) => p.aksi[a] !== undefined).map((a) => `${p.halaman}.${a}`);
+
+/** Ringkasan izin sebuah peran untuk kartu: "Karyawan: lihat, buat · Cuti tim: ubah". */
+const ringkasIzin = (permissions: string[], pages: DefinisiHalamanIzin[] | undefined) => {
+  const dimiliki = new Set(permissions);
+  return (pages ?? [])
+    .map((p) => {
+      const aksi = KOLOM.filter((k) => dimiliki.has(`${p.halaman}.${k.aksi}`)).map((k) => k.label.toLowerCase());
+      return aksi.length ? `${p.label}: ${aksi.join(", ")}` : null;
+    })
+    .filter(Boolean)
+    .join(" · ");
 };
 
 export default function HalamanPeran() {
@@ -39,6 +60,10 @@ export default function HalamanPeran() {
   const { data: saya } = useSesi();
   const [form, setForm] = React.useState<{ open: boolean; item: PeranKustom | null }>({ open: false, item: null });
   const [hapus, setHapus] = React.useState<PeranKustom | null>(null);
+
+  const bolehBuat = punyaIzin(saya, "peran.buat");
+  const bolehUbah = punyaIzin(saya, "peran.ubah");
+  const bolehHapus = punyaIzin(saya, "peran.hapus");
 
   const peran = useQuery({
     queryKey: ["peran"],
@@ -49,11 +74,7 @@ export default function HalamanPeran() {
     queryFn: async () => (await api.get<KatalogIzin>("/roles/permissions")).data,
     staleTime: 60 * 60_000,
   });
-  const modul = React.useMemo(() => kelompokkan(katalog.data), [katalog.data]);
-  const labelIzin = React.useMemo(
-    () => new Map((katalog.data?.permissions ?? []).map((p) => [p.key, p.label])),
-    [katalog.data]
-  );
+  const kelompok = React.useMemo(() => kelompokkan(katalog.data?.pages), [katalog.data]);
 
   const segarkan = () => {
     qc.invalidateQueries({ queryKey: ["peran"] });
@@ -62,7 +83,8 @@ export default function HalamanPeran() {
   };
 
   const f = useForm<FormPeran>({ defaultValues: { name: "", description: "", baseRole: "EMPLOYEE", permissions: [] } });
-  const terpilih = useWatch({ control: f.control, name: "permissions" }) ?? [];
+  const izinTerpilih = useWatch({ control: f.control, name: "permissions" });
+  const terpilih = React.useMemo(() => izinTerpilih ?? [], [izinTerpilih]);
   const lingkupDipilih = useWatch({ control: f.control, name: "baseRole" });
 
   React.useEffect(() => {
@@ -100,25 +122,71 @@ export default function HalamanPeran() {
     onError: (e) => { notifikasi.galat(e, "Tidak bisa dihapus"); setHapus(null); },
   });
 
-  const setModul = (kunci: string[], nyala: boolean) => {
+  const pemilik = saya?.role === "SUPER_ADMIN";
+  const terkunci = form.item?.code === "SUPER_ADMIN";
+  const izinSaya = React.useMemo(() => new Set(saya?.permissions ?? []), [saya]);
+  const bolehBeri = (k: string) => pemilik || izinSaya.has(k);
+  const dipilih = React.useMemo(() => new Set(terpilih), [terpilih]);
+
+  const ubahKunci = (kunci: string[], nyala: boolean) => {
     const sekarang = new Set(terpilih);
     for (const k of kunci) {
+      if (!bolehBeri(k)) continue;
       if (nyala) sekarang.add(k);
       else sekarang.delete(k);
     }
     f.setValue("permissions", [...sekarang], { shouldDirty: true });
   };
 
-  const pemilik = saya?.role === "SUPER_ADMIN";
-  const terkunci = form.item?.code === "SUPER_ADMIN";
-  const izinSaya = new Set(saya?.permissions ?? []);
+  /** Satu baris: nama halaman + empat sel aksi. Sel kosong berarti aksi itu memang tidak ada di halamannya. */
+  const Baris = ({ p }: { p: DefinisiHalamanIzin }) => {
+    const kunci = kunciHalaman(p);
+    const semua = kunci.every((k) => dipilih.has(k));
+    const sebagian = !semua && kunci.some((k) => dipilih.has(k));
+    return (
+      <tr className={cn("border-t border-border", p.induk && "bg-surface-2/40")}>
+        <th scope="row" className={cn("py-2 pr-2 text-left text-sm font-normal", p.induk ? "pl-8 text-muted" : "pl-3 font-medium")}>
+          <button
+            type="button"
+            onClick={() => ubahKunci(kunci, !semua)}
+            disabled={terkunci || !kunci.some(bolehBeri)}
+            className="text-left hover:text-primary disabled:hover:text-inherit"
+            title={semua ? "Kosongkan baris" : "Pilih semua aksi di baris ini"}
+          >
+            {p.label}
+            {sebagian && <span className="ml-1.5 text-[11px] text-muted">sebagian</span>}
+          </button>
+        </th>
+        {KOLOM.map(({ aksi }) => {
+          const keterangan = p.aksi[aksi];
+          if (!keterangan) return <td key={aksi} className="px-2 py-2 text-center text-muted/40" aria-label="Tidak tersedia">–</td>;
+          const k = `${p.halaman}.${aksi}`;
+          const boleh = !terkunci && bolehBeri(k);
+          return (
+            <td key={aksi} className="px-2 py-2 text-center">
+              <label className={cn("inline-flex cursor-pointer items-center justify-center rounded-md p-1.5", boleh ? "hover:bg-surface-2" : "cursor-not-allowed opacity-50")} title={`${p.label} · ${keterangan}`}>
+                <input
+                  type="checkbox"
+                  value={k}
+                  disabled={!boleh}
+                  {...f.register("permissions")}
+                  className="h-4 w-4 accent-[var(--primary)]"
+                  aria-label={`${p.label}: ${keterangan}`}
+                />
+              </label>
+            </td>
+          );
+        })}
+      </tr>
+    );
+  };
 
   return (
     <>
       <PageHeader
         title="Peran & Hak Akses"
-        description="Buat peran sendiri dan tentukan izin per modul; perubahan langsung berlaku bagi semua pemegangnya"
-        actions={<Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Peran</Button>}
+        description="Setiap menu di sidebar diatur terpisah: apa yang boleh dilihat, dibuat, diubah, dan dihapus. Perubahan langsung berlaku bagi semua pemegang peran."
+        actions={bolehBuat && <Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Peran</Button>}
       />
 
       {!pemilik && (
@@ -148,10 +216,10 @@ export default function HalamanPeran() {
                   <div className="flex shrink-0 gap-1">
                     {kunci ? (
                       <span className="grid h-9 w-9 place-items-center text-muted" title="Terkunci"><Lock className="h-4 w-4" aria-hidden /><span className="sr-only">Terkunci</span></span>
-                    ) : (
+                    ) : bolehUbah ? (
                       <Button variant="ghost" size="icon" onClick={() => setForm({ open: true, item: r })} aria-label={`Sunting ${r.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                    )}
-                    {!r.isSystem && (
+                    ) : null}
+                    {!r.isSystem && bolehHapus && (
                       <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus(r)} aria-label={`Hapus ${r.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>
                     )}
                   </div>
@@ -160,7 +228,7 @@ export default function HalamanPeran() {
                   <p className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Lingkup: {LABEL_LINGKUP[r.baseRole]}</p>
                   <p className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" aria-hidden /> {r._count.employees} karyawan · {kunci ? "semua izin" : `${r.permissions.length} izin`}</p>
                   {!kunci && r.permissions.length > 0 && (
-                    <p className="line-clamp-2">{r.permissions.map((k) => labelIzin.get(k) ?? k).join(" · ")}</p>
+                    <p className="line-clamp-3">{ringkasIzin(r.permissions, katalog.data?.pages)}</p>
                   )}
                 </CardContent>
               </Card>
@@ -174,7 +242,7 @@ export default function HalamanPeran() {
         onClose={() => setForm({ open: false, item: null })}
         size="lg"
         title={form.item ? `Sunting Peran: ${form.item.name}` : "Buat Peran"}
-        description={form.item?.isSystem ? "Peran sistem: nama dan izinnya boleh diubah, lingkup datanya tidak." : "Centang izin yang boleh dipakai pemegang peran ini"}
+        description={form.item?.isSystem ? "Peran sistem: nama dan izinnya boleh diubah, lingkup datanya tidak." : "Centang per halaman apa yang boleh dilihat, dibuat, diubah, dan dihapus"}
         footer={
           <>
             <Button variant="outline" onClick={() => setForm({ open: false, item: null })} disabled={simpan.isPending}>Batal</Button>
@@ -204,44 +272,46 @@ export default function HalamanPeran() {
           )}
 
           <fieldset className="space-y-3">
-            <legend className="text-sm font-medium">Izin ({terpilih.length} dipilih)</legend>
-            {katalog.isLoading && <SkeletonBaris jumlah={4} />}
-            {modul.map(({ modul: nama, izin }) => {
-              const kunci = izin.map((i) => i.key);
-              const semua = kunci.every((k) => terpilih.includes(k));
-              const bolehSemua = pemilik || kunci.every((k) => izinSaya.has(k));
+            <legend className="text-sm font-medium">Hak akses per halaman <span className="font-normal text-muted">({terpilih.length} izin dipilih)</span></legend>
+            <p className="text-xs text-muted">
+              Baris menjorok adalah bagian dari halaman di atasnya yang haknya diatur terpisah. Tanda – berarti aksi itu memang tidak ada di halaman tersebut.
+              Arahkan kursor ke kotak centang untuk melihat persis apa yang dibukanya.
+            </p>
+            {katalog.isLoading && <SkeletonBaris jumlah={6} />}
+            {kelompok.map(({ kelompok: nama, halaman }) => {
+              const kunci = halaman.flatMap(kunciHalaman);
+              const semua = kunci.every((k) => dipilih.has(k));
+              const bolehSemua = !terkunci && kunci.some(bolehBeri);
               return (
-                <div key={nama} className="rounded-xl border border-border">
-                  <div className="flex items-center justify-between gap-3 border-b border-border bg-surface-2 px-3 py-2">
-                    <p className="text-sm font-medium">{nama}</p>
+                <div key={nama} className="overflow-hidden rounded-xl border border-border">
+                  <div className="flex items-center justify-between gap-3 bg-surface-2 px-3 py-2">
+                    <p className="text-sm font-semibold">{nama}</p>
                     <button
                       type="button"
                       className="text-xs text-primary hover:underline disabled:text-muted disabled:no-underline"
                       disabled={!bolehSemua}
-                      onClick={() => setModul(kunci, !semua)}
+                      onClick={() => ubahKunci(kunci, !semua)}
                     >
                       {semua ? "Kosongkan" : "Pilih semua"}
                     </button>
                   </div>
-                  <ul className="grid gap-1 p-2 sm:grid-cols-2">
-                    {izin.map((i) => {
-                      const boleh = pemilik || izinSaya.has(i.key);
-                      return (
-                        <li key={i.key}>
-                          <label className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm ${boleh ? "hover:bg-surface-2" : "text-muted"}`}>
-                            <input
-                              type="checkbox"
-                              value={i.key}
-                              disabled={!boleh}
-                              {...f.register("permissions")}
-                              className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
-                            />
-                            <span>{i.label}</span>
-                          </label>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[30rem] text-sm">
+                      <thead>
+                        <tr className="text-xs uppercase tracking-wide text-muted">
+                          <th scope="col" className="py-2 pl-3 text-left font-medium">Halaman</th>
+                          {KOLOM.map(({ aksi, label, icon: Icon }) => (
+                            <th key={aksi} scope="col" className="w-20 px-2 py-2 text-center font-medium">
+                              <span className="inline-flex items-center gap-1"><Icon className="h-3.5 w-3.5" aria-hidden />{label}</span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {halaman.map((p) => <Baris key={p.halaman} p={p} />)}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
             })}

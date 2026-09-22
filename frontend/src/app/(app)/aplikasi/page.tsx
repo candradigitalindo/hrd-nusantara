@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { Upload, Download, TabletSmartphone, Copy, QrCode, Link2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,9 @@ const unggahApk = (url: string, berkas: File, onProgress: (persen: number) => vo
 
 export default function HalamanAplikasi() {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehUnggah = punyaIzin(saya, "aplikasi.buat");
+  const bolehUbah = punyaIzin(saya, "aplikasi.ubah");
   const [berkas, setBerkas] = React.useState<File | null>(null);
   const [progres, setProgres] = React.useState<number | null>(null);
   // Origin hanya ada di browser; snapshot server kosong supaya hidrasi cocok.
@@ -89,7 +93,7 @@ export default function HalamanAplikasi() {
               {progres !== null && (
                 <div><div className="h-2 rounded-full bg-surface-2"><div className="h-2 rounded-full bg-primary transition-[width]" style={{ width: `${progres}%` }} /></div><p className="mt-1 text-xs text-muted">{progres < 100 ? `Mengunggah ${progres}%` : "Memverifikasi berkas…"}</p></div>
               )}
-              <Button type="submit" loading={unggah.isPending} disabled={!berkas}><Upload className="h-4 w-4" aria-hidden /> Unggah & Rilis</Button>
+              <Button type="submit" loading={unggah.isPending} disabled={!berkas || !bolehUnggah}><Upload className="h-4 w-4" aria-hidden /> Unggah & Rilis</Button>
             </form>
           </CardContent>
         </Card>
@@ -121,7 +125,7 @@ export default function HalamanAplikasi() {
                 </div>
                 <div className="flex shrink-0 gap-2">
                   <a href={`/api/backend/mobile/releases/${r.id}/apk`} download={r.fileName} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-2"><Download className="h-4 w-4" aria-hidden /> Unduh</a>
-                  <Button size="sm" variant="ghost" className={r.isActive ? "text-danger" : ""} onClick={() => ubah.mutate({ id: r.id, isActive: !r.isActive })} loading={ubah.isPending && ubah.variables?.id === r.id}>{r.isActive ? "Nonaktifkan" : "Aktifkan"}</Button>
+                  {bolehUbah && <Button size="sm" variant="ghost" className={r.isActive ? "text-danger" : ""} onClick={() => ubah.mutate({ id: r.id, isActive: !r.isActive })} loading={ubah.isPending && ubah.variables?.id === r.id}>{r.isActive ? "Nonaktifkan" : "Aktifkan"}</Button>}
                 </div>
               </li>
             ))}

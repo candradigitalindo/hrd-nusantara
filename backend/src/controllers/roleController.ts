@@ -12,7 +12,7 @@ import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
-import { IZIN, LABEL_LINGKUP } from '../utils/permissions';
+import { IZIN, LABEL_LINGKUP, MATRIKS_IZIN, AKSI } from '../utils/permissions';
 import type { CreateRoleInput, UpdateRoleInput } from '../schemas/roleSchema';
 
 const roleSelect = {
@@ -52,6 +52,10 @@ const pelanggaranEskalasi = (
 export const getPermissionCatalog = async (_req: Request, res: Response) => {
   res.json({
     permissions: IZIN,
+    // Matriks halaman × aksi, urut seperti sidebar — sumber tampilan
+    // pengelola peran; `permissions` di atas adalah bentuk ratanya.
+    pages: MATRIKS_IZIN,
+    actions: AKSI,
     scopes: (Object.keys(LABEL_LINGKUP) as Role[]).map((role) => ({ role, label: LABEL_LINGKUP[role] })),
   });
 };

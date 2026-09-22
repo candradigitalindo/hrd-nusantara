@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { MessageCircle, Plus, QrCode, Unplug, Search, Smartphone, ArrowDownLeft, ArrowUpRight, BellRing, Link2, Link2Off, ScanLine, UserX, Archive } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,9 @@ type FormAkun = { phoneNumber: string; label: string; assignedEmployeeId: string
 
 export default function HalamanWhatsApp() {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehBuat = punyaIzin(saya, "whatsapp.buat");
+  const bolehUbah = punyaIzin(saya, "whatsapp.ubah");
   const [tab, setTab] = React.useState<"kepatuhan" | "nomor" | "arsip">("kepatuhan");
   const [filterStatus, setFilterStatus] = React.useState<StatusTautanWa | "">("");
   const [filterDept, setFilterDept] = React.useState("");
@@ -120,7 +124,7 @@ export default function HalamanWhatsApp() {
       <PageHeader
         title="Pemantauan WhatsApp"
         description="Setiap karyawan terdaftar wajib menautkan WhatsApp-nya lewat aplikasi mobile; nomor perusahaan didaftarkan HR. Seluruh pesan teks terarsip terenkripsi."
-        actions={tab === "nomor" ? <Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor</Button> : tab === "kepatuhan" ? <Button onClick={() => ingatkan.mutate(undefined)} loading={ingatkan.isPending} disabled={!kepatuhan.data || kepatuhan.data.summary.connected === kepatuhan.data.summary.total}><BellRing className="h-4 w-4" aria-hidden /> Ingatkan yang Belum</Button> : null}
+        actions={tab === "nomor" ? bolehBuat && <Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor</Button> : tab === "kepatuhan" ? bolehUbah && <Button onClick={() => ingatkan.mutate(undefined)} loading={ingatkan.isPending} disabled={!kepatuhan.data || kepatuhan.data.summary.connected === kepatuhan.data.summary.total}><BellRing className="h-4 w-4" aria-hidden /> Ingatkan yang Belum</Button> : null}
       />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
@@ -158,7 +162,7 @@ export default function HalamanWhatsApp() {
                       <p className="text-xs text-muted tabular-nums">{b.phoneNumber ? `+${b.phoneNumber}` : "nomor belum diketahui"}{b.lastConnectedAt ? ` · tersambung ${formatRelatif(b.lastConnectedAt)}` : ""}{b.status === "disconnected" && b.lastDisconnectedAt ? ` · putus ${formatRelatif(b.lastDisconnectedAt)}` : ""}{b.status === "connected" ? (b.attendanceGroupName ? ` · foto absensi → ${b.attendanceGroupName}` : " · grup foto absensi belum dipilih") : ""}</p>
                     </div>
                     <Badge tone={nadaStatus(b.status)} dot>{labelStatus(b.status)}</Badge>
-                    {b.status !== "connected" && <Button size="sm" variant="ghost" onClick={() => ingatkan.mutate([b.employee.id])} loading={ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id}><BellRing className="h-4 w-4" aria-hidden /> Ingatkan</Button>}
+                    {bolehUbah && b.status !== "connected" && <Button size="sm" variant="ghost" onClick={() => ingatkan.mutate([b.employee.id])} loading={ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id}><BellRing className="h-4 w-4" aria-hidden /> Ingatkan</Button>}
                     {b.accountId && <Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan({ id: b.employee.id, name: b.employee.name }); setPage(1); setTab("arsip"); }}><Archive className="h-4 w-4" aria-hidden /> Arsip</Button>}
                   </li>
                 ))}
@@ -189,7 +193,7 @@ export default function HalamanWhatsApp() {
                   </p>
                 </CardHeader>
                 <CardContent className="flex flex-wrap gap-2">
-                  {a.sessionStatus !== "connected" ? (
+                  {!bolehUbah ? null : a.sessionStatus !== "connected" ? (
                     <Button size="sm" onClick={() => sambungkan.mutate(a)} loading={sambungkan.isPending && sambungkan.variables?.id === a.id}>
                       <QrCode className="h-4 w-4" aria-hidden /> Sambungkan
                     </Button>

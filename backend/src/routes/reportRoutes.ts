@@ -21,19 +21,19 @@ router.use(authenticateToken);
 // Dasbor terbuka untuk manajer, tapi controller membatasinya ke departemennya.
 router.get(
   '/reports/dashboard',
-  requirePermission('laporan.dashboard'),
+  requirePermission('laporan.lihat'),
   validate(periodQuerySchema, 'query'),
   asyncHandler(getDashboard)
 );
 router.get(
   '/reports/turnover',
-  requirePermission('laporan.hr'),
+  requirePermission('laporan_hr.lihat'),
   validate(periodQuerySchema, 'query'),
   asyncHandler(getTurnoverAnalysis)
 );
 router.get(
   '/reports/costs',
-  requirePermission('laporan.hr'),
+  requirePermission('laporan_hr.lihat'),
   validate(periodQuerySchema, 'query'),
   asyncHandler(getCostAnalysis)
 );
@@ -41,14 +41,14 @@ router.get(
 // Produktivitas terbuka juga untuk manajer: ini alat kerja operasional mereka.
 router.get(
   '/reports/productivity',
-  requirePermission('laporan.dashboard'),
+  requirePermission('laporan.lihat'),
   validate(periodQuerySchema, 'query'),
   asyncHandler(getProductivityReport)
 );
 
 router.get(
   '/reports/raw-data',
-  requirePermission('laporan.hr'),
+  requirePermission('laporan_hr.lihat'),
   validate(rawDataQuerySchema, 'query'),
   asyncHandler(getRawData)
 );

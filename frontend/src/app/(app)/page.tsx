@@ -150,8 +150,8 @@ function DashboardKaryawan({ nama, hariIni, izin }: { nama: string; hariIni: str
 
 export default function HalamanDashboard() {
   const { data: saya } = useSesi();
-  const manajemen = punyaIzin(saya, "laporan.dashboard");
-  const hr = punyaIzin(saya, "dokumen.kelola");
+  const manajemen = punyaIzin(saya, "laporan.lihat", "laporan_hr.lihat");
+  const hr = punyaIzin(saya, "dokumen.lihat", "dokumen.buat", "dokumen.ubah", "dokumen.hapus");
   const [preset, setPreset] = React.useState(0);
 
   const hariIni = format(new Date(), "yyyy-MM-dd");

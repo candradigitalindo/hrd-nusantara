@@ -15,6 +15,7 @@ import {
   updateWorkLocationSchema,
   listWorkLocationQuerySchema,
 } from '../schemas/workLocationSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -22,19 +23,19 @@ router.use(authenticateToken);
 
 // Semua karyawan boleh melihat daftar lokasi — dibutuhkan untuk memilih
 // lokasi saat check-in. Token QR-nya disaring di controller.
-router.get('/', requirePermission('halaman.presensi', 'presensi.lihat_tim', 'lokasi.kelola'), validate(listWorkLocationQuerySchema, 'query'), asyncHandler(getAllWorkLocations));
-router.get('/:id', requirePermission('halaman.presensi', 'presensi.lihat_tim', 'lokasi.kelola'), validate(idParamSchema, 'params'), asyncHandler(getWorkLocationById));
+router.get('/', requirePermission('presensi.lihat', 'presensi_tim.lihat', ...lihatAtauKelola('lokasi')), validate(listWorkLocationQuerySchema, 'query'), asyncHandler(getAllWorkLocations));
+router.get('/:id', requirePermission('presensi.lihat', 'presensi_tim.lihat', ...lihatAtauKelola('lokasi')), validate(idParamSchema, 'params'), asyncHandler(getWorkLocationById));
 
 router.post(
   '/',
-  requirePermission('lokasi.kelola'),
+  requirePermission('lokasi.buat'),
   validate(createWorkLocationSchema),
   asyncHandler(createWorkLocation)
 );
 
 router.put(
   '/:id',
-  requirePermission('lokasi.kelola'),
+  requirePermission('lokasi.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateWorkLocationSchema),
   asyncHandler(updateWorkLocation)
@@ -42,7 +43,7 @@ router.put(
 
 router.post(
   '/:id/rotate-qr',
-  requirePermission('lokasi.kelola'),
+  requirePermission('lokasi.ubah'),
   validate(idParamSchema, 'params'),
   asyncHandler(rotateQrSecret)
 );

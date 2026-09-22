@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -29,7 +29,9 @@ type FormEvaluasi = { score: string; certificateUrl: string; note: string };
 export default function HalamanPelatihan() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "pelatihan.kelola");
+  const hr = bolehKelola(saya, "pelatihan");
+  const bolehBuat = punyaIzin(saya, "pelatihan.buat");
+  const bolehUbah = punyaIzin(saya, "pelatihan.ubah");
   const [tab, setTab] = React.useState<Tab>("jadwal");
   const [statusSesi, setStatusSesi] = React.useState("scheduled");
   const [pageSesi, setPageSesi] = React.useState(1);
@@ -96,7 +98,7 @@ export default function HalamanPelatihan() {
   return (
     <>
       <PageHeader title="Pelatihan" description={hr ? "Program, jadwal sesi, kehadiran, evaluasi, dan kepatuhan pelatihan wajib" : "Jadwal pelatihan dan riwayat Anda"}
-        actions={hr && (tab === "program" ? <Button onClick={() => setFormProgram({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Program</Button> : tab === "jadwal" ? <Button onClick={() => setFormSesi(true)}><CalendarPlus className="h-4 w-4" aria-hidden /> Jadwalkan Sesi</Button> : null)} />
+        actions={bolehBuat && (tab === "program" ? <Button onClick={() => setFormProgram({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Program</Button> : tab === "jadwal" ? <Button onClick={() => setFormSesi(true)}><CalendarPlus className="h-4 w-4" aria-hidden /> Jadwalkan Sesi</Button> : null)} />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TABS.filter((t) => !t.hrSaja || hr).map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors", tab === t.id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground")}>{t.label}</button>)}
@@ -128,7 +130,7 @@ export default function HalamanPelatihan() {
                         ) : s.status === "scheduled" && !lewatBatas ? (
                           <Button size="sm" onClick={() => daftar.mutate(s)} loading={daftar.isPending && daftar.variables?.id === s.id}>{penuh ? "Daftar Tunggu" : "Daftar"}</Button>
                         ) : null}
-                        {hr && (
+                        {bolehUbah && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => { setPeserta(s); setHadir({}); }}><Users className="h-4 w-4" aria-hidden /> Peserta</Button>
                             {s.status === "scheduled" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "ongoing" })}>Mulai</Button>}
@@ -149,7 +151,7 @@ export default function HalamanPelatihan() {
 
       {tab === "program" && (
         program.isLoading ? <SkeletonBaris /> : !program.data?.length ? (
-          <Card><EmptyState icon={GraduationCap} title="Belum ada program" description="Contoh: Hygiene & Sanitasi, SOP Pelayanan Tamu, Keselamatan Kerja." action={hr && <Button onClick={() => setFormProgram({ open: true, item: null })}>Buat Program</Button>} /></Card>
+          <Card><EmptyState icon={GraduationCap} title="Belum ada program" description="Contoh: Hygiene & Sanitasi, SOP Pelayanan Tamu, Keselamatan Kerja." action={bolehBuat && <Button onClick={() => setFormProgram({ open: true, item: null })}>Buat Program</Button>} /></Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {program.data.map((p) => (
@@ -166,7 +168,7 @@ export default function HalamanPelatihan() {
                       {!p.isActive && <Badge tone="danger">Nonaktif</Badge>}
                     </div>
                   </div>
-                  {hr && <Button variant="ghost" size="icon" onClick={() => setFormProgram({ open: true, item: p })} aria-label={`Sunting ${p.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>}
+                  {bolehUbah && <Button variant="ghost" size="icon" onClick={() => setFormProgram({ open: true, item: p })} aria-label={`Sunting ${p.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>}
                 </CardHeader>
               </Card>
             ))}

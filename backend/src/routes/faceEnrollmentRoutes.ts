@@ -9,6 +9,7 @@ import { authenticateToken, requirePermission, asyncHandler } from '../middlewar
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import { enrollFaceSchema, listFaceEnrollmentQuerySchema } from '../schemas/faceSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -24,7 +25,7 @@ router.use(authenticateToken);
  */
 router.post(
   '/employees/:id/face-enrollments',
-  requirePermission('wajah.kelola'),
+  requirePermission('wajah.buat'),
   validate(idParamSchema, 'params'),
   validate(enrollFaceSchema),
   asyncHandler(enrollFace)
@@ -32,7 +33,7 @@ router.post(
 
 router.get(
   '/employees/:id/face-enrollments',
-  requirePermission('wajah.kelola'),
+  requirePermission(...lihatAtauKelola('wajah')),
   validate(idParamSchema, 'params'),
   validate(listFaceEnrollmentQuerySchema, 'query'),
   asyncHandler(getFaceEnrollments)
@@ -40,7 +41,7 @@ router.get(
 
 router.delete(
   '/face-enrollments/:id',
-  requirePermission('wajah.kelola'),
+  requirePermission('wajah.hapus'),
   validate(idParamSchema, 'params'),
   asyncHandler(deactivateFaceEnrollment)
 );

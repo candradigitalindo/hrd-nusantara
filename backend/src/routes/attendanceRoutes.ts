@@ -26,33 +26,33 @@ router.use(authenticateToken);
 
 // Presensi selalu untuk diri sendiri — identitas diambil dari token,
 // bukan dari body, supaya tidak ada yang bisa mengabsenkan orang lain.
-router.post('/check-in', requirePermission('halaman.presensi'), validate(checkInSchema), asyncHandler(checkIn));
-router.post('/check-out', requirePermission('halaman.presensi'), validate(checkOutSchema), asyncHandler(checkOut));
+router.post('/check-in', requirePermission('presensi.lihat'), validate(checkInSchema), asyncHandler(checkIn));
+router.post('/check-out', requirePermission('presensi.lihat'), validate(checkOutSchema), asyncHandler(checkOut));
 
 // Rute literal didaftarkan sebelum '/:id'.
-router.get('/me', requirePermission('halaman.presensi'), validate(listAttendanceQuerySchema, 'query'), asyncHandler(getMyAttendance));
+router.get('/me', requirePermission('presensi.lihat'), validate(listAttendanceQuerySchema, 'query'), asyncHandler(getMyAttendance));
 
 router.get(
   '/reports/summary',
-  requirePermission('presensi.lihat_tim'),
+  requirePermission('presensi_tim.lihat'),
   validate(attendanceReportQuerySchema, 'query'),
   asyncHandler(getAttendanceReport)
 );
 
 router.get(
   '/',
-  requirePermission('presensi.lihat_tim'),
+  requirePermission('presensi_tim.lihat'),
   validate(listAttendanceQuerySchema, 'query'),
   asyncHandler(getAllAttendance)
 );
 
 // Tanpa requireRole: karyawan boleh membuka presensinya sendiri,
 // pembatasannya di controller.
-router.get('/:id', requirePermission('halaman.presensi', 'presensi.lihat_tim'), validate(idParamSchema, 'params'), asyncHandler(getAttendanceById));
+router.get('/:id', requirePermission('presensi.lihat', 'presensi_tim.lihat'), validate(idParamSchema, 'params'), asyncHandler(getAttendanceById));
 
 router.patch(
   '/:id/overtime',
-  requirePermission('presensi.lembur'),
+  requirePermission('lembur.ubah'),
   validate(idParamSchema, 'params'),
   validate(overtimeDecisionSchema),
   asyncHandler(decideOvertime)

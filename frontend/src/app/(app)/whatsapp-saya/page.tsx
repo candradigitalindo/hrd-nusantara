@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QrCode, Link2, Link2Off, History, RefreshCw, Users, Camera } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,8 @@ const JUDUL: Record<TautanWhatsApp["status"], string> = {
 };
 
 export default function HalamanWhatsAppSaya() {
+  const { data: saya } = useSesi();
+  const bolehUbah = punyaIzin(saya, "whatsapp_saya.ubah");
   const qc = useQueryClient();
   const tautan = useQuery({
     ...tautanWhatsAppQuery,
@@ -108,11 +111,11 @@ export default function HalamanWhatsAppSaya() {
             {(t.status === "never_linked" || t.status === "disconnected") && (
               <>
                 <p className="text-sm text-muted">{t.status === "never_linked" ? "Prosesnya satu menit: tekan tombol, lalu pindai kode QR dengan WhatsApp di ponsel Anda." : `Sesi terputus${t.account?.lastDisconnectedAt ? ` ${formatRelatif(t.account.lastDisconnectedAt)}` : ""}. Sistem mencoba menyambung kembali; bila tidak berhasil, pindai ulang di sini.`}</p>
-                <Button onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><QrCode className="h-4 w-4" aria-hidden /> {t.status === "never_linked" ? "Tautkan WhatsApp" : "Pindai Ulang"}</Button>
+                {bolehUbah && <Button onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><QrCode className="h-4 w-4" aria-hidden /> {t.status === "never_linked" ? "Tautkan WhatsApp" : "Pindai Ulang"}</Button>}
               </>
             )}
             {t.status === "inactive" && <p className="text-sm text-muted">HR menonaktifkan tautan WhatsApp Anda. Hubungi HR untuk mengaktifkannya kembali.</p>}
-            {(t.status === "pending_scan" || t.status === "connecting") && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><RefreshCw className="h-4 w-4" aria-hidden /> Minta kode baru</Button>}
+            {bolehUbah && (t.status === "pending_scan" || t.status === "connecting") && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><RefreshCw className="h-4 w-4" aria-hidden /> Minta kode baru</Button>}
           </CardContent>
         </Card>
       )}

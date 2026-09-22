@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { Banknote, Plus, Calculator, Check, Undo2, ChevronRight, Users } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,9 @@ const bulanIni = () => {
 
 export default function HalamanPayroll() {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehBuat = punyaIzin(saya, "payroll.buat");
+  const bolehUbah = punyaIzin(saya, "payroll.ubah");
   const [status, setStatus] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [buatBuka, setBuatBuka] = React.useState(false);
@@ -99,7 +103,7 @@ export default function HalamanPayroll() {
   return (
     <>
       <PageHeader title="Payroll" description="Batch penggajian: buat, hitung dari presensi, periksa, lalu setujui"
-        actions={<Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Batch Baru</Button>} />
+        actions={bolehBuat && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Batch Baru</Button>} />
 
       {hasilHitung && (
         <Alert tone={hasilHitung.skipped.length ? "warning" : "success"} title={`${hasilHitung.payrollRun.name}: ${hasilHitung.calculated} slip dihitung${hasilHitung.skipped.length ? `, ${hasilHitung.skipped.length} dilewati` : ""}`}
@@ -120,7 +124,7 @@ export default function HalamanPayroll() {
           </Select>
         </div>
         {runs.isLoading ? <SkeletonBaris /> : !runs.data?.data.length ? (
-          <EmptyState icon={Banknote} title="Belum ada batch penggajian" description="Buat batch untuk satu periode, hitung dari data presensi, periksa, lalu setujui." action={<Button onClick={() => setBuatBuka(true)}>Batch Baru</Button>} />
+          <EmptyState icon={Banknote} title="Belum ada batch penggajian" description="Buat batch untuk satu periode, hitung dari data presensi, periksa, lalu setujui." action={bolehBuat && <Button onClick={() => setBuatBuka(true)}>Batch Baru</Button>} />
         ) : (
           <>
             <ul className="divide-y divide-border">
@@ -136,12 +140,12 @@ export default function HalamanPayroll() {
                   </button>
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                     <Badge tone={nadaStatus(r.status)} dot>{labelStatus(r.status)}</Badge>
-                    {(r.status === "draft" || r.status === "calculated") && (
+                    {bolehUbah && (r.status === "draft" || r.status === "calculated") && (
                       <Button size="sm" variant="outline" onClick={() => hitung.mutate(r)} loading={hitung.isPending && hitung.variables?.id === r.id}>
                         <Calculator className="h-4 w-4" aria-hidden /> {r.status === "draft" ? "Hitung" : "Hitung Ulang"}
                       </Button>
                     )}
-                    {r.status === "calculated" && (
+                    {bolehUbah && r.status === "calculated" && (
                       <>
                         <Button size="sm" onClick={() => setKeputusan({ run: r, approved: true })}><Check className="h-4 w-4" aria-hidden /> Setujui</Button>
                         <Button size="sm" variant="ghost" onClick={() => setKeputusan({ run: r, approved: false })}><Undo2 className="h-4 w-4" aria-hidden /> Kembalikan</Button>

@@ -30,6 +30,7 @@ import {
   listRegistrationQuerySchema,
   complianceQuerySchema,
 } from '../schemas/trainingSchema';
+import { kelola, lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -41,19 +42,19 @@ router.use(authenticateToken);
 // apa saja yang tersedia dan mana yang wajib.
 router.get(
   '/training/programs',
-  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
+  requirePermission(...lihatAtauKelola('pelatihan')),
   validate(listProgramQuerySchema, 'query'),
   asyncHandler(getAllPrograms)
 );
 router.post(
   '/training/programs',
-  requirePermission('pelatihan.kelola'),
+  requirePermission('pelatihan.buat'),
   validate(createProgramSchema),
   asyncHandler(createProgram)
 );
 router.put(
   '/training/programs/:id',
-  requirePermission('pelatihan.kelola'),
+  requirePermission('pelatihan.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateProgramSchema),
   asyncHandler(updateProgram)
@@ -62,19 +63,19 @@ router.put(
 // --- Sesi pelatihan ---
 router.get(
   '/training/sessions',
-  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
+  requirePermission(...lihatAtauKelola('pelatihan')),
   validate(listSessionQuerySchema, 'query'),
   asyncHandler(getAllSessions)
 );
 router.post(
   '/training/sessions',
-  requirePermission('pelatihan.kelola'),
+  requirePermission('pelatihan.buat'),
   validate(createSessionSchema),
   asyncHandler(createSession)
 );
 router.patch(
   '/training/sessions/:id/status',
-  requirePermission('pelatihan.kelola'),
+  requirePermission('pelatihan.ubah'),
   validate(idParamSchema, 'params'),
   validate(changeSessionStatusSchema),
   asyncHandler(changeSessionStatus)
@@ -83,14 +84,14 @@ router.patch(
 // Karyawan mendaftar sendiri; HR bisa mendaftarkan orang lain.
 router.post(
   '/training/sessions/:id/register',
-  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
+  requirePermission(...lihatAtauKelola('pelatihan')),
   validate(idParamSchema, 'params'),
   validate(registerSchema),
   asyncHandler(register)
 );
 router.post(
   '/training/sessions/:id/attendance',
-  requirePermission('pelatihan.kelola'),
+  requirePermission('pelatihan.ubah'),
   validate(idParamSchema, 'params'),
   validate(recordAttendanceSchema),
   asyncHandler(recordAttendance)
@@ -99,19 +100,19 @@ router.post(
 // --- Pendaftaran & evaluasi ---
 router.get(
   '/training/registrations',
-  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
+  requirePermission(...lihatAtauKelola('pelatihan')),
   validate(listRegistrationQuerySchema, 'query'),
   asyncHandler(getAllRegistrations)
 );
 router.patch(
   '/training/registrations/:id/cancel',
-  requirePermission('halaman.pelatihan', 'pelatihan.kelola'),
+  requirePermission(...lihatAtauKelola('pelatihan')),
   validate(idParamSchema, 'params'),
   asyncHandler(cancelRegistration)
 );
 router.post(
   '/training/registrations/:id/evaluate',
-  requirePermission('pelatihan.kelola'),
+  requirePermission('pelatihan.ubah'),
   validate(idParamSchema, 'params'),
   validate(evaluateSchema),
   asyncHandler(evaluate)
@@ -120,7 +121,7 @@ router.post(
 // --- Laporan kepatuhan ---
 router.get(
   '/training/compliance',
-  requirePermission('pelatihan.kelola'),
+  requirePermission(...kelola('pelatihan')),
   validate(complianceQuerySchema, 'query'),
   asyncHandler(getComplianceReport)
 );

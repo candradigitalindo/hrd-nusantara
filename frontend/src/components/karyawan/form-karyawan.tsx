@@ -65,7 +65,7 @@ export const FormKaryawan = ({
 }) => {
   const qc = useQueryClient();
   const sunting = Boolean(karyawan);
-  const bolehUbahRole = punyaIzin(sesi, "karyawan.kelola");
+  const bolehUbahRole = punyaIzin(sesi, "karyawan.buat", "karyawan.ubah");
 
   const { data: peran } = useQuery({
     queryKey: ["peran"],

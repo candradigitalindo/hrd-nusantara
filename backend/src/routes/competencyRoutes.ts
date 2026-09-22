@@ -30,6 +30,7 @@ import {
   listCertificationQuerySchema,
   gapQuerySchema,
 } from '../schemas/competencySchema';
+import { kelola, lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -39,13 +40,13 @@ router.use(authenticateToken);
 // --- Kamus kompetensi ---
 router.get(
   '/competencies',
-  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
+  requirePermission(...lihatAtauKelola('kompetensi')),
   validate(listCompetencyQuerySchema, 'query'),
   asyncHandler(getAllCompetencies)
 );
 router.post(
   '/competencies',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.buat'),
   validate(createCompetencySchema),
   asyncHandler(createCompetency)
 );
@@ -53,20 +54,20 @@ router.post(
 // --- Standar jabatan ---
 router.get(
   '/positions/:id/competency-standards',
-  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
+  requirePermission(...lihatAtauKelola('kompetensi')),
   validate(idParamSchema, 'params'),
   asyncHandler(getPositionStandards)
 );
 router.put(
   '/positions/:id/competency-standards',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.buat', 'kompetensi.ubah'),
   validate(idParamSchema, 'params'),
   validate(setStandardSchema),
   asyncHandler(setStandard)
 );
 router.delete(
   '/competency-standards/:id',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.hapus'),
   validate(idParamSchema, 'params'),
   asyncHandler(removeStandard)
 );
@@ -74,7 +75,7 @@ router.delete(
 // --- Kompetensi karyawan ---
 router.put(
   '/employees/:id/competencies',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.ubah'),
   validate(idParamSchema, 'params'),
   validate(assessCompetencySchema),
   asyncHandler(assessCompetency)
@@ -83,13 +84,13 @@ router.put(
 // Tanpa requireRole: karyawan boleh melihat kesenjangan kompetensinya sendiri.
 router.get(
   '/employees/:id/competency-gap',
-  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
+  requirePermission(...lihatAtauKelola('kompetensi')),
   validate(idParamSchema, 'params'),
   asyncHandler(getEmployeeGap)
 );
 router.get(
   '/competency-gap',
-  requirePermission('kompetensi.kelola'),
+  requirePermission(...kelola('kompetensi')),
   validate(gapQuerySchema, 'query'),
   asyncHandler(getGapReport)
 );
@@ -97,13 +98,13 @@ router.get(
 // --- Jenis sertifikasi ---
 router.get(
   '/certification-types',
-  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
+  requirePermission(...lihatAtauKelola('kompetensi')),
   validate(listCertificationTypeQuerySchema, 'query'),
   asyncHandler(getAllCertificationTypes)
 );
 router.post(
   '/certification-types',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.buat'),
   validate(createCertificationTypeSchema),
   asyncHandler(createCertificationType)
 );
@@ -111,19 +112,19 @@ router.post(
 // --- Sertifikat karyawan ---
 router.get(
   '/certifications',
-  requirePermission('halaman.kompetensi', 'kompetensi.kelola'),
+  requirePermission(...lihatAtauKelola('kompetensi')),
   validate(listCertificationQuerySchema, 'query'),
   asyncHandler(getAllCertifications)
 );
 router.post(
   '/certifications',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.buat'),
   validate(createCertificationSchema),
   asyncHandler(createCertification)
 );
 router.patch(
   '/certifications/:id/revoke',
-  requirePermission('kompetensi.kelola'),
+  requirePermission('kompetensi.hapus'),
   validate(idParamSchema, 'params'),
   validate(revokeCertificationSchema),
   asyncHandler(revokeCertification)

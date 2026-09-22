@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { CalendarOff, Check, X, Plus, Ban, Paperclip } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -52,8 +52,9 @@ const KartuSaldo = ({ saldo }: { saldo: SaldoCuti }) => {
 export default function HalamanCuti() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const manajemen = punyaIzin(saya, "cuti.setujui");
-  const kelola = punyaIzin(saya, "cuti.kelola");
+  const manajemen = punyaIzin(saya, "cuti_tim.lihat", "cuti_tim.ubah");
+  const bolehPutuskan = punyaIzin(saya, "cuti_tim.ubah");
+  const kelola = punyaIzin(saya, "pengaturan_cuti.lihat") || bolehKelola(saya, "pengaturan_cuti");
   const tahun = new Date().getFullYear();
 
   const [tab, setTab] = React.useState<"saya" | "persetujuan" | "saldo">("saya");
@@ -154,7 +155,7 @@ export default function HalamanCuti() {
       key: "aksi", header: "", className: "text-right",
       cell: (c) =>
         antrean ? (
-          c.status === "pending" ? (
+          c.status === "pending" && bolehPutuskan ? (
             <div className="flex justify-end gap-1">
               <Button size="sm" onClick={() => setKeputusan({ cuti: c, approved: true })}><Check className="h-4 w-4" aria-hidden /> Setujui</Button>
               <Button size="sm" variant="outline" className="text-danger" onClick={() => setKeputusan({ cuti: c, approved: false })}><X className="h-4 w-4" aria-hidden /> Tolak</Button>

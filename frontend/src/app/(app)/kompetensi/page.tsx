@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { Award, Plus, BookOpen, ListChecks, BadgeCheck, ShieldCheck, AlertTriangle, Clock, Ban, ExternalLink, Trash2, FilePlus2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -36,7 +36,10 @@ const STATUS_SERTIFIKAT: { kode: StatusSertifikat; label: string; kunci: keyof D
 export default function HalamanKompetensi() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "kompetensi.kelola");
+  const hr = bolehKelola(saya, "kompetensi");
+  const bolehBuat = punyaIzin(saya, "kompetensi.buat");
+  const bolehUbah = punyaIzin(saya, "kompetensi.ubah");
+  const bolehHapus = punyaIzin(saya, "kompetensi.hapus");
   const [tab, setTab] = React.useState<Tab>("kesenjangan");
   const [karyawanGap, setKaryawanGap] = React.useState("");
   const [filterDept, setFilterDept] = React.useState("");
@@ -109,7 +112,7 @@ export default function HalamanKompetensi() {
   return (
     <>
       <PageHeader title="Kompetensi & Sertifikasi" description={hr ? "Standar kompetensi per jabatan, kesenjangan tiap karyawan, dan masa berlaku sertifikat wajib" : "Syarat kompetensi jabatan Anda, tingkat yang sudah dinilai, dan sertifikat Anda"}
-        actions={hr ? (tab === "kamus" ? <Button onClick={() => setKompetensiBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Kompetensi</Button> : tab === "sertifikat" ? <div className="flex gap-2"><Button variant="outline" onClick={() => setJenisBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Jenis</Button><Button onClick={() => setSertifikatBuka(true)}><FilePlus2 className="h-4 w-4" aria-hidden /> Catat Sertifikat</Button></div> : null) : null} />
+        actions={bolehBuat ? (tab === "kamus" ? <Button onClick={() => setKompetensiBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Kompetensi</Button> : tab === "sertifikat" ? <div className="flex gap-2"><Button variant="outline" onClick={() => setJenisBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Jenis</Button><Button onClick={() => setSertifikatBuka(true)}><FilePlus2 className="h-4 w-4" aria-hidden /> Catat Sertifikat</Button></div> : null) : null} />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TABS.filter((t) => !t.hrSaja || hr).map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors", tab === t.id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground")}>{t.label}</button>)}
@@ -118,7 +121,7 @@ export default function HalamanKompetensi() {
       {tab === "kesenjangan" && (
         <>
           {hr && <div className="sm:w-80"><Select value={karyawanGap} onChange={(e) => setKaryawanGap(e.target.value)} aria-label="Karyawan"><option value="">— Pilih karyawan —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name} · {k.nik}</option>)}</Select></div>}
-          {idGap ? <PanelKesenjangan employeeId={idGap} bolehNilai={hr} /> : <Card><EmptyState icon={Award} title="Pilih karyawan" description="Kesenjangan dibandingkan terhadap standar jabatan karyawan tersebut." /></Card>}
+          {idGap ? <PanelKesenjangan employeeId={idGap} bolehNilai={bolehUbah} /> : <Card><EmptyState icon={Award} title="Pilih karyawan" description="Kesenjangan dibandingkan terhadap standar jabatan karyawan tersebut." /></Card>}
         </>
       )}
 
@@ -180,7 +183,7 @@ export default function HalamanKompetensi() {
                     {standar.data.map((s) => (
                       <li key={s.id} className="flex items-center gap-3 p-4">
                         <div className="min-w-0 flex-1"><p className="font-medium">{s.competency.name} <span className="font-mono text-xs font-normal text-muted">{s.competency.code}</span></p><p className="text-xs text-muted">minimal tingkat {s.requiredLevel} dari {s.competency.maxLevel}{s.description ? ` · ${s.description}` : ""}</p></div>
-                        <Button size="icon" variant="ghost" className="text-danger" aria-label="Hapus syarat" onClick={() => setHapusStandar(s)}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                        {bolehHapus && <Button size="icon" variant="ghost" className="text-danger" aria-label="Hapus syarat" onClick={() => setHapusStandar(s)}><Trash2 className="h-4 w-4" aria-hidden /></Button>}
                       </li>
                     ))}
                   </ul>
@@ -231,7 +234,7 @@ export default function HalamanKompetensi() {
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       {s.certificateUrl && <a href={s.certificateUrl} target="_blank" rel="noopener noreferrer" aria-label="Buka berkas sertifikat" className="grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-foreground"><ExternalLink className="h-4 w-4" aria-hidden /></a>}
-                      {hr && !s.revokedAt && <Button size="sm" variant="ghost" className="text-danger" onClick={() => { setCabut(s); setAlasanCabut(""); }}>Cabut</Button>}
+                      {bolehHapus && !s.revokedAt && <Button size="sm" variant="ghost" className="text-danger" onClick={() => { setCabut(s); setAlasanCabut(""); }}>Cabut</Button>}
                     </div>
                   </li>
                 ))}

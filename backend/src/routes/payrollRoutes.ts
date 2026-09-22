@@ -32,6 +32,7 @@ import {
   listPayrollRunQuerySchema,
   listPayrollQuerySchema,
 } from '../schemas/payrollSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -43,19 +44,19 @@ router.use(authenticateToken);
 // --- Komponen gaji ---
 router.get(
   '/salary-components',
-  requirePermission('payroll.kelola'),
+  requirePermission(...lihatAtauKelola('payroll')),
   validate(listSalaryComponentQuerySchema, 'query'),
   asyncHandler(getAllSalaryComponents)
 );
 router.post(
   '/salary-components',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.buat'),
   validate(createSalaryComponentSchema),
   asyncHandler(createSalaryComponent)
 );
 router.put(
   '/salary-components/:id',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateSalaryComponentSchema),
   asyncHandler(updateSalaryComponent)
@@ -66,27 +67,27 @@ router.put(
 // pembatasannya di controller.
 router.get(
   '/employees/:id/salary',
-  requirePermission('halaman.gaji', 'payroll.kelola'),
+  requirePermission('gaji.lihat', ...lihatAtauKelola('payroll')),
   validate(idParamSchema, 'params'),
   asyncHandler(getEmployeeSalaryHistory)
 );
 router.post(
   '/employees/:id/salary',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.buat'),
   validate(idParamSchema, 'params'),
   validate(setEmployeeSalarySchema),
   asyncHandler(setEmployeeSalary)
 );
 router.post(
   '/employees/:id/salary-components',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.buat'),
   validate(idParamSchema, 'params'),
   validate(assignComponentSchema),
   asyncHandler(assignEmployeeComponent)
 );
 router.delete(
   '/employee-salary-components/:id',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.hapus'),
   validate(idParamSchema, 'params'),
   asyncHandler(removeEmployeeComponent)
 );
@@ -94,45 +95,45 @@ router.delete(
 // --- Batch penggajian ---
 router.get(
   '/payroll-runs',
-  requirePermission('payroll.kelola'),
+  requirePermission(...lihatAtauKelola('payroll')),
   validate(listPayrollRunQuerySchema, 'query'),
   asyncHandler(getAllPayrollRuns)
 );
 router.post(
   '/payroll-runs',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.buat'),
   validate(createPayrollRunSchema),
   asyncHandler(createPayrollRun)
 );
 router.post(
   '/payroll-runs/:id/calculate',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.ubah'),
   validate(idParamSchema, 'params'),
   validate(calculatePayrollRunSchema),
   asyncHandler(calculatePayrollRun)
 );
 router.patch(
   '/payroll-runs/:id/decision',
-  requirePermission('payroll.kelola'),
+  requirePermission('payroll.ubah'),
   validate(idParamSchema, 'params'),
   validate(decidePayrollRunSchema),
   asyncHandler(decidePayrollRun)
 );
 router.get(
   '/payroll-runs/:id/preview/:employeeId',
-  requirePermission('payroll.kelola'),
+  requirePermission(...lihatAtauKelola('payroll')),
   asyncHandler(previewPayroll)
 );
 
 // --- Slip gaji ---
 // Didaftarkan sebelum '/:id' supaya "me" tidak tertangkap sebagai ULID.
-router.get('/payrolls/me', requirePermission('halaman.gaji'), validate(listPayrollQuerySchema, 'query'), asyncHandler(getMyPayrolls));
+router.get('/payrolls/me', requirePermission('gaji.lihat'), validate(listPayrollQuerySchema, 'query'), asyncHandler(getMyPayrolls));
 router.get(
   '/payrolls',
-  requirePermission('payroll.kelola'),
+  requirePermission(...lihatAtauKelola('payroll')),
   validate(listPayrollQuerySchema, 'query'),
   asyncHandler(getAllPayrolls)
 );
-router.get('/payrolls/:id', requirePermission('halaman.gaji', 'payroll.kelola'), validate(idParamSchema, 'params'), asyncHandler(getPayrollById));
+router.get('/payrolls/:id', requirePermission('gaji.lihat', ...lihatAtauKelola('payroll')), validate(idParamSchema, 'params'), asyncHandler(getPayrollById));
 
 export default router;

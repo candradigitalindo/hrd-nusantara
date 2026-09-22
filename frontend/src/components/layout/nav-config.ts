@@ -30,9 +30,9 @@ export interface MenuNav {
   label: string;
   icon: LucideIcon;
   /**
-   * Izin yang membuka menu ini — salah satu cukup. Halaman layanan mandiri
-   * memakai kunci "halaman.*", halaman pengelolaan memakai izin fungsinya;
-   * keduanya dicantumkan supaya pemegang izin fungsi ikut melihat menunya.
+   * Izin yang membuka menu ini — salah satu cukup. Kuncinya "<halaman>.<aksi>";
+   * "lihat" untuk akses halamannya, dan bagi halaman yang punya bagian
+   * pengelolaan (tim, pengaturan), kunci bagian itu juga membuka menunya.
    */
   izin: string | string[];
   /** Tampil di bar bawah ponsel (maksimal 4). */
@@ -48,16 +48,16 @@ export interface KelompokMenu {
 }
 
 export const KELOMPOK: KelompokMenu[] = [
-  { id: "beranda", label: "Beranda", icon: LayoutDashboard, item: [{ href: "/", label: "Dashboard", icon: LayoutDashboard, izin: ["halaman.dashboard", "laporan.dashboard"], utama: true }] },
+  { id: "beranda", label: "Beranda", icon: LayoutDashboard, item: [{ href: "/", label: "Dashboard", icon: LayoutDashboard, izin: "dashboard.lihat", utama: true }] },
   {
     id: "komunikasi",
     label: "Komunikasi",
     icon: MessagesSquare,
     item: [
-      { href: "/pengumuman", label: "Pengumuman", icon: Megaphone, izin: ["halaman.pengumuman", "pengumuman.kelola", "survei.kelola"] },
-      { href: "/chat", label: "Chat Tim", icon: MessagesSquare, izin: "halaman.chat" },
-      { href: "/whatsapp-saya", label: "WhatsApp Saya", icon: Smartphone, izin: "halaman.whatsapp_saya" },
-      { href: "/whatsapp", label: "Pemantauan WA", icon: MessageCircle, izin: "whatsapp.pantau" },
+      { href: "/pengumuman", label: "Pengumuman", icon: Megaphone, izin: "pengumuman.lihat" },
+      { href: "/chat", label: "Chat Tim", icon: MessagesSquare, izin: "chat.lihat" },
+      { href: "/whatsapp-saya", label: "WhatsApp Saya", icon: Smartphone, izin: "whatsapp_saya.lihat" },
+      { href: "/whatsapp", label: "Pemantauan WA", icon: MessageCircle, izin: ["whatsapp.lihat", "whatsapp.buat", "whatsapp.ubah", "whatsapp.hapus"] },
     ],
   },
   {
@@ -66,8 +66,8 @@ export const KELOMPOK: KelompokMenu[] = [
     icon: Briefcase,
     item: [
       { href: "/karyawan", label: "Karyawan", icon: Users, izin: "karyawan.lihat", utama: true },
-      { href: "/organisasi", label: "Organisasi", icon: Building2, izin: "organisasi.kelola" },
-      { href: "/rekrutmen", label: "Rekrutmen", icon: UserSearch, izin: ["rekrutmen.kelola", "rekrutmen.wawancara"] },
+      { href: "/organisasi", label: "Organisasi", icon: Building2, izin: ["organisasi.lihat", "organisasi.buat", "organisasi.ubah", "organisasi.hapus"] },
+      { href: "/rekrutmen", label: "Rekrutmen", icon: UserSearch, izin: ["rekrutmen.lihat", "rekrutmen.buat", "rekrutmen.ubah", "wawancara.lihat"] },
     ],
   },
   {
@@ -75,8 +75,8 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Kehadiran & Cuti",
     icon: CalendarCheck,
     item: [
-      { href: "/presensi", label: "Presensi", icon: CalendarCheck, izin: ["halaman.presensi", "presensi.lihat_tim"], utama: true },
-      { href: "/cuti", label: "Cuti & Izin", icon: CalendarOff, izin: ["halaman.cuti", "cuti.setujui"], utama: true },
+      { href: "/presensi", label: "Presensi", icon: CalendarCheck, izin: ["presensi.lihat", "presensi_tim.lihat"], utama: true },
+      { href: "/cuti", label: "Cuti & Izin", icon: CalendarOff, izin: ["cuti.lihat", "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat", "pengaturan_cuti.buat", "pengaturan_cuti.ubah"], utama: true },
     ],
   },
   {
@@ -84,8 +84,8 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Penggajian",
     icon: Wallet,
     item: [
-      { href: "/gaji", label: "Slip Gaji", icon: Wallet, izin: "halaman.gaji" },
-      { href: "/payroll", label: "Payroll", icon: Banknote, izin: "payroll.kelola" },
+      { href: "/gaji", label: "Slip Gaji", icon: Wallet, izin: "gaji.lihat" },
+      { href: "/payroll", label: "Payroll", icon: Banknote, izin: ["payroll.lihat", "payroll.buat", "payroll.ubah", "payroll.hapus"] },
     ],
   },
   {
@@ -93,9 +93,9 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Pengembangan",
     icon: GraduationCap,
     item: [
-      { href: "/pelatihan", label: "Pelatihan", icon: GraduationCap, izin: ["halaman.pelatihan", "pelatihan.kelola"] },
-      { href: "/kinerja", label: "Kinerja", icon: Target, izin: ["halaman.kinerja", "kinerja.kelola"] },
-      { href: "/kompetensi", label: "Kompetensi", icon: Award, izin: ["halaman.kompetensi", "kompetensi.kelola"] },
+      { href: "/pelatihan", label: "Pelatihan", icon: GraduationCap, izin: ["pelatihan.lihat", "pelatihan.buat", "pelatihan.ubah"] },
+      { href: "/kinerja", label: "Kinerja", icon: Target, izin: ["kinerja.lihat", "kinerja.buat", "kinerja.ubah"] },
+      { href: "/kompetensi", label: "Kompetensi", icon: Award, izin: ["kompetensi.lihat", "kompetensi.buat", "kompetensi.ubah", "kompetensi.hapus"] },
     ],
   },
   {
@@ -103,25 +103,25 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Kepatuhan",
     icon: ShieldAlert,
     item: [
-      { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert, izin: ["halaman.kasus", "disiplin.kelola"] },
+      { href: "/kasus", label: "Keluhan & Disiplin", icon: ShieldAlert, izin: ["kasus.lihat", "kasus.buat", "kasus.ubah"] },
       { href: "/audit", label: "Jejak Audit", icon: ScrollText, izin: "audit.lihat" },
     ],
   },
-  { id: "analitik", label: "Analitik", icon: BarChart3, item: [{ href: "/laporan", label: "Laporan", icon: BarChart3, izin: "laporan.dashboard" }] },
+  { id: "analitik", label: "Analitik", icon: BarChart3, item: [{ href: "/laporan", label: "Laporan", icon: BarChart3, izin: ["laporan.lihat", "laporan_hr.lihat"] }] },
   {
     id: "aplikasi",
     label: "Aplikasi Mobile",
     icon: TabletSmartphone,
     item: [
-      { href: "/aplikasi", label: "Rilis APK", icon: TabletSmartphone, izin: "aplikasi.rilis" },
-      { href: "/unduh", label: "Unduh Aplikasi", icon: Download, izin: "halaman.unduh" },
+      { href: "/aplikasi", label: "Rilis APK", icon: TabletSmartphone, izin: ["aplikasi.lihat", "aplikasi.buat", "aplikasi.ubah"] },
+      { href: "/unduh", label: "Unduh Aplikasi", icon: Download, izin: "unduh.lihat" },
     ],
   },
   {
     id: "administrasi",
     label: "Administrasi",
     icon: KeyRound,
-    item: [{ href: "/peran", label: "Peran & Hak Akses", icon: KeyRound, izin: "peran.kelola" }],
+    item: [{ href: "/peran", label: "Peran & Hak Akses", icon: KeyRound, izin: ["peran.lihat", "peran.buat", "peran.ubah", "peran.hapus"] }],
   },
 ];
 

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarOff, Pencil, Plus, Search, Users } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Field } from "@/components/ui/input";
@@ -27,6 +28,8 @@ const SUDAH_KELUAR = new Set(["inactive", "resign", "terminated"]);
  */
 export const DaftarSaldoCuti = () => {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehTetapkan = punyaIzin(saya, "pengaturan_cuti.buat", "pengaturan_cuti.ubah");
   const tahunIni = new Date().getFullYear();
   const [tahun, setTahun] = React.useState(tahunIni);
   const [tipeId, setTipeId] = React.useState("");
@@ -106,7 +109,7 @@ export const DaftarSaldoCuti = () => {
     { key: "catatan", header: "Catatan", cell: (s) => <span className="line-clamp-2 text-muted">{s.note ?? "—"}</span> },
     {
       key: "aksi", header: "", className: "text-right",
-      cell: (s) => (
+      cell: (s) => bolehTetapkan && (
         <div className="flex justify-end">
           <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, awal: s })} aria-label={`Ubah saldo ${s.employee?.name ?? ""} ${s.leaveType.name}`}>
             <Pencil className="h-4 w-4" aria-hidden /><span className="hidden sm:inline">Ubah</span>
@@ -133,12 +136,12 @@ export const DaftarSaldoCuti = () => {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
             <Input className="pl-9" placeholder="Cari nama atau NIK…" value={cari} onChange={(e) => setCari(e.target.value)} aria-label="Cari karyawan" />
           </div>
-          <Button variant="outline" onClick={() => { setTipeMassal(tipeId); setMassalBuka(true); }} disabled={tipeBerkuota.length === 0}>
+          {bolehTetapkan && <Button variant="outline" onClick={() => { setTipeMassal(tipeId); setMassalBuka(true); }} disabled={tipeBerkuota.length === 0}>
             <Users className="h-4 w-4" aria-hidden /> Terapkan Jatah Bawaan
-          </Button>
-          <Button onClick={() => setForm({ open: true, awal: null })}>
+          </Button>}
+          {bolehTetapkan && <Button onClick={() => setForm({ open: true, awal: null })}>
             <Plus className="h-4 w-4" aria-hidden /> Tetapkan Saldo
-          </Button>
+          </Button>}
         </div>
 
         {daftar.isLoading ? (
@@ -148,7 +151,7 @@ export const DaftarSaldoCuti = () => {
             icon={CalendarOff}
             title={adaSaringan ? "Tidak ada yang cocok" : `Belum ada saldo tahun ${tahun}`}
             description={adaSaringan ? "Coba ubah kata kunci atau saringan." : "Tetapkan satu per satu, atau terapkan jatah bawaan ke semua karyawan aktif sekaligus."}
-            action={!adaSaringan && tipeBerkuota.length > 0 ? <Button onClick={() => setMassalBuka(true)}>Terapkan Jatah Bawaan</Button> : undefined}
+            action={bolehTetapkan && !adaSaringan && tipeBerkuota.length > 0 ? <Button onClick={() => setMassalBuka(true)}>Terapkan Jatah Bawaan</Button> : undefined}
           />
         ) : (
           <>

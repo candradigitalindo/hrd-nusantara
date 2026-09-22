@@ -25,7 +25,10 @@ export default function HalamanKaryawan() {
   const qc = useQueryClient();
   const router = useRouter();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "karyawan.kelola");
+  const bolehBuat = punyaIzin(saya, "karyawan.buat");
+  const bolehUbah = punyaIzin(saya, "karyawan.ubah");
+  const bolehHapus = punyaIzin(saya, "karyawan.hapus");
+  const hr = bolehUbah || bolehHapus;
 
   const [cari, setCari] = React.useState("");
   const [cariTunda, setCariTunda] = React.useState("");
@@ -109,11 +112,13 @@ export default function HalamanKaryawan() {
             className: "text-right",
             cell: (k: Karyawan) => (
               <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, karyawan: k })} aria-label={`Sunting ${k.name}`}>
-                  <Pencil className="h-4 w-4" aria-hidden />
-                  <span className="hidden sm:inline">Sunting</span>
-                </Button>
-                {k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
+                {bolehUbah && (
+                  <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, karyawan: k })} aria-label={`Sunting ${k.name}`}>
+                    <Pencil className="h-4 w-4" aria-hidden />
+                    <span className="hidden sm:inline">Sunting</span>
+                  </Button>
+                )}
+                {bolehHapus && k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
                   <Button variant="ghost" size="sm" className="text-danger" onClick={() => setNonaktif(k)} aria-label={`Nonaktifkan ${k.name}`}>
                     <UserX className="h-4 w-4" aria-hidden />
                   </Button>
@@ -131,7 +136,7 @@ export default function HalamanKaryawan() {
         title="Karyawan"
         description={data ? `${data.pagination.total} karyawan terdaftar` : "Data seluruh karyawan"}
         actions={
-          hr && (
+          bolehBuat && (
             <Button onClick={() => setForm({ open: true, karyawan: null })}>
               <Plus className="h-4 w-4" aria-hidden /> Tambah Karyawan
             </Button>
@@ -176,7 +181,7 @@ export default function HalamanKaryawan() {
             icon={Users}
             title={cariTunda || status || dept ? "Tidak ada yang cocok" : "Belum ada karyawan"}
             description={cariTunda || status || dept ? "Coba ubah kata kunci atau saringan." : "Tambahkan karyawan pertama untuk memulai."}
-            action={hr && !cariTunda && <Button onClick={() => setForm({ open: true, karyawan: null })}>Tambah Karyawan</Button>}
+            action={bolehBuat && !cariTunda && <Button onClick={() => setForm({ open: true, karyawan: null })}>Tambah Karyawan</Button>}
           />
         ) : (
           data && (

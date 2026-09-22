@@ -32,6 +32,7 @@ import {
   createFeedbackSchema,
   listFeedbackQuerySchema,
 } from '../schemas/performanceSchema';
+import { kelola, lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -41,13 +42,13 @@ router.use(authenticateToken);
 // --- Formulir penilaian ---
 router.get(
   '/performance/templates',
-  requirePermission('kinerja.kelola'),
+  requirePermission(...kelola('kinerja')),
   validate(listTemplateQuerySchema, 'query'),
   asyncHandler(getAllTemplates)
 );
 router.post(
   '/performance/templates',
-  requirePermission('kinerja.kelola'),
+  requirePermission('kinerja.buat'),
   validate(createTemplateSchema),
   asyncHandler(createTemplate)
 );
@@ -55,19 +56,19 @@ router.post(
 // --- Siklus penilaian ---
 router.get(
   '/performance/cycles',
-  requirePermission('kinerja.kelola'),
+  requirePermission(...kelola('kinerja')),
   validate(listCycleQuerySchema, 'query'),
   asyncHandler(getAllCycles)
 );
 router.post(
   '/performance/cycles',
-  requirePermission('kinerja.kelola'),
+  requirePermission('kinerja.buat'),
   validate(createCycleSchema),
   asyncHandler(createCycle)
 );
 router.patch(
   '/performance/cycles/:id/status',
-  requirePermission('kinerja.kelola'),
+  requirePermission('kinerja.ubah'),
   validate(idParamSchema, 'params'),
   validate(changeCycleStatusSchema),
   asyncHandler(changeCycleStatus)
@@ -76,7 +77,7 @@ router.patch(
 // --- Penilaian ---
 router.post(
   '/performance/reviews',
-  requirePermission('kinerja.kelola'),
+  requirePermission('kinerja.buat'),
   validate(assignReviewSchema),
   asyncHandler(assignReview)
 );
@@ -85,32 +86,32 @@ router.post(
 // Penyaringan siapa melihat apa dikerjakan di controller.
 router.get(
   '/performance/reviews',
-  requirePermission('halaman.kinerja', 'kinerja.kelola'),
+  requirePermission(...lihatAtauKelola('kinerja')),
   validate(listReviewQuerySchema, 'query'),
   asyncHandler(getAllReviews)
 );
 router.get(
   '/performance/reviews/:id',
-  requirePermission('halaman.kinerja', 'kinerja.kelola'),
+  requirePermission(...lihatAtauKelola('kinerja')),
   validate(idParamSchema, 'params'),
   asyncHandler(getReviewById)
 );
 router.post(
   '/performance/reviews/:id/submit',
-  requirePermission('halaman.kinerja', 'kinerja.kelola'),
+  requirePermission(...lihatAtauKelola('kinerja')),
   validate(idParamSchema, 'params'),
   validate(submitReviewSchema),
   asyncHandler(submitReview)
 );
 router.post(
   '/performance/reviews/:id/acknowledge',
-  requirePermission('halaman.kinerja', 'kinerja.kelola'),
+  requirePermission(...lihatAtauKelola('kinerja')),
   validate(idParamSchema, 'params'),
   asyncHandler(acknowledgeReview)
 );
 router.post(
   '/performance/reviews/:id/discussions',
-  requirePermission('halaman.kinerja', 'kinerja.kelola'),
+  requirePermission(...lihatAtauKelola('kinerja')),
   validate(idParamSchema, 'params'),
   validate(addDiscussionSchema),
   asyncHandler(addDiscussion)
@@ -118,14 +119,14 @@ router.post(
 
 router.get(
   '/performance/summary/:cycleId/:employeeId',
-  requirePermission('halaman.kinerja', 'kinerja.kelola'),
+  requirePermission(...lihatAtauKelola('kinerja')),
   asyncHandler(getReviewSummary)
 );
 
 // --- Umpan balik berkelanjutan ---
 // Terbuka untuk semua karyawan: justru itu intinya, umpan balik antar rekan
 // kerja yang tercatat tanpa menunggu siklus penilaian.
-router.post('/feedback', requirePermission('halaman.kinerja', 'kinerja.kelola'), validate(createFeedbackSchema), asyncHandler(createFeedback));
-router.get('/feedback', requirePermission('halaman.kinerja', 'kinerja.kelola'), validate(listFeedbackQuerySchema, 'query'), asyncHandler(getFeedback));
+router.post('/feedback', requirePermission(...lihatAtauKelola('kinerja')), validate(createFeedbackSchema), asyncHandler(createFeedback));
+router.get('/feedback', requirePermission(...lihatAtauKelola('kinerja')), validate(listFeedbackQuerySchema, 'query'), asyncHandler(getFeedback));
 
 export default router;

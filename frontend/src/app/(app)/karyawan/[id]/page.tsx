@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Mail, Phone, MapPin, Calendar, Building2, Briefcase } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge, nadaStatus } from "@/components/ui/badge";
@@ -32,11 +32,10 @@ const Baris = ({ icon: Icon, label, value }: { icon: typeof Mail; label: string;
 export default function HalamanDetailKaryawan() {
   const { id } = useParams<{ id: string }>();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "karyawan.kelola");
-  const gaji = punyaIzin(saya, "payroll.kelola");
-  const dokumen = punyaIzin(saya, "dokumen.kelola");
-  const lihatSaldo = punyaIzin(saya, "cuti.setujui");
-  const kelolaSaldo = punyaIzin(saya, "cuti.kelola");
+  const hr = punyaIzin(saya, "karyawan.ubah");
+  const gaji = punyaIzin(saya, "payroll.lihat") || bolehKelola(saya, "payroll");
+  const lihatSaldo = punyaIzin(saya, "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat") || bolehKelola(saya, "pengaturan_cuti");
+  const kelolaSaldo = punyaIzin(saya, "pengaturan_cuti.buat", "pengaturan_cuti.ubah");
 
   const { data: k, isLoading, isError, error } = useQuery({
     queryKey: ["karyawan", id],
@@ -88,7 +87,7 @@ export default function HalamanDetailKaryawan() {
             <div className="space-y-4 lg:col-span-2">
               {gaji && <PanelGaji employeeId={k.id} />}
               {lihatSaldo && <PanelSaldoCuti employeeId={k.id} employeeName={k.name} bolehKelola={kelolaSaldo} />}
-              <PanelDokumen employeeId={k.id} hr={dokumen} />
+              <PanelDokumen employeeId={k.id} bolehUnggah={punyaIzin(saya, "dokumen.buat")} bolehHapus={punyaIzin(saya, "dokumen.hapus")} />
             </div>
           </div>
         </>

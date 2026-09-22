@@ -6,6 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { Wallet, Plus, Trash2, History } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
@@ -27,6 +28,10 @@ const hariIni = () => new Date().toISOString().slice(0, 10);
  */
 export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehTetapkan = punyaIzin(saya, "payroll.buat", "payroll.ubah");
+  const bolehTambah = punyaIzin(saya, "payroll.buat");
+  const bolehLepas = punyaIzin(saya, "payroll.hapus");
   const [gajiBuka, setGajiBuka] = React.useState(false);
   const [komponenBuka, setKomponenBuka] = React.useState(false);
   const [riwayatBuka, setRiwayatBuka] = React.useState(false);
@@ -83,7 +88,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
         </div>
         <div className="flex gap-1">
           {(gaji.data?.salaries.length ?? 0) > 1 && <Button size="sm" variant="ghost" onClick={() => setRiwayatBuka(true)} aria-label="Riwayat gaji"><History className="h-4 w-4" aria-hidden /></Button>}
-          <Button size="sm" onClick={() => setGajiBuka(true)}><Wallet className="h-4 w-4" aria-hidden /> {berlaku ? "Ubah" : "Tetapkan"}</Button>
+          {bolehTetapkan && <Button size="sm" onClick={() => setGajiBuka(true)}><Wallet className="h-4 w-4" aria-hidden /> {berlaku ? "Ubah" : "Tetapkan"}</Button>}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -100,7 +105,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
         <div>
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-medium">Komponen</p>
-            <Button size="sm" variant="outline" onClick={() => setKomponenBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Tambah</Button>
+            {bolehTambah && <Button size="sm" variant="outline" onClick={() => setKomponenBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Tambah</Button>}
           </div>
           {komponenAktif.length === 0 ? (
             <p className="text-sm text-muted">Belum ada tunjangan atau potongan khusus. Komponen wajib (BPJS) tetap dihitung otomatis.</p>
@@ -114,7 +119,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
                     <p className="text-xs text-muted">sejak {formatTanggal(k.effectiveFrom)}</p>
                   </div>
                   <span className="tabular-nums">{k.amount !== null ? formatRupiah(k.amount) : k.percentage !== null ? `${k.percentage}%` : "bawaan"}</span>
-                  <Button size="icon" variant="ghost" className="h-8 w-8 text-danger" onClick={() => setHapus(k)} aria-label={`Lepas ${k.component.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                  {bolehLepas && <Button size="icon" variant="ghost" className="h-8 w-8 text-danger" onClick={() => setHapus(k)} aria-label={`Lepas ${k.component.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>}
                 </li>
               ))}
             </ul>

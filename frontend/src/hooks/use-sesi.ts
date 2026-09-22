@@ -33,3 +33,7 @@ export const bolehManajer = (role: string | undefined) => bolehHr(role) || role 
 /** Apakah pengguna memegang salah satu izin ini (peran dinamis). */
 export const punyaIzin = (saya: PenggunaSesi | undefined, ...izin: string[]) =>
   saya !== undefined && izin.some((k) => saya.permissions.includes(k));
+
+/** Boleh mengelola halaman: memegang salah satu dari buat / ubah / hapus-nya. */
+export const bolehKelola = (saya: PenggunaSesi | undefined, halaman: string) =>
+  punyaIzin(saya, `${halaman}.buat`, `${halaman}.ubah`, `${halaman}.hapus`);

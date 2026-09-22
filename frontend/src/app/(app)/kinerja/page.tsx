@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Target, Plus, ClipboardList, UserPlus, MessageSquareHeart, BarChart3 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -30,7 +30,9 @@ type FormUmpan = { recipientId: string; type: "praise" | "improvement" | "note";
 export default function HalamanKinerja() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "kinerja.kelola");
+  const hr = bolehKelola(saya, "kinerja");
+  const bolehBuat = punyaIzin(saya, "kinerja.buat");
+  const bolehUbah = punyaIzin(saya, "kinerja.ubah");
   const [tab, setTab] = React.useState<Tab>("penilaian");
   const [siklusBuka, setSiklusBuka] = React.useState(false);
   const [templateBuka, setTemplateBuka] = React.useState(false);
@@ -84,7 +86,7 @@ export default function HalamanKinerja() {
   return (
     <>
       <PageHeader title="Penilaian Kinerja" description={hr ? "Siklus, form KPI per jabatan, penugasan penilai, dan ringkasan 360°" : "Penilaian yang harus Anda isi, hasil penilaian Anda, dan umpan balik"}
-        actions={hr ? (tab === "siklus" ? <Button onClick={() => setSiklusBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Siklus</Button> : tab === "template" ? <Button onClick={() => setTemplateBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Form KPI</Button> : tab === "penilaian" ? <Button onClick={() => setTugasBuka(true)}><UserPlus className="h-4 w-4" aria-hidden /> Tugaskan Penilai</Button> : tab === "umpan" ? <Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button> : null) : tab === "umpan" ? <Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button> : null} />
+        actions={bolehBuat ? (tab === "siklus" ? <Button onClick={() => setSiklusBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Siklus</Button> : tab === "template" ? <Button onClick={() => setTemplateBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Form KPI</Button> : tab === "penilaian" ? <Button onClick={() => setTugasBuka(true)}><UserPlus className="h-4 w-4" aria-hidden /> Tugaskan Penilai</Button> : tab === "umpan" ? <Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button> : null) : tab === "umpan" ? <Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button> : null} />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TABS.filter((t) => !t.hrSaja || hr).map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors", tab === t.id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground")}>{t.label}{t.id === "penilaian" && perluSaya + perluAkui > 0 && <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-on-primary">{perluSaya + perluAkui}</span>}</button>)}
@@ -149,8 +151,8 @@ export default function HalamanKinerja() {
                   <Badge tone={nadaStatus(s.status)} dot className="shrink-0">{labelStatus(s.status)}</Badge>
                 </CardHeader>
                 <CardContent className="flex gap-2">
-                  {s.status === "draft" && <Button size="sm" onClick={() => ubahSiklus.mutate({ s, status: "open" })}>Buka</Button>}
-                  {s.status === "open" && <Button size="sm" variant="outline" onClick={() => ubahSiklus.mutate({ s, status: "closed" })}>Tutup & Finalkan</Button>}
+                  {bolehUbah && s.status === "draft" && <Button size="sm" onClick={() => ubahSiklus.mutate({ s, status: "open" })}>Buka</Button>}
+                  {bolehUbah && s.status === "open" && <Button size="sm" variant="outline" onClick={() => ubahSiklus.mutate({ s, status: "closed" })}>Tutup & Finalkan</Button>}
                 </CardContent>
               </Card>
             ))}

@@ -31,13 +31,13 @@ router.use(authenticateToken);
 // formulir, dan nama departemen bukan rahasia.
 router.get('/departments', validate(listDepartmentQuerySchema, 'query'), asyncHandler(getAllDepartments));
 router.get('/departments/:id', validate(idParamSchema, 'params'), asyncHandler(getDepartmentById));
-router.post('/departments', requirePermission('organisasi.kelola'), validate(createDepartmentSchema), asyncHandler(createDepartment));
-router.put('/departments/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), validate(updateDepartmentSchema), asyncHandler(updateDepartment));
-router.delete('/departments/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), asyncHandler(deleteDepartment));
+router.post('/departments', requirePermission('organisasi.buat'), validate(createDepartmentSchema), asyncHandler(createDepartment));
+router.put('/departments/:id', requirePermission('organisasi.ubah'), validate(idParamSchema, 'params'), validate(updateDepartmentSchema), asyncHandler(updateDepartment));
+router.delete('/departments/:id', requirePermission('organisasi.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteDepartment));
 
 router.get('/positions', validate(listPositionQuerySchema, 'query'), asyncHandler(getAllPositions));
-router.post('/positions', requirePermission('organisasi.kelola'), validate(createPositionSchema), asyncHandler(createPosition));
-router.put('/positions/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), validate(updatePositionSchema), asyncHandler(updatePosition));
-router.delete('/positions/:id', requirePermission('organisasi.kelola'), validate(idParamSchema, 'params'), asyncHandler(deletePosition));
+router.post('/positions', requirePermission('organisasi.buat'), validate(createPositionSchema), asyncHandler(createPosition));
+router.put('/positions/:id', requirePermission('organisasi.ubah'), validate(idParamSchema, 'params'), validate(updatePositionSchema), asyncHandler(updatePosition));
+router.delete('/positions/:id', requirePermission('organisasi.hapus'), validate(idParamSchema, 'params'), asyncHandler(deletePosition));
 
 export default router;

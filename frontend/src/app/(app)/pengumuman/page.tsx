@@ -28,8 +28,10 @@ type LaporanPembaca = { announcement: { id: string; title: string }; targetCount
 export default function HalamanPengumuman() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "pengumuman.kelola");
-  const survei = punyaIzin(saya, "survei.kelola");
+  const bolehBuat = punyaIzin(saya, "pengumuman.buat");
+  const bolehUbah = punyaIzin(saya, "pengumuman.ubah");
+  const hr = bolehBuat || bolehUbah;
+  const survei = punyaIzin(saya, "survei.buat", "survei.ubah");
   const [tab, setTab] = React.useState<"pengumuman" | "survei">("pengumuman");
   const [status, setStatus] = React.useState("");
   const [belumDibaca, setBelumDibaca] = React.useState(false);
@@ -86,7 +88,7 @@ export default function HalamanPengumuman() {
   return (
     <>
       <PageHeader title="Pengumuman & Survei" description={hr ? "Papan informasi perusahaan dan survei karyawan" : "Informasi dari perusahaan untuk Anda"}
-        actions={hr && tab === "pengumuman" && <Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Pengumuman</Button>} />
+        actions={bolehBuat && tab === "pengumuman" && <Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Pengumuman</Button>} />
 
       <div className="flex gap-1 rounded-xl bg-surface-2 p-1 w-fit" role="tablist">
         {(["pengumuman", "survei"] as const).map((t) => (
@@ -94,7 +96,7 @@ export default function HalamanPengumuman() {
         ))}
       </div>
 
-      {tab === "survei" ? <PanelSurvei hr={survei} /> : (
+      {tab === "survei" ? <PanelSurvei hr={survei} bolehBuat={punyaIzin(saya, "survei.buat")} /> : (
         <>
           {belumDikonfirmasi > 0 && <Alert tone="warning" title={`${belumDikonfirmasi} pengumuman perlu konfirmasi Anda`}>Buka pengumumannya lalu tekan &ldquo;Saya sudah membaca&rdquo;.</Alert>}
           <Card>
@@ -135,10 +137,10 @@ export default function HalamanPengumuman() {
       <Modal open={Boolean(detail)} onClose={() => setDetail(null)} size="lg" title={detail?.title ?? ""} description={detail ? `${detail.author?.name ?? "HR"} · ${detail.publishedAt ? formatTanggal(detail.publishedAt, "d MMMM yyyy HH:mm") : labelStatus(detail.status)}` : undefined}
         footer={detail && (
           <div className="flex flex-wrap gap-2">
-            {hr && detail.status === "draft" && <Button onClick={() => { ubahStatus.mutate({ p: detail, status: "published" }); setDetail(null); }}>Tayangkan</Button>}
-            {hr && detail.status === "published" && <Button variant="outline" onClick={() => { ubahStatus.mutate({ p: detail, status: "archived" }); setDetail(null); }}><Archive className="h-4 w-4" aria-hidden /> Arsipkan</Button>}
-            {hr && <Button variant="outline" onClick={() => { setForm({ open: true, item: detail }); setDetail(null); }}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>}
-            {hr && <Button variant="ghost" onClick={() => { setPembaca(detail); setDetail(null); }}><Users className="h-4 w-4" aria-hidden /> {detail.readCount} pembaca</Button>}
+            {bolehUbah && detail.status === "draft" && <Button onClick={() => { ubahStatus.mutate({ p: detail, status: "published" }); setDetail(null); }}>Tayangkan</Button>}
+            {bolehUbah && detail.status === "published" && <Button variant="outline" onClick={() => { ubahStatus.mutate({ p: detail, status: "archived" }); setDetail(null); }}><Archive className="h-4 w-4" aria-hidden /> Arsipkan</Button>}
+            {bolehUbah && <Button variant="outline" onClick={() => { setForm({ open: true, item: detail }); setDetail(null); }}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>}
+            {bolehUbah && <Button variant="ghost" onClick={() => { setPembaca(detail); setDetail(null); }}><Users className="h-4 w-4" aria-hidden /> {detail.readCount} pembaca</Button>}
             {detail.requiresAcknowledgment && detail.status === "published" && (detail.acknowledgedAt ? <span className="inline-flex items-center gap-1 self-center text-sm text-success"><CheckCheck className="h-4 w-4" aria-hidden /> Dikonfirmasi {formatTanggal(detail.acknowledgedAt, "d MMM HH:mm")}</span> : <Button onClick={() => tandaiBaca.mutate({ id: detail.id, acknowledge: true })} loading={tandaiBaca.isPending}><CheckCheck className="h-4 w-4" aria-hidden /> Saya sudah membaca</Button>)}
             {!hr && !detail.requiresAcknowledgment && <Button onClick={() => setDetail(null)}>Tutup</Button>}
           </div>

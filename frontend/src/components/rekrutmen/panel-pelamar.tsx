@@ -6,6 +6,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
@@ -34,6 +35,9 @@ const isoLokal = (d: Date) => {
 
 export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehBuat = punyaIzin(saya, "rekrutmen.buat");
+  const bolehUbah = punyaIzin(saya, "rekrutmen.ubah");
   const [cari, setCari] = React.useState("");
   const [cariTunda, setCariTunda] = React.useState("");
   const [tahap, setTahap] = React.useState("");
@@ -112,10 +116,10 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
           <div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden /><Input className="pl-9" placeholder="Cari nama atau email…" value={cari} onChange={(e) => setCari(e.target.value)} aria-label="Cari pelamar" /></div>
           <Select value={lowonganId} onChange={(e) => { setLowonganId(e.target.value); setPage(1); }} aria-label="Lowongan" className="sm:w-52"><option value="">Semua lowongan</option>{(lowongan.data ?? []).map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}</Select>
           <Select value={tahap} onChange={(e) => { setTahap(e.target.value); setPage(1); }} aria-label="Tahap" className="sm:w-44"><option value="">Semua tahap</option>{TAHAP.map((t) => <option key={t} value={t}>{LABEL_TAHAP[t]}</option>)}</Select>
-          <Button onClick={() => setTambahBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Pelamar</Button>
+          {bolehBuat && <Button onClick={() => setTambahBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Pelamar</Button>}
         </div>
         {kandidat.isLoading ? <SkeletonBaris /> : !kandidat.data?.data.length ? (
-          <EmptyState icon={UserCheck} title="Belum ada pelamar" description="Catat pelamar yang masuk dari lowongan yang sudah ditayangkan." action={<Button onClick={() => setTambahBuka(true)}>Catat Pelamar</Button>} />
+          <EmptyState icon={UserCheck} title="Belum ada pelamar" description="Catat pelamar yang masuk dari lowongan yang sudah ditayangkan." action={bolehBuat && <Button onClick={() => setTambahBuka(true)}>Catat Pelamar</Button>} />
         ) : (<><ResponsiveTable columns={kolom} rows={kandidat.data.data} rowKey={(k) => k.id} onRowClick={(k) => setDetail(k)} /><Pagination pagination={kandidat.data.pagination} onPage={setPage} /></>)}
       </Card>
 
@@ -136,10 +140,10 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
       <Modal open={Boolean(detail) && !aksi} onClose={() => setDetail(null)} size="lg" title={detail?.name ?? ""} description={detail ? `${detail.appliedPosition.title} · ${detail.email}${detail.phoneNumber ? ` · ${detail.phoneNumber}` : ""}` : undefined}
         footer={detail && (
           <div className="flex flex-wrap gap-2">
-            {tahapBerikut(detail.status).length > 0 && <Button variant="outline" onClick={() => { ft.reset({ stage: tahapBerikut(detail.status)[0], note: "", rejectionReason: "" }); setAksi("tahap"); }}><ArrowRightCircle className="h-4 w-4" aria-hidden /> Ubah Tahap</Button>}
-            {!["hired", "rejected", "withdrawn"].includes(detail.status) && <Button variant="outline" onClick={() => { fw.reset({ interviewerId: "", stage: "hr", round: "1", scheduledDateTime: isoLokal(new Date(Date.now() + 86_400_000)), durationMinutes: "60", location: "", notes: "" }); setAksi("wawancara"); }}><CalendarPlus className="h-4 w-4" aria-hidden /> Jadwalkan Wawancara</Button>}
-            {!["hired", "rejected", "withdrawn"].includes(detail.status) && <Button variant="outline" onClick={() => { fp.reset({ testName: "DISC", score: "", maxScore: "100", testDate: new Date().toISOString().slice(0, 10), interpretation: "" }); setAksi("psikotes"); }}><ClipboardList className="h-4 w-4" aria-hidden /> Catat Psikotes</Button>}
-            {detail.status === "offer" && <Button onClick={() => { fh.reset({ nik: "", joinDate: new Date().toISOString().slice(0, 10), departmentId: "", positionId: detail.appliedPositionId ? "" : "", employeeStatus: "probation", note: "" }); setAksi("hire"); }}><UserCheck className="h-4 w-4" aria-hidden /> Terima</Button>}
+            {bolehUbah && tahapBerikut(detail.status).length > 0 && <Button variant="outline" onClick={() => { ft.reset({ stage: tahapBerikut(detail.status)[0], note: "", rejectionReason: "" }); setAksi("tahap"); }}><ArrowRightCircle className="h-4 w-4" aria-hidden /> Ubah Tahap</Button>}
+            {bolehBuat && !["hired", "rejected", "withdrawn"].includes(detail.status) && <Button variant="outline" onClick={() => { fw.reset({ interviewerId: "", stage: "hr", round: "1", scheduledDateTime: isoLokal(new Date(Date.now() + 86_400_000)), durationMinutes: "60", location: "", notes: "" }); setAksi("wawancara"); }}><CalendarPlus className="h-4 w-4" aria-hidden /> Jadwalkan Wawancara</Button>}
+            {bolehBuat && !["hired", "rejected", "withdrawn"].includes(detail.status) && <Button variant="outline" onClick={() => { fp.reset({ testName: "DISC", score: "", maxScore: "100", testDate: new Date().toISOString().slice(0, 10), interpretation: "" }); setAksi("psikotes"); }}><ClipboardList className="h-4 w-4" aria-hidden /> Catat Psikotes</Button>}
+            {bolehUbah && detail.status === "offer" && <Button onClick={() => { fh.reset({ nik: "", joinDate: new Date().toISOString().slice(0, 10), departmentId: "", positionId: detail.appliedPositionId ? "" : "", employeeStatus: "probation", note: "" }); setAksi("hire"); }}><UserCheck className="h-4 w-4" aria-hidden /> Terima</Button>}
           </div>
         )}>
         {detail && (

@@ -16,22 +16,23 @@ import {
   updateCaseStatusSchema,
   listCaseQuerySchema,
 } from '../schemas/disciplineSchema';
+import { kelola } from '../utils/permissions';
 
 const router = express.Router();
 
 router.use(authenticateToken);
 
 // Keluhan boleh diajukan siapa pun — itulah gunanya.
-router.post('/complaints', requirePermission('halaman.kasus', 'disiplin.kelola'), validate(createComplaintSchema), asyncHandler(createComplaint));
+router.post('/complaints', requirePermission('kasus.lihat', ...kelola('kasus')), validate(createComplaintSchema), asyncHandler(createComplaint));
 
 // Tindakan disiplin: HR dan manajer. Batas departemen manajer di controller.
-router.post('/disciplinary-actions', requirePermission('disiplin.kelola'), validate(createDisciplinarySchema), asyncHandler(createDisciplinaryAction));
+router.post('/disciplinary-actions', requirePermission('kasus.buat'), validate(createDisciplinarySchema), asyncHandler(createDisciplinaryAction));
 
 // Daftar dan detail: semua peran, disaring ketat di controller (lihat
 // lingkupLihat). Yang tidak berhak mendapat 404, bukan 403.
-router.get('/cases', requirePermission('halaman.kasus', 'disiplin.kelola'), validate(listCaseQuerySchema, 'query'), asyncHandler(listCases));
-router.get('/cases/:id', requirePermission('halaman.kasus', 'disiplin.kelola'), validate(idParamSchema, 'params'), asyncHandler(getCase));
+router.get('/cases', requirePermission('kasus.lihat', ...kelola('kasus')), validate(listCaseQuerySchema, 'query'), asyncHandler(listCases));
+router.get('/cases/:id', requirePermission('kasus.lihat', ...kelola('kasus')), validate(idParamSchema, 'params'), asyncHandler(getCase));
 
-router.patch('/cases/:id/status', requirePermission('disiplin.kelola'), validate(idParamSchema, 'params'), validate(updateCaseStatusSchema), asyncHandler(updateCaseStatus));
+router.patch('/cases/:id/status', requirePermission('kasus.ubah'), validate(idParamSchema, 'params'), validate(updateCaseStatusSchema), asyncHandler(updateCaseStatus));
 
 export default router;

@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { Plus, Building2, Briefcase, Trash2, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -20,6 +21,10 @@ type FormPos = { name: string; description: string; departmentId: string };
 
 export default function HalamanOrganisasi() {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehBuat = punyaIzin(saya, "organisasi.buat");
+  const bolehUbah = punyaIzin(saya, "organisasi.ubah");
+  const bolehHapus = punyaIzin(saya, "organisasi.hapus");
   const [tab, setTab] = React.useState<"departemen" | "jabatan">("departemen");
   const [formDept, setFormDept] = React.useState<{ open: boolean; item: Departemen | null }>({ open: false, item: null });
   const [formPos, setFormPos] = React.useState<{ open: boolean; item: Jabatan | null }>({ open: false, item: null });
@@ -85,7 +90,7 @@ export default function HalamanOrganisasi() {
         title="Struktur Organisasi"
         description="Departemen dan jabatan yang menjadi tempat karyawan dikelompokkan"
         actions={
-          tab === "departemen" ? (
+          !bolehBuat ? null : tab === "departemen" ? (
             <Button onClick={() => setFormDept({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Departemen</Button>
           ) : (
             <Button onClick={() => setFormPos({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Jabatan</Button>
@@ -111,7 +116,7 @@ export default function HalamanOrganisasi() {
         departemen.isLoading ? (
           <SkeletonBaris />
         ) : !departemen.data?.length ? (
-          <Card><EmptyState icon={Building2} title="Belum ada departemen" description="Contoh: Kitchen, Front Office, Housekeeping, Sales & Marketing." action={<Button onClick={() => setFormDept({ open: true, item: null })}>Tambah Departemen</Button>} /></Card>
+          <Card><EmptyState icon={Building2} title="Belum ada departemen" description="Contoh: Kitchen, Front Office, Housekeeping, Sales & Marketing." action={bolehBuat && <Button onClick={() => setFormDept({ open: true, item: null })}>Tambah Departemen</Button>} /></Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {departemen.data.map((d) => (
@@ -123,8 +128,8 @@ export default function HalamanOrganisasi() {
                     <p className="mt-2 text-xs text-muted">{d._count.employees} karyawan · {d._count.positions} jabatan{d.workPattern ? ` · ${d.workPattern.name}` : ""}</p>
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => setFormDept({ open: true, item: d })} aria-label={`Sunting ${d.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                    <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus({ jenis: "departemen", id: d.id, nama: d.name })} aria-label={`Hapus ${d.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                    {bolehUbah && <Button variant="ghost" size="icon" onClick={() => setFormDept({ open: true, item: d })} aria-label={`Sunting ${d.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>}
+                    {bolehHapus && <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus({ jenis: "departemen", id: d.id, nama: d.name })} aria-label={`Hapus ${d.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>}
                   </div>
                 </CardHeader>
               </Card>
@@ -134,7 +139,7 @@ export default function HalamanOrganisasi() {
       ) : jabatan.isLoading ? (
         <SkeletonBaris />
       ) : !jabatan.data?.length ? (
-        <Card><EmptyState icon={Briefcase} title="Belum ada jabatan" description="Contoh: Chef de Partie, Waiter, Receptionist, Room Attendant." action={<Button onClick={() => setFormPos({ open: true, item: null })}>Tambah Jabatan</Button>} /></Card>
+        <Card><EmptyState icon={Briefcase} title="Belum ada jabatan" description="Contoh: Chef de Partie, Waiter, Receptionist, Room Attendant." action={bolehBuat && <Button onClick={() => setFormPos({ open: true, item: null })}>Tambah Jabatan</Button>} /></Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {jabatan.data.map((j) => (
@@ -146,8 +151,8 @@ export default function HalamanOrganisasi() {
                   <p className="mt-2 text-xs text-muted">{j._count.employees} karyawan</p>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <Button variant="ghost" size="icon" onClick={() => setFormPos({ open: true, item: j })} aria-label={`Sunting ${j.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>
-                  <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus({ jenis: "jabatan", id: j.id, nama: j.name })} aria-label={`Hapus ${j.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                  {bolehUbah && <Button variant="ghost" size="icon" onClick={() => setFormPos({ open: true, item: j })} aria-label={`Sunting ${j.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>}
+                  {bolehHapus && <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus({ jenis: "jabatan", id: j.id, nama: j.name })} aria-label={`Hapus ${j.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>}
                 </div>
               </CardHeader>
             </Card>

@@ -24,7 +24,8 @@ const menit = (n: number | null | undefined) => (n ? `${n} mnt` : "—");
 export default function HalamanPresensi() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const manajemen = punyaIzin(saya, "presensi.lihat_tim");
+  const manajemen = punyaIzin(saya, "presensi_tim.lihat");
+  const bolehLembur = punyaIzin(saya, "lembur.ubah");
   const hariIni = format(new Date(), "yyyy-MM-dd");
 
   const [mulai, setMulai] = React.useState(hariIni);
@@ -124,7 +125,7 @@ export default function HalamanPresensi() {
         const jam = Number(p.overtimeHours ?? 0);
         if (!jam) return <span className="text-muted">—</span>;
         if (p.overtimeApproved) return <Badge tone="success">{jam} jam ✓</Badge>;
-        return manajemen ? (
+        return bolehLembur ? (
           <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
             <span className="mr-1 tabular-nums">{jam} jam</span>
             <Button size="sm" variant="outline" onClick={() => setujuiLembur.mutate({ id: p.id, approved: true })}>Setujui</Button>

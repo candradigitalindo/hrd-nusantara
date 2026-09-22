@@ -8,6 +8,7 @@ import { env } from '../config/env';
 import { ACTIVE_STATUSES } from '../middleware/auth';
 import type { LoginInput, ChangePasswordInput } from '../schemas/authSchema';
 import { izinEfektif } from '../services/roles/resolve';
+import { denganAliasKlienLama } from '../utils/permissions';
 
 /**
  * Hash palsu yang valid secara format. Dipakai saat email tidak ditemukan
@@ -114,7 +115,7 @@ export const login = async (req: Request, res: Response) => {
       departmentId: employee.departmentId,
       positionId: employee.positionId,
       customRole: employee.customRole ? { id: employee.customRole.id, name: employee.customRole.name } : null,
-      permissions: await izinEfektif(employee),
+      permissions: denganAliasKlienLama(await izinEfektif(employee)),
     },
   });
 };
@@ -143,7 +144,7 @@ export const me = async (req: Request, res: Response) => {
   res.json({
     ...data,
     customRole: customRole ? { id: customRole.id, name: customRole.name } : null,
-    permissions: await izinEfektif({ role: employee.role, customRole }),
+    permissions: denganAliasKlienLama(await izinEfektif({ role: employee.role, customRole })),
   });
 };
 

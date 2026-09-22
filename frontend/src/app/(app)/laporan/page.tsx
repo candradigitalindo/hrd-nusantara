@@ -49,8 +49,8 @@ const judulKolom = (k: string) => k.replace(/\./g, " › ").replace(/([a-z])([A-
 
 export default function HalamanLaporan() {
   const { data: saya } = useSesi();
-  const hr = punyaIzin(saya, "laporan.hr");
-  const manajemen = punyaIzin(saya, "laporan.dashboard");
+  const hr = punyaIzin(saya, "laporan_hr.lihat");
+  const manajemen = punyaIzin(saya, "laporan.lihat") || hr;
   // Sesi belum tentu sudah termuat saat render pertama, jadi tab bawaan
   // dihitung tiap render; hanya pilihan pengguna yang disimpan.
   const [tabDipilih, setTab] = React.useState<Tab | null>(null);

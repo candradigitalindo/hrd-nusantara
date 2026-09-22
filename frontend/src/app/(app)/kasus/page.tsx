@@ -27,7 +27,9 @@ type FormStatus = { status: "under_review" | "resolved" | "dismissed"; resolutio
 export default function HalamanKasus() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
-  const manajemen = punyaIzin(saya, "disiplin.kelola");
+  const manajemen = punyaIzin(saya, "kasus.buat", "kasus.ubah");
+  const bolehSP = punyaIzin(saya, "kasus.buat");
+  const bolehTindakLanjut = punyaIzin(saya, "kasus.ubah");
   const hr = bolehHr(saya?.role);
 
   const [jenis, setJenis] = React.useState<JenisKasus | "">("");
@@ -86,7 +88,7 @@ export default function HalamanKasus() {
     onError: (e) => notifikasi.galat(e, "Status gagal diubah"),
   });
 
-  const bolehTindak = (k: Kasus) => k.status !== "resolved" && k.status !== "dismissed" && (hr || (saya?.role === "MANAGER" && k.type === "disciplinary_action" && k.employee.departmentId === saya.departmentId));
+  const bolehTindak = (k: Kasus) => bolehTindakLanjut && k.status !== "resolved" && k.status !== "dismissed" && (hr || (saya?.role === "MANAGER" && k.type === "disciplinary_action" && k.employee.departmentId === saya.departmentId));
 
   return (
     <>
@@ -96,7 +98,7 @@ export default function HalamanKasus() {
         actions={
           <>
             <Button variant="outline" onClick={() => setKeluhanBuka(true)}><MessageSquareWarning className="h-4 w-4" aria-hidden /> Ajukan Keluhan</Button>
-            {manajemen && <Button onClick={() => setDisiplinBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Tindakan Disiplin</Button>}
+            {bolehSP && <Button onClick={() => setDisiplinBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Tindakan Disiplin</Button>}
           </>
         }
       />

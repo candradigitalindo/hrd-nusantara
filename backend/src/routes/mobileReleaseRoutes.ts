@@ -22,6 +22,7 @@ import {
   listReleaseQuerySchema,
   qrQuerySchema,
 } from '../schemas/mobileReleaseSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -34,7 +35,7 @@ router.get('/releases/:id/apk', validate(idParamSchema, 'params'), asyncHandler(
 router.get(
   '/releases',
   authenticateToken,
-  requirePermission('aplikasi.rilis'),
+  requirePermission(...lihatAtauKelola('aplikasi')),
   validate(listReleaseQuerySchema, 'query'),
   asyncHandler(listReleases)
 );
@@ -43,7 +44,7 @@ router.get(
 router.post(
   '/releases',
   authenticateToken,
-  requirePermission('aplikasi.rilis'),
+  requirePermission('aplikasi.buat'),
   validate(uploadReleaseQuerySchema, 'query'),
   express.raw({ type: () => true, limit: '300mb' }),
   asyncHandler(uploadRelease)
@@ -51,11 +52,11 @@ router.post(
 router.patch(
   '/releases/:id',
   authenticateToken,
-  requirePermission('aplikasi.rilis'),
+  requirePermission('aplikasi.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateReleaseSchema),
   asyncHandler(updateRelease)
 );
-router.get('/qr', authenticateToken, requirePermission('aplikasi.rilis'), validate(qrQuerySchema, 'query'), asyncHandler(qrForText));
+router.get('/qr', authenticateToken, requirePermission(...lihatAtauKelola('aplikasi')), validate(qrQuerySchema, 'query'), asyncHandler(qrForText));
 
 export default router;

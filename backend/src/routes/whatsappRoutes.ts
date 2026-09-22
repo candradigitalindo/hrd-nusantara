@@ -34,6 +34,7 @@ import {
   remindSchema,
   attendanceGroupSchema,
 } from '../schemas/whatsappSchema';
+import { lihatAtauKelola } from '../utils/permissions';
 
 const router = express.Router();
 
@@ -44,22 +45,22 @@ router.use(authenticateToken);
 
 // --- WhatsApp pribadi karyawan (wajib, sesuai dokumen fitur) ---
 // Tanpa requireRole: setiap karyawan menautkan nomornya sendiri.
-router.get('/whatsapp/me', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), asyncHandler(getMyWhatsApp));
-router.post('/whatsapp/me/connect', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), asyncHandler(connectMyWhatsApp));
+router.get('/whatsapp/me', requirePermission('whatsapp_saya.lihat', ...lihatAtauKelola('whatsapp')), asyncHandler(getMyWhatsApp));
+router.post('/whatsapp/me/connect', requirePermission('whatsapp_saya.ubah', 'whatsapp.ubah'), asyncHandler(connectMyWhatsApp));
 // Grup tujuan foto absensi ber-stempel — dipilih dari grup yang diikuti nomor itu.
-router.get('/whatsapp/me/groups', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), asyncHandler(getMyGroups));
-router.put('/whatsapp/me/attendance-group', requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'), validate(attendanceGroupSchema), asyncHandler(setMyAttendanceGroup));
+router.get('/whatsapp/me/groups', requirePermission('whatsapp_saya.lihat', ...lihatAtauKelola('whatsapp')), asyncHandler(getMyGroups));
+router.put('/whatsapp/me/attendance-group', requirePermission('whatsapp_saya.ubah', 'whatsapp.ubah'), validate(attendanceGroupSchema), asyncHandler(setMyAttendanceGroup));
 
 // Kepatuhan hanya untuk HR: daftar siapa yang belum/putus, plus pengingat.
 router.get(
   '/whatsapp/compliance',
-  requirePermission('whatsapp.pantau'),
+  requirePermission(...lihatAtauKelola('whatsapp')),
   validate(complianceQuerySchema, 'query'),
   asyncHandler(getCompliance)
 );
 router.post(
   '/whatsapp/compliance/remind',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.ubah'),
   validate(remindSchema),
   asyncHandler(remindCompliance)
 );
@@ -67,19 +68,19 @@ router.post(
 // --- Nomor perusahaan ---
 router.get(
   '/whatsapp/accounts',
-  requirePermission('whatsapp.pantau'),
+  requirePermission(...lihatAtauKelola('whatsapp')),
   validate(listAccountQuerySchema, 'query'),
   asyncHandler(getAllAccounts)
 );
 router.post(
   '/whatsapp/accounts',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.buat'),
   validate(createAccountSchema),
   asyncHandler(createAccount)
 );
 router.put(
   '/whatsapp/accounts/:id',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.ubah'),
   validate(idParamSchema, 'params'),
   validate(updateAccountSchema),
   asyncHandler(updateAccount)
@@ -88,7 +89,7 @@ router.put(
 // --- Sesi WhatsApp (Baileys) ---
 router.post(
   '/whatsapp/accounts/:id/connect',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.ubah'),
   validate(idParamSchema, 'params'),
   asyncHandler(connectWhatsAppAccount)
 );
@@ -96,13 +97,13 @@ router.post(
 // memindai ulang. Penyaringan siapa melihat apa dikerjakan di controller.
 router.get(
   '/whatsapp/accounts/:id/session',
-  requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'),
+  requirePermission('whatsapp_saya.lihat', ...lihatAtauKelola('whatsapp')),
   validate(idParamSchema, 'params'),
   asyncHandler(getWhatsAppSession)
 );
 router.post(
   '/whatsapp/accounts/:id/disconnect',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.ubah'),
   validate(idParamSchema, 'params'),
   validate(disconnectSchema),
   asyncHandler(disconnectWhatsAppAccount)
@@ -113,7 +114,7 @@ router.post(
 // yang tidak pernah menjadi bagian dari perusahaan.
 router.get(
   '/whatsapp/conversations',
-  requirePermission('whatsapp.pantau'),
+  requirePermission(...lihatAtauKelola('whatsapp')),
   validate(listConversationQuerySchema, 'query'),
   asyncHandler(getConversations)
 );
@@ -124,7 +125,7 @@ router.get(
 // server, bukan tersembunyi di dalam proses.
 router.post(
   '/whatsapp/retention/purge',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.hapus'),
   validate(purgeSchema),
   asyncHandler(purgeExpiredConversations)
 );
@@ -134,13 +135,13 @@ router.post(
 // Penyaringan siapa melihat apa dikerjakan di controller.
 router.get(
   '/whatsapp/session-events',
-  requirePermission('halaman.whatsapp_saya', 'whatsapp.pantau'),
+  requirePermission('whatsapp_saya.lihat', ...lihatAtauKelola('whatsapp')),
   validate(listSessionEventQuerySchema, 'query'),
   asyncHandler(getSessionEvents)
 );
 router.post(
   '/whatsapp/session-events/notified',
-  requirePermission('whatsapp.pantau'),
+  requirePermission('whatsapp.ubah'),
   validate(markNotifiedSchema),
   asyncHandler(markEventsNotified)
 );
