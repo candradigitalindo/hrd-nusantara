@@ -33,7 +33,10 @@ export default function HalamanWhatsAppSaya() {
     // QR berganti tiap ±20 detik dan status berubah begitu ponsel memindai.
     refetchInterval: (q) => (q.state.data?.status === "connecting" || q.state.data?.status === "pending_scan" ? 3000 : 15_000),
   });
-  const kejadian = useQuery({ queryKey: ["wa", "kejadian-saya"], queryFn: async () => (await api.get<Halaman<KejadianSesi>>("/whatsapp/session-events?limit=20")).data.data });
+  // Lima terakhir saja: yang dicari orang di sini adalah "kenapa tautan saya
+  // putus tadi", bukan riwayat lengkapnya. Dipotong di server, bukan di
+  // layar, supaya sisanya tidak ikut dikirim.
+  const kejadian = useQuery({ queryKey: ["wa", "kejadian-saya"], queryFn: async () => (await api.get<Halaman<KejadianSesi>>("/whatsapp/session-events?limit=5")).data.data });
   const sambungkan = useMutation({
     mutationFn: async () => (await api.post<TautanWhatsApp>("/whatsapp/me/connect", {})).data,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["wa", "saya"] }); qc.invalidateQueries({ queryKey: ["wa", "kejadian-saya"] }); notifikasi.info("Menyiapkan kode QR", "Siapkan WhatsApp di ponsel Anda; kode muncul beberapa detik lagi."); },
@@ -144,7 +147,7 @@ export default function HalamanWhatsAppSaya() {
       )}
 
       <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><History className="h-4 w-4 text-primary" aria-hidden /> Riwayat sesi</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><History className="h-4 w-4 text-primary" aria-hidden /> Riwayat sesi</CardTitle><CardDescription>Lima kejadian terakhir</CardDescription></CardHeader>
         {kejadian.isLoading ? <SkeletonBaris jumlah={3} /> : !kejadian.data?.length ? <EmptyState icon={History} title="Belum ada riwayat" description="Sambungan dan pemutusan sesi akan tercatat di sini." /> : (
           <ul className="divide-y divide-border">
             {kejadian.data.map((k) => (
