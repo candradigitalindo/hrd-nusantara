@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { QrCode, Link2, Link2Off, ShieldCheck, History, RefreshCw, Users, Camera } from "lucide-react";
+import { QrCode, Link2, Link2Off, History, RefreshCw, Users, Camera } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
@@ -142,11 +142,6 @@ export default function HalamanWhatsAppSaya() {
           </CardContent>
         </Card>
       )}
-
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-primary" aria-hidden /> Apa yang diarsipkan</CardTitle></CardHeader>
-        <CardContent className="text-sm text-muted">Dengan menautkan nomor ini Anda menyetujui bahwa seluruh pesan teks WhatsApp Anda (bukan berkas media, bukan grup, bukan status) disinkronkan terenkripsi ke sistem perusahaan untuk audit, pelacakan isu, dan analisis komunikasi internal. Arsip hanya bisa dibaca HR yang berwenang, dan setiap pembacaan tercatat di jejak audit.</CardContent>
-      </Card>
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><History className="h-4 w-4 text-primary" aria-hidden /> Riwayat sesi</CardTitle></CardHeader>
