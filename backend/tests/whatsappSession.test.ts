@@ -262,6 +262,31 @@ describe('Perubahan keadaan sesi', () => {
     expect(kejadian[0].note).toContain('scan QR ulang');
   });
 
+  it('menandai sedang menyambung ulang saat putus sementara, dan berhenti menandainya setelah menyerah', async () => {
+    // Antarmuka memakai penanda ini untuk membedakan gangguan yang sedang
+    // dipulihkan sendiri dari sesi yang benar-benar menunggu orang.
+    const id = await buatAkun();
+    await sambungkan(id);
+
+    soketTerakhir!.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.timedOut } } },
+    });
+    await tungguEventSelesai();
+
+    expect(getSession(id)?.sedangSambungUlang).toBe(true);
+    expect(getSession(id)?.catatan).toContain('Menyambung ulang');
+
+    // Sesi yang sudah tidak sah: tidak ada percobaan berikutnya.
+    soketTerakhir!.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.loggedOut } } },
+    });
+    await tungguEventSelesai();
+
+    expect(getSession(id)?.sedangSambungUlang).toBe(false);
+  });
+
   it('mencatat putus biasa sebagai disconnected, bukan minta scan', async () => {
     const id = await buatAkun();
     await sambungkan(id);

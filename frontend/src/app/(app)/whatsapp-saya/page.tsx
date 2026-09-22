@@ -90,7 +90,18 @@ export default function HalamanWhatsAppSaya() {
                 </ol>
               </div>
             )}
-            {t.catatan && t.status !== "connected" && <Alert tone="danger" title="Tautan terakhir dibatalkan">{t.catatan}</Alert>}
+            {t.catatan && t.status !== "connected" && (
+              // Judulnya mengikuti keadaan, bukan tetap: pesan "menyambung
+              // ulang dalam sekian detik" dulu tampil di bawah judul merah
+              // "Tautan terakhir dibatalkan", padahal tidak ada yang
+              // dibatalkan dan sistemnya sedang memulihkan diri sendiri.
+              <Alert
+                tone={t.session?.sedangSambungUlang ? "info" : "warning"}
+                title={t.session?.sedangSambungUlang ? "Sedang menyambung ulang sendiri" : "Tautan terputus"}
+              >
+                {t.catatan}
+              </Alert>
+            )}
             {(t.status === "never_linked" || t.status === "disconnected") && (
               <>
                 <p className="text-sm text-muted">{t.status === "never_linked" ? "Prosesnya satu menit: tekan tombol, lalu pindai kode QR dengan WhatsApp di ponsel Anda." : `Sesi terputus${t.account?.lastDisconnectedAt ? ` ${formatRelatif(t.account.lastDisconnectedAt)}` : ""}. Sistem mencoba menyambung kembali; bila tidak berhasil, pindai ulang di sini.`}</p>

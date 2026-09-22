@@ -162,6 +162,8 @@ export interface SesiWhatsApp {
   qr: string | null;
   catatan: string | null;
   percobaanSambungUlang?: number;
+  /** Sistem masih akan mencoba menyambung sendiri; belum perlu tindakan orang. */
+  sedangSambungUlang?: boolean;
 }
 
 export interface Percakapan {
@@ -933,6 +935,7 @@ export interface TautanWhatsApp {
   account: { id: string; kind: string; label: string; phoneNumber: string | null; sessionStatus: string; lastConnectedAt: string | null; lastDisconnectedAt: string | null; isActive: boolean; attendanceGroup: { jid: string; name: string | null } | null } | null;
   qr: string | null;
   catatan: string | null;
+  session: { status: string; percobaanSambungUlang: number; sedangSambungUlang: boolean } | null;
 }
 
 export interface GrupWhatsApp {

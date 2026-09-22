@@ -230,6 +230,9 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   });
 
   if (!keputusan.sambungUlang) {
+    // Tidak ada percobaan berikutnya: timer sisa percobaan sebelumnya dibuang
+    // supaya state sesi tidak menyisakan jejak yang membingungkan.
+    bersihkanTimer(sesi);
     sesi.status = keputusan.perluScanUlang ? 'pending_scan' : 'disconnected';
     // Kredensial yang sudah tidak sah tidak ada gunanya disimpan, dan
     // menyisakannya membuat percobaan berikutnya gagal dengan alasan yang
@@ -299,6 +302,13 @@ export interface RingkasanSesi {
   qrTersedia: boolean;
   qrDibuatPada: Date | null;
   percobaanSambungUlang: number;
+  /**
+   * Sistem masih akan mencoba menyambung sendiri. Dipisahkan dari `catatan`
+   * supaya antarmuka tidak perlu menebak dari kalimatnya: gangguan yang
+   * sedang dipulihkan otomatis tidak boleh tampil segenting sesi yang sudah
+   * menyerah dan menunggu orang memindai ulang.
+   */
+  sedangSambungUlang: boolean;
   catatan: string | null;
 }
 
@@ -309,6 +319,11 @@ const ringkas = (sesi: Sesi): RingkasanSesi => ({
   qrTersedia: sesi.qr !== null,
   qrDibuatPada: sesi.qrDibuatPada,
   percobaanSambungUlang: sesi.percobaan,
+  // Dibaca dari status, bukan dari ada tidaknya timer: timer tetap memegang
+  // referensi setelah callback-nya berjalan, jadi nilainya tidak bisa
+  // dipercaya. Status 'connecting' dengan percobaan > 0 hanya terjadi saat
+  // sambung ulang dijadwalkan; begitu menyerah, statusnya bukan itu lagi.
+  sedangSambungUlang: sesi.status === 'connecting' && sesi.percobaan > 0,
   catatan: sesi.catatanTerakhir,
 });
 
