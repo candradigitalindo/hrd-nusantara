@@ -130,6 +130,12 @@ export const listLeaveBalanceQuerySchema = z.object({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 });
 
+/** Daftar saldo lintas karyawan untuk HR: disaring per tahun, jenis cuti, dan nama/NIK. */
+export const listAllLeaveBalanceQuerySchema = listLeaveBalanceQuerySchema.extend({
+  leaveTypeId: ulidField.optional(),
+  search: z.string().trim().max(100).optional(),
+});
+
 // --- Pengajuan cuti ---
 
 export const createLeaveSchema = z
@@ -185,6 +191,7 @@ export type CreateHolidayInput = z.infer<typeof createHolidaySchema>;
 export type ListHolidayQuery = z.infer<typeof listHolidayQuerySchema>;
 export type UpsertLeaveBalanceInput = z.infer<typeof upsertLeaveBalanceSchema>;
 export type ListLeaveBalanceQuery = z.infer<typeof listLeaveBalanceQuerySchema>;
+export type ListAllLeaveBalanceQuery = z.infer<typeof listAllLeaveBalanceQuerySchema>;
 export type CreateLeaveInput = z.infer<typeof createLeaveSchema>;
 export type DecideLeaveInput = z.infer<typeof decideLeaveSchema>;
 export type CancelLeaveInput = z.infer<typeof cancelLeaveSchema>;

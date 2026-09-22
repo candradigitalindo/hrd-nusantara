@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { PanelDokumen } from "@/components/karyawan/dokumen-karyawan";
 import { PanelGaji } from "@/components/karyawan/panel-gaji";
+import { PanelSaldoCuti } from "@/components/cuti/panel-saldo";
 import { formatTanggal, labelStatus, LABEL_ROLE, inisial } from "@/lib/utils";
 import type { Karyawan } from "@/lib/types";
 
@@ -34,6 +35,8 @@ export default function HalamanDetailKaryawan() {
   const hr = punyaIzin(saya, "karyawan.kelola");
   const gaji = punyaIzin(saya, "payroll.kelola");
   const dokumen = punyaIzin(saya, "dokumen.kelola");
+  const lihatSaldo = punyaIzin(saya, "cuti.setujui");
+  const kelolaSaldo = punyaIzin(saya, "cuti.kelola");
 
   const { data: k, isLoading, isError, error } = useQuery({
     queryKey: ["karyawan", id],
@@ -84,6 +87,7 @@ export default function HalamanDetailKaryawan() {
 
             <div className="space-y-4 lg:col-span-2">
               {gaji && <PanelGaji employeeId={k.id} />}
+              {lihatSaldo && <PanelSaldoCuti employeeId={k.id} employeeName={k.name} bolehKelola={kelolaSaldo} />}
               <PanelDokumen employeeId={k.id} hr={dokumen} />
             </div>
           </div>

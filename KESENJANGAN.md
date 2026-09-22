@@ -46,7 +46,7 @@ Keterangan: ✅ selesai · 🟡 sebagian · ❌ belum ada · ➖ di luar cakupan
 | Karyawan — halaman detail dengan dokumen (unggah seret-lepas, unduh, masa berlaku) | ✅ |
 | Organisasi — departemen & jabatan | ✅ |
 | Presensi — daftar, saring, setujui lembur | ✅ |
-| Cuti — saldo per jenis, ajukan (dengan sisa saldo & syarat lampiran), batalkan, antrean persetujuan | ✅ |
+| Cuti — saldo per jenis, ajukan (dengan sisa saldo & syarat lampiran), batalkan, antrean persetujuan, tab Saldo Karyawan untuk HR (tetapkan/ubah per karyawan, terapkan jatah bawaan massal) dan panel saldo di detail karyawan | ✅ |
 | Slip gaji karyawan — daftar periode, rincian tunjangan/potongan, cetak | ✅ |
 | Payroll HR — batch (buat, hitung, setujui/kembalikan), rincian slip per batch, yang dilewati beserta alasannya | ✅ |
 | Struktur gaji per karyawan (HR) — gaji pokok & riwayat, komponen tunjangan/potongan | ✅ |

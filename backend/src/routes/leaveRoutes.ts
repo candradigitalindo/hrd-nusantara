@@ -11,6 +11,7 @@ import {
   upsertLeaveBalance,
   getMyLeaveBalances,
   getEmployeeLeaveBalances,
+  listLeaveBalances,
 } from '../controllers/leaveController';
 import {
   createLeaveType,
@@ -49,6 +50,7 @@ import {
   listHolidayQuerySchema,
   upsertLeaveBalanceSchema,
   listLeaveBalanceQuerySchema,
+  listAllLeaveBalanceQuerySchema,
   createWorkPatternSchema,
   updateWorkPatternSchema,
   listWorkPatternQuerySchema,
@@ -117,6 +119,7 @@ router.delete(
 );
 
 // --- Saldo cuti ---
+router.get('/leave-balances', requirePermission('cuti.kelola'), validate(listAllLeaveBalanceQuerySchema, 'query'), asyncHandler(listLeaveBalances));
 router.get('/leave-balances/me', requirePermission('halaman.cuti'), validate(listLeaveBalanceQuerySchema, 'query'), asyncHandler(getMyLeaveBalances));
 router.post('/leave-balances', requirePermission('cuti.kelola'), validate(upsertLeaveBalanceSchema), asyncHandler(upsertLeaveBalance));
 router.get(

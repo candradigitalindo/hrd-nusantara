@@ -14,6 +14,7 @@ import type {
   LeaveCalendarQuery,
   UpsertLeaveBalanceInput,
   ListLeaveBalanceQuery,
+  ListAllLeaveBalanceQuery,
 } from '../schemas/leaveSchema';
 
 const leaveSelect = {
@@ -560,6 +561,49 @@ export const upsertLeaveBalance = async (req: Request, res: Response) => {
   });
 
   res.json(balanceDTO(saldo));
+};
+
+/**
+ * Daftar saldo semua karyawan, untuk HR menetapkan jatah tahunan. Nama dan NIK
+ * karyawan ikut disertakan karena inilah yang dibaca HR, bukan ID-nya.
+ */
+export const listLeaveBalances = async (req: Request, res: Response) => {
+  const { page, limit, year, leaveTypeId, employeeId, search } = req.query as unknown as ListAllLeaveBalanceQuery;
+
+  const where: Prisma.LeaveBalanceWhereInput = {
+    ...(year ? { year } : {}),
+    ...(leaveTypeId ? { leaveTypeId } : {}),
+    ...(employeeId ? { employeeId } : {}),
+    ...(search
+      ? {
+          employee: {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { nik: { contains: search, mode: 'insensitive' } },
+            ],
+          },
+        }
+      : {}),
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.leaveBalance.count({ where }),
+    prisma.leaveBalance.findMany({
+      where,
+      include: {
+        leaveType: { select: { id: true, code: true, name: true } },
+        employee: { select: { id: true, nik: true, name: true, department: { select: { id: true, name: true } } } },
+      },
+      orderBy: [{ employee: { name: 'asc' } }, { leaveTypeId: 'asc' }],
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+  ]);
+
+  res.json({
+    data: rows.map((b) => ({ ...balanceDTO(b), employee: b.employee })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+  });
 };
 
 export const getMyLeaveBalances = async (req: Request, res: Response) => {

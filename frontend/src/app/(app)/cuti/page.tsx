@@ -18,6 +18,7 @@ import { SkeletonBaris, Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/alert";
+import { DaftarSaldoCuti } from "@/components/cuti/daftar-saldo";
 import { formatTanggal, labelStatus, formatRelatif } from "@/lib/utils";
 import type { Halaman, Cuti, SaldoCuti, TipeCuti } from "@/lib/types";
 
@@ -52,9 +53,11 @@ export default function HalamanCuti() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const manajemen = punyaIzin(saya, "cuti.setujui");
+  const kelola = punyaIzin(saya, "cuti.kelola");
   const tahun = new Date().getFullYear();
 
-  const [tab, setTab] = React.useState<"saya" | "persetujuan">("saya");
+  const [tab, setTab] = React.useState<"saya" | "persetujuan" | "saldo">("saya");
+  const kelolaSaldo = tab === "saldo" && kelola;
   const [status, setStatus] = React.useState<(typeof TAB_STATUS)[number]>("pending");
   const [page, setPage] = React.useState(1);
   const [ajukanBuka, setAjukanBuka] = React.useState(false);
@@ -70,6 +73,7 @@ export default function HalamanCuti() {
     queryKey: ["cuti", antrean ? "semua" : "saya", params.toString()],
     queryFn: async () => (await api.get<Halaman<Cuti>>(`${antrean ? "/leaves" : "/leaves/me"}?${params}`)).data,
     placeholderData: (prev) => prev,
+    enabled: !kelolaSaldo,
   });
 
   const saldo = useQuery({
@@ -168,31 +172,34 @@ export default function HalamanCuti() {
     <>
       <PageHeader
         title="Cuti & Izin"
-        description={antrean ? "Pengajuan cuti yang perlu diputuskan" : `Saldo dan pengajuan cuti Anda tahun ${tahun}`}
-        actions={<Button onClick={() => setAjukanBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>}
+        description={kelolaSaldo ? "Jatah cuti tiap karyawan per tahun; tanpa saldo, cuti yang memotong jatah tidak bisa diajukan" : antrean ? "Pengajuan cuti yang perlu diputuskan" : `Saldo dan pengajuan cuti Anda tahun ${tahun}`}
+        actions={!kelolaSaldo && <Button onClick={() => setAjukanBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>}
       />
 
-      {manajemen && (
-        <div className="flex gap-1 rounded-xl bg-surface-2 p-1 w-fit" role="tablist">
-          {(["saya", "persetujuan"] as const).map((t) => (
+      {(manajemen || kelola) && (
+        <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
+          {([["saya", "Cuti Saya", true], ["persetujuan", "Persetujuan", manajemen], ["saldo", "Saldo Karyawan", kelola]] as const).filter(([, , tampil]) => tampil).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setStatus("pending"); setPage(1); }}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}>
-              {t === "saya" ? "Cuti Saya" : "Persetujuan"}
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}>
+              {label}
             </button>
           ))}
         </div>
       )}
 
-      {!antrean && (
+      {kelolaSaldo && <DaftarSaldoCuti />}
+
+      {!kelolaSaldo && !antrean && (
         saldo.isLoading ? <Skeleton className="h-28" /> : saldo.data?.length ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {saldo.data.map((s) => <KartuSaldo key={s.id} saldo={s} />)}
           </div>
         ) : (
-          <Alert tone="info" title="Saldo cuti belum ditetapkan">HR belum mengisi saldo cuti Anda untuk tahun {tahun}. Pengajuan tetap bisa dikirim; persetujuannya akan mempertimbangkan ini.</Alert>
+          <Alert tone="warning" title="Saldo cuti belum ditetapkan">HR belum mengisi saldo cuti Anda untuk tahun {tahun}. Jenis cuti yang memotong saldo (mis. Cuti Tahunan) akan ditolak sistem sampai saldonya diisi; jenis lain seperti cuti sakit atau cuti tidak dibayar tetap bisa diajukan.</Alert>
         )
       )}
 
+      {!kelolaSaldo && (
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TAB_STATUS.map((t) => (
           <button key={t || "semua"} role="tab" aria-selected={status === t} onClick={() => { setStatus(t); setPage(1); }}
@@ -201,7 +208,9 @@ export default function HalamanCuti() {
           </button>
         ))}
       </div>
+      )}
 
+      {!kelolaSaldo && (
       <Card>
         {daftar.isLoading ? <SkeletonBaris /> : !daftar.data?.data.length ? (
           <EmptyState icon={CalendarOff}
@@ -215,6 +224,7 @@ export default function HalamanCuti() {
           </>
         )}
       </Card>
+      )}
 
       <Modal open={ajukanBuka} onClose={() => setAjukanBuka(false)} title="Ajukan Cuti" description="Atasan Anda akan menerima pengajuan ini untuk disetujui"
         footer={<><Button variant="outline" onClick={() => setAjukanBuka(false)}>Batal</Button><Button form="form-cuti" type="submit" loading={ajukan.isPending}>Kirim Pengajuan</Button></>}>
@@ -226,7 +236,8 @@ export default function HalamanCuti() {
             </Select>
           </Field>
           {tipeDipilih && (
-            <Alert tone={saldoDipilih && saldoDipilih.remainingDays <= 0 && tipeDipilih.deductsBalance ? "warning" : "info"} title={saldoDipilih ? `Sisa ${saldoDipilih.remainingDays} hari` : tipeDipilih.deductsBalance ? "Saldo belum ditetapkan" : "Tidak memotong saldo"}>
+            <Alert tone={tipeDipilih.deductsBalance && (!saldoDipilih || saldoDipilih.remainingDays <= 0) ? "warning" : "info"} title={saldoDipilih ? `Sisa ${saldoDipilih.remainingDays} hari` : tipeDipilih.deductsBalance ? "Saldo belum ditetapkan — pengajuan akan ditolak" : "Tidak memotong saldo"}>
+              {!saldoDipilih && tipeDipilih.deductsBalance ? "Minta HR mengisi saldo jenis cuti ini lebih dulu. " : ""}
               {tipeDipilih.description ?? ""}
               {tipeDipilih.maxConsecutiveDays ? ` Maksimal ${tipeDipilih.maxConsecutiveDays} hari berturut-turut.` : ""}
               {tipeDipilih.requiresAttachment ? " Wajib melampirkan bukti (mis. surat dokter)." : ""}

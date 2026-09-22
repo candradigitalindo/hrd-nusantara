@@ -157,3 +157,26 @@ describe('Cuti bersama memotong saldo cuti tahunan', () => {
     expect(res.body.details.tersedia).toBe(1);
   });
 });
+
+describe('GET /api/leave-balances (daftar saldo untuk HR)', () => {
+  it('menampilkan saldo semua karyawan per tahun dan jenis, beserta nama karyawan', async () => {
+    await makeLeaveBalance({ employeeId: budi.id, leaveTypeId: tahunan.id, year: 2026 });
+    await makeLeaveBalance({ employeeId: sari.id, leaveTypeId: tahunan.id, year: 2026 });
+    await makeLeaveBalance({ employeeId: budi.id, leaveTypeId: sakit.id, year: 2026 });
+
+    const res = await request(app).get(`/api/leave-balances?year=2026&leaveTypeId=${tahunan.id}`).set(auth(hrToken));
+    expectStatus(res, 200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data.map((b: { employee: { nik: string } }) => b.employee.nik).sort()).toEqual(['EMP-1', 'EMP-2']);
+    expect(res.body.pagination.total).toBe(2);
+
+    const cari = await request(app).get('/api/leave-balances?year=2026&search=emp-2').set(auth(hrToken));
+    expect(cari.body.data).toHaveLength(1);
+    expect(cari.body.data[0].employee.id).toBe(sari.id);
+  });
+
+  it('karyawan biasa tidak boleh melihat saldo orang lain', async () => {
+    const token = await login(app, 'budi@resto.id');
+    expectStatus(await request(app).get('/api/leave-balances?year=2026').set(auth(token)), 403);
+  });
+});

@@ -285,6 +285,8 @@ export interface SaldoCuti {
   collectiveLeaveDays: number;
   remainingDays: number;
   note: string | null;
+  /** Hanya pada daftar lintas karyawan (HR). */
+  employee?: { id: string; nik: string; name: string; department?: Ref | null };
 }
 
 export interface ItemSlip {
