@@ -45,7 +45,7 @@ function FormLogin() {
   };
 
   return (
-    <form onSubmit={handleSubmit(masuk)} className="space-y-4" noValidate>
+    <form onSubmit={handleSubmit(masuk)} method="post" className="space-y-4" noValidate>
       <Field label="Nomor HP / WhatsApp" error={errors.username?.message} hint="Nomor yang terdaftar di HR, mis. 0812xxxx. Email juga bisa.">
         <Input
           type="text"

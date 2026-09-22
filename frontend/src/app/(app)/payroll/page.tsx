@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Banknote, Plus, Calculator, Check, Undo2, ChevronRight, Users } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ambilSemua } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -53,7 +53,7 @@ export default function HalamanPayroll() {
 
   const slips = useQuery({
     queryKey: ["payrolls", rincian?.id],
-    queryFn: async () => (await api.get<Halaman<SlipGaji>>(`/payrolls?payrollRunId=${rincian!.id}&limit=200`)).data,
+    queryFn: async () => ({ data: await ambilSemua<SlipGaji>("/payrolls", { payrollRunId: rincian!.id }) }),
     enabled: Boolean(rincian),
   });
 
@@ -113,8 +113,8 @@ export default function HalamanPayroll() {
       )}
 
       <Card>
-        <div className="border-b border-border p-3 sm:w-56">
-          <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Status batch">
+        <div className="border-b border-border p-3">
+          <Select className="sm:w-56" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Status batch">
             <option value="">Semua status</option>
             {["draft", "calculated", "approved", "paid", "cancelled"].map((s) => <option key={s} value={s}>{labelStatus(s)}</option>)}
           </Select>

@@ -12,6 +12,23 @@ export const api = axios.create({
   timeout: 20_000,
 });
 
+/**
+ * Mengambil seluruh isi daftar yang memang harus tampil utuh (rincian slip
+ * satu batch, peserta satu sesi). Backend membatasi limit maksimal 100 per
+ * halaman, jadi halaman diambil berurutan sampai habis.
+ */
+export const ambilSemua = async <T,>(jalur: string, params: Record<string, string> = {}): Promise<T[]> => {
+  const semua: T[] = [];
+  const limit = 100;
+  for (let page = 1; page <= 50; page++) {
+    const q = new URLSearchParams({ ...params, page: String(page), limit: String(limit) });
+    const { data } = await api.get<{ data: T[] }>(`${jalur}?${q}`);
+    semua.push(...data.data);
+    if (data.data.length < limit) break;
+  }
+  return semua;
+};
+
 export interface GalatApi {
   status: number;
   pesan: string;

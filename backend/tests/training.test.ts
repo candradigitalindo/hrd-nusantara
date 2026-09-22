@@ -125,6 +125,33 @@ describe('Sesi pelatihan', () => {
     expect(res.status).toBe(400);
   });
 
+  it('sunting program menerima sasaran jabatan/departemen, termasuk null untuk melepasnya', async () => {
+    // Regresi: formulir sunting selalu mengirim targetPositionId dan
+    // targetDepartmentId, dan skema update .strict() menolak keduanya.
+    const dept = await makeDepartment('Kitchen');
+    const program = await buatProgram();
+
+    const pasang = await request(app)
+      .put(`/api/training/programs/${program.body.id}`)
+      .set(auth(hrToken))
+      .send({ name: program.body.name, targetPositionId: null, targetDepartmentId: dept.id });
+    expect(pasang.status).toBe(200);
+    expect(pasang.body.targetDepartmentId).toBe(dept.id);
+
+    const lepas = await request(app)
+      .put(`/api/training/programs/${program.body.id}`)
+      .set(auth(hrToken))
+      .send({ targetDepartmentId: null });
+    expect(lepas.status).toBe(200);
+    expect(lepas.body.targetDepartmentId).toBeNull();
+
+    const takAda = await request(app)
+      .put(`/api/training/programs/${program.body.id}`)
+      .set(auth(hrToken))
+      .send({ targetDepartmentId: '01ZZZZZZZZZZZZZZZZZZZZZZZZ' });
+    expect(takAda.status).toBe(404);
+  });
+
   it('menolak sesi untuk program yang tidak aktif', async () => {
     const program = await buatProgram();
     await request(app)

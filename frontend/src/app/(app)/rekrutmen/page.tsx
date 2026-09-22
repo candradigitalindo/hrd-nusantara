@@ -39,7 +39,10 @@ export default function HalamanRekrutmen() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const hr = punyaIzin(saya, "rekrutmen.kelola");
-  const [tab, setTab] = React.useState<Tab>(hr ? "pelamar" : "wawancara");
+  // Sesi belum tentu sudah termuat saat render pertama, jadi tab bawaan
+  // dihitung tiap render; hanya pilihan pengguna yang disimpan.
+  const [tabDipilih, setTab] = React.useState<Tab | null>(null);
+  const tab: Tab = tabDipilih ?? (hr ? "pelamar" : "wawancara");
   const [formBuka, setFormBuka] = React.useState<{ open: boolean; item: Lowongan | null }>({ open: false, item: null });
   const [pageLowongan, setPageLowongan] = React.useState(1);
   const [umpan, setUmpan] = React.useState<Wawancara | null>(null);
@@ -124,8 +127,8 @@ export default function HalamanRekrutmen() {
 
       {tab === "wawancara" && (
         <Card>
-          <div className="border-b border-border p-3 sm:w-56">
-            <Select value={statusW} onChange={(e) => { setStatusW(e.target.value); setPageW(1); }} aria-label="Status wawancara"><option value="">Semua</option>{["scheduled", "completed", "cancelled", "no_show"].map((s) => <option key={s} value={s}>{labelStatus(s)}</option>)}</Select>
+          <div className="border-b border-border p-3">
+            <Select className="sm:w-56" value={statusW} onChange={(e) => { setStatusW(e.target.value); setPageW(1); }} aria-label="Status wawancara"><option value="">Semua</option>{["scheduled", "completed", "cancelled", "no_show"].map((s) => <option key={s} value={s}>{labelStatus(s)}</option>)}</Select>
           </div>
           {wawancara.isLoading ? <SkeletonBaris /> : !wawancara.data?.data.length ? (
             <EmptyState icon={CalendarClock} title="Tidak ada wawancara" description={statusW === "scheduled" ? "Tidak ada jadwal yang menunggu." : undefined} />

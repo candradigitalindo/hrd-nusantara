@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ambilSemua } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
@@ -47,7 +47,7 @@ export default function HalamanPelatihan() {
   const sesi = useQuery({ queryKey: ["sesi-pelatihan", ps.toString()], queryFn: async () => (await api.get<Halaman<SesiPelatihan>>(`/training/sessions?${ps}`)).data, placeholderData: (p) => p });
   const pendaftaranSaya = useQuery({ queryKey: ["pendaftaran-pelatihan", "saya"], queryFn: async () => (await api.get<Halaman<PendaftaranPelatihan>>("/training/registrations?limit=100")).data.data, enabled: !hr || tab === "jadwal" });
   const pendaftaranSemua = useQuery({ queryKey: ["pendaftaran-pelatihan", "semua", pageDaftar], queryFn: async () => (await api.get<Halaman<PendaftaranPelatihan>>(`/training/registrations?page=${pageDaftar}&limit=25`)).data, enabled: hr && tab === "pendaftaran", placeholderData: (p) => p });
-  const pesertaSesi = useQuery({ queryKey: ["pendaftaran-pelatihan", "sesi", peserta?.id], queryFn: async () => (await api.get<Halaman<PendaftaranPelatihan>>(`/training/registrations?trainingSessionId=${peserta!.id}&limit=200`)).data.data, enabled: Boolean(peserta) });
+  const pesertaSesi = useQuery({ queryKey: ["pendaftaran-pelatihan", "sesi", peserta?.id], queryFn: async () => ambilSemua<PendaftaranPelatihan>("/training/registrations", { trainingSessionId: peserta!.id }), enabled: Boolean(peserta) });
   const departemen = useQuery({ queryKey: ["departemen", "semua"], queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data, enabled: tab === "kepatuhan" });
   const kepatuhan = useQuery({ queryKey: ["kepatuhan-pelatihan", deptKepatuhan], queryFn: async () => (await api.get<KepatuhanPelatihan>(`/training/compliance?warningDays=30${deptKepatuhan ? `&departmentId=${deptKepatuhan}` : ""}`)).data, enabled: hr && tab === "kepatuhan" });
 
@@ -66,7 +66,9 @@ export default function HalamanPelatihan() {
   });
   const ubahStatusSesi = useMutation({
     mutationFn: async ({ s, status }: { s: SesiPelatihan; status: "ongoing" | "completed" | "cancelled" }) => (await api.patch<SesiPelatihan>(`/training/sessions/${s.id}/status`, { status })).data,
-    onSuccess: (s) => { segarkan(); notifikasi.sukses(`Sesi ${labelStatus(s.status).toLowerCase()}`, s.title); },
+    // Saringan ikut ke status baru: sesi yang baru dimulai tidak boleh
+    // lenyap dari layar hanya karena saringannya masih "Terjadwal".
+    onSuccess: (s) => { segarkan(); setStatusSesi(s.status); setPageSesi(1); notifikasi.sukses(`Sesi ${labelStatus(s.status).toLowerCase()}`, s.title); },
     onError: (e) => notifikasi.galat(e),
   });
   const simpanKehadiran = useMutation({

@@ -102,7 +102,7 @@ export default function HalamanKasus() {
       />
 
       <Card>
-        <div className="grid gap-2 border-b border-border p-3 sm:grid-cols-2 md:w-2/3">
+        <div className="grid gap-2 border-b border-border p-3 sm:grid-cols-2 lg:grid-cols-[repeat(2,minmax(0,16rem))]">
           <Select value={jenis} onChange={(e) => { setJenis(e.target.value as JenisKasus | ""); setPage(1); }} aria-label="Jenis">
             <option value="">Semua jenis</option>
             <option value="complaint">Keluhan</option>

@@ -51,10 +51,23 @@ export const updateProgramSchema = z
     passingScore: nilai.nullable().optional(),
     validityMonths: z.coerce.number().int().min(1).max(600).nullable().optional(),
     durationHours: z.coerce.number().min(0.5).max(1000).nullable().optional(),
+    // null = lepaskan sasaran. Formulir sunting mengirim keduanya, jadi harus
+    // diterima di sini; sebelumnya .strict() menolak seluruh permintaan.
+    targetPositionId: ulidField.nullable().optional(),
+    targetDepartmentId: ulidField.nullable().optional(),
     isActive: z.boolean().optional(),
   })
   .strict()
-  .refine((d) => Object.keys(d).length > 0, { message: 'Tidak ada field yang diubah' });
+  .refine((d) => Object.keys(d).length > 0, { message: 'Tidak ada field yang diubah' })
+  .superRefine((d, ctx) => {
+    if (d.targetPositionId && d.targetDepartmentId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['targetDepartmentId'],
+        message: 'Pilih salah satu sasaran: jabatan atau departemen, tidak keduanya',
+      });
+    }
+  });
 
 export const listProgramQuerySchema = z.object({
   ...paginationFields,

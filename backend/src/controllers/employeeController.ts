@@ -206,6 +206,7 @@ export const createEmployee = async (req: Request, res: Response) => {
         phoneNumber: hp.nomor,
         address: input.address,
         dateOfBirth: input.dateOfBirth,
+        joinDate: input.joinDate,
         status: input.status,
         role: peran.role,
         ...(peran.customRoleId && { customRole: { connect: { id: peran.customRoleId } } }),
@@ -262,7 +263,9 @@ export const updateEmployee = async (req: Request, res: Response) => {
   }
   if (input.address !== undefined) data.address = input.address;
   if (input.dateOfBirth !== undefined) data.dateOfBirth = input.dateOfBirth;
+  if (input.joinDate !== undefined) data.joinDate = input.joinDate;
   if (input.status !== undefined) data.status = input.status;
+  if (input.password !== undefined) data.password = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
   if (peranBaru) {
     data.role = peranBaru.role;
     data.customRole = peranBaru.customRoleId ? { connect: { id: peranBaru.customRoleId } } : { disconnect: true };
@@ -298,7 +301,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
       summary:
         ubahPeran && sebelum
           ? `Mengubah peran ${employee.email} menjadi ${employee.customRole?.name ?? employee.role} (lingkup ${sebelum.role} → ${employee.role})`
-          : `Memperbarui data ${employee.email}`,
+          : `Memperbarui data ${employee.email}${input.password !== undefined ? ' (termasuk mengatur ulang kata sandi)' : ''}`,
       // Hanya NAMA field yang berubah, bukan nilainya: alamat, tanggal lahir,
       // dan nomor telepon adalah data pribadi yang tidak perlu disalin ke
       // tabel audit yang tidak terenkripsi dan tidak bisa dihapus.

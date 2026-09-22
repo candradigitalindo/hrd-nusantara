@@ -51,7 +51,10 @@ export default function HalamanLaporan() {
   const { data: saya } = useSesi();
   const hr = punyaIzin(saya, "laporan.hr");
   const manajemen = punyaIzin(saya, "laporan.dashboard");
-  const [tab, setTab] = React.useState<Tab>(hr ? "turnover" : "produktivitas");
+  // Sesi belum tentu sudah termuat saat render pertama, jadi tab bawaan
+  // dihitung tiap render; hanya pilihan pengguna yang disimpan.
+  const [tabDipilih, setTab] = React.useState<Tab | null>(null);
+  const tab: Tab = tabDipilih ?? (hr ? "turnover" : "produktivitas");
   const [preset, setPreset] = React.useState(2);
   const [kustom, setKustom] = React.useState<{ mulai: string; selesai: string } | null>(null);
   const [dept, setDept] = React.useState("");

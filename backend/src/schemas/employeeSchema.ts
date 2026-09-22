@@ -30,6 +30,9 @@ export const createEmployeeSchema = z
     phoneNumber: z.string().trim().max(32).optional(),
     address: z.string().trim().max(500).optional(),
     dateOfBirth: dateField.optional(),
+    /// Tanggal mulai bekerja. Dipakai laporan masa kerja dan saldo cuti;
+    /// formulir web mengirimkannya sejak awal, jadi harus diterima di sini.
+    joinDate: dateField.optional(),
     status: z.enum(EMPLOYEE_STATUSES).default('active'),
     /// Lingkup data. Dipakai bila customRoleId tidak dikirim: karyawan diberi
     /// peran sistem yang sesuai. Kalau customRoleId dikirim, nilai ini diabaikan
@@ -50,6 +53,7 @@ export const updateEmployeeSchema = z
     phoneNumber: z.string().trim().max(32).nullable().optional(),
     address: z.string().trim().max(500).nullable().optional(),
     dateOfBirth: dateField.nullable().optional(),
+    joinDate: dateField.nullable().optional(),
     status: z.enum(EMPLOYEE_STATUSES).optional(),
     role: z.enum(ROLES).optional(),
     customRoleId: ulidField.optional(),
@@ -57,6 +61,9 @@ export const updateEmployeeSchema = z
     // menjadi connect:{id:null} yang selalu error.
     departmentId: ulidField.nullable().optional(),
     positionId: ulidField.nullable().optional(),
+    /// Kata sandi baru yang diatur HR (karyawan lupa sandi). Karyawan
+    /// mengganti sandinya sendiri lewat /auth/change-password.
+    password: z.string().min(8, 'Password minimal 8 karakter').max(128).optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {

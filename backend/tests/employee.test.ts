@@ -59,6 +59,18 @@ describe('POST /api/employees', () => {
     expect(res.body.error).toBe('Validasi gagal');
   });
 
+  it('menerima joinDate dari formulir web', async () => {
+    // Regresi: skema .strict() menolak joinDate padahal formulir Tambah
+    // Karyawan mengirimkannya, sehingga setiap penambahan gagal 400.
+    const res = await request(app)
+      .post('/api/employees')
+      .set(auth(token))
+      .send({ nik: 'EMP-1', name: 'Budi', email: 'budi@resto.id', joinDate: '2026-01-15' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.joinDate).toMatch(/^2026-01-15/);
+  });
+
   it('membalas 409 untuk NIK duplikat', async () => {
     const body = { nik: 'EMP-1', name: 'Budi', email: 'budi@resto.id' };
     await request(app).post('/api/employees').set(auth(token)).send(body);
@@ -175,6 +187,48 @@ describe('PUT /api/employees/:id', () => {
       .send({});
 
     expect(res.status).toBe(400);
+  });
+
+  it('menerima joinDate, termasuk null untuk mengosongkannya', async () => {
+    const employee = await makeEmployee({ email: 'budi@resto.id' });
+
+    const isi = await request(app)
+      .put(`/api/employees/${employee.id}`)
+      .set(auth(token))
+      .send({ joinDate: '2025-07-01' });
+    expect(isi.status).toBe(200);
+    expect(isi.body.joinDate).toMatch(/^2025-07-01/);
+
+    const kosongkan = await request(app)
+      .put(`/api/employees/${employee.id}`)
+      .set(auth(token))
+      .send({ joinDate: null });
+    expect(kosongkan.status).toBe(200);
+    expect(kosongkan.body.joinDate).toBeNull();
+  });
+
+  it('HR bisa mengatur ulang kata sandi; tersimpan sebagai hash dan bisa dipakai login', async () => {
+    const employee = await makeEmployee({ email: 'budi@resto.id' });
+
+    const res = await request(app)
+      .put(`/api/employees/${employee.id}`)
+      .set(auth(token))
+      .send({ password: 'SandiBaru123' });
+    expect(res.status).toBe(200);
+    expect(res.body).not.toHaveProperty('password');
+
+    const tersimpan = await prisma.employee.findUnique({ where: { id: employee.id } });
+    expect(tersimpan?.password).not.toBe('SandiBaru123');
+    expect(tersimpan?.password).toMatch(/^\$2[aby]\$/);
+
+    const masuk = await request(app).post('/api/auth/login').send({ username: 'budi@resto.id', password: 'SandiBaru123' });
+    expect(masuk.status).toBe(200);
+
+    const pendek = await request(app)
+      .put(`/api/employees/${employee.id}`)
+      .set(auth(token))
+      .send({ password: 'pendek' });
+    expect(pendek.status).toBe(400);
   });
 });
 

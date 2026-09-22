@@ -92,7 +92,7 @@ export default function HalamanKinerja() {
 
       {tab === "penilaian" && (
         <Card>
-          <div className="border-b border-border p-3 sm:w-52"><Select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{["draft", "submitted", "acknowledged", "finalized"].map((s) => <option key={s} value={s}>{labelStatus(s)}</option>)}</Select></div>
+          <div className="border-b border-border p-3"><Select className="sm:w-52" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} aria-label="Status"><option value="">Semua status</option>{["draft", "submitted", "acknowledged", "finalized"].map((s) => <option key={s} value={s}>{labelStatus(s)}</option>)}</Select></div>
           {penilaian.isLoading ? <SkeletonBaris /> : !penilaian.data?.length ? (
             <EmptyState icon={Target} title="Belum ada penilaian" description={hr ? "Buat siklus dan form KPI, lalu tugaskan penilai." : "Belum ada penilaian yang melibatkan Anda."} />
           ) : (
@@ -120,7 +120,7 @@ export default function HalamanKinerja() {
 
       {tab === "umpan" && (
         <Card>
-          {hr && <div className="border-b border-border p-3 sm:w-72"><Select value={umpanUntuk} onChange={(e) => setUmpanUntuk(e.target.value)} aria-label="Penerima"><option value="">Umpan balik untuk saya</option>{(karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>}
+          {hr && <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanUntuk} onChange={(e) => setUmpanUntuk(e.target.value)} aria-label="Penerima"><option value="">Umpan balik untuk saya</option>{(karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>}
           {umpan.isLoading ? <SkeletonBaris /> : !umpan.data?.length ? (
             <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}>Beri Umpan Balik</Button>} />
           ) : (

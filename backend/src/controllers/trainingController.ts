@@ -101,9 +101,22 @@ export const getAllPrograms = async (req: Request, res: Response) => {
 export const updateProgram = async (req: Request, res: Response) => {
   const input = req.body as UpdateProgramInput;
 
-  const data: Prisma.TrainingProgramUpdateInput = { ...input };
+  if (input.targetPositionId) {
+    const posisi = await prisma.position.findUnique({ where: { id: input.targetPositionId }, select: { id: true } });
+    if (!posisi) return res.status(404).json({ error: 'Jabatan sasaran tidak ditemukan' });
+  }
+  if (input.targetDepartmentId) {
+    const dept = await prisma.department.findUnique({ where: { id: input.targetDepartmentId }, select: { id: true } });
+    if (!dept) return res.status(404).json({ error: 'Departemen sasaran tidak ditemukan' });
+  }
+
+  const { targetPositionId, targetDepartmentId, ...sisa } = input;
+  const data: Prisma.TrainingProgramUpdateInput = { ...sisa };
   if (input.passingScore !== undefined) data.passingScore = dec(input.passingScore);
   if (input.durationHours !== undefined) data.durationHours = dec(input.durationHours);
+  // null berarti lepaskan sasaran; string berarti pindahkan.
+  if (targetPositionId !== undefined) data.targetPosition = targetPositionId ? { connect: { id: targetPositionId } } : { disconnect: true };
+  if (targetDepartmentId !== undefined) data.targetDepartment = targetDepartmentId ? { connect: { id: targetDepartmentId } } : { disconnect: true };
 
   try {
     const program = await prisma.trainingProgram.update({ where: { id: req.params.id }, data });

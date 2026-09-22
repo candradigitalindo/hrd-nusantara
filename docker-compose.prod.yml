@@ -170,6 +170,10 @@ services:
       NODE_ENV: production
       PORT: 3001
       HOSTNAME: 0.0.0.0
+      # Tanggal bawaan filter dihitung di server saat SSR; tanpa zona waktu
+      # yang sama dengan pengguna, tanggalnya bisa selisih sehari dari yang
+      # dihitung ulang di browser dan React menolak hasil hidrasinya.
+      TZ: ${APP_TIMEZONE:-Asia/Jakarta}
       # Dipakai route handler /api/backend/[...path] di sisi server Next.
       # Nama container, bukan domain publik: panggilannya tidak keluar server.
       BACKEND_URL: http://backend:3000

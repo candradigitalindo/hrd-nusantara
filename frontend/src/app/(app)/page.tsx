@@ -215,7 +215,7 @@ export default function HalamanDashboard() {
             <StatCard label="Keluar" value={formatAngka(d.movement.exits)} hint="dalam periode ini" icon={UserMinus} tone="warning" />
             <StatCard
               label="Turnover"
-              value={d.movement.turnoverRate === null ? "—" : `${(d.movement.turnoverRate * 100).toFixed(1)}%`}
+              value={d.movement.turnoverRate === null ? "—" : `${d.movement.turnoverRate.toFixed(1)}%`}
               hint={d.tenure.averageDays ? `rata-rata masa kerja ${Math.round(d.tenure.averageDays / 30)} bln` : undefined}
               icon={TrendingDown}
               tone="danger"
