@@ -8,11 +8,10 @@ import { Logo } from "@/components/ui/logo";
 import { cn } from "@/lib/utils";
 
 const TAUTAN = [
-  { href: "/", label: "Beranda" },
   { href: "/lowongan", label: "Lowongan" },
-  { href: "/#fitur", label: "Fitur" },
-  { href: "/#proses", label: "Proses Rekrutmen" },
-  { href: "/unduh", label: "Aplikasi" },
+  { href: "/#kenapa", label: "Kenapa Bergabung" },
+  { href: "/#proses", label: "Tahap Seleksi" },
+  { href: "/#faq", label: "Tanya Jawab" },
 ];
 
 /** Kepala halaman publik: ringkas di ponsel, penuh di layar lebar. */
@@ -50,18 +49,15 @@ export const KepalaPublik = () => {
           ))}
         </nav>
 
-        <div className="ml-auto hidden items-center gap-2 sm:flex">
-          <Link
-            href="/karier/masuk"
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium hover:bg-surface-2"
-          >
-            <UserRound className="h-4 w-4" aria-hidden /> Portal Pelamar
+        <div className="ml-auto hidden items-center gap-3 sm:flex">
+          <Link href="/login" className="text-sm text-muted hover:text-foreground">
+            Masuk karyawan
           </Link>
           <Link
-            href="/login"
+            href="/karier/masuk"
             className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-on-primary shadow-sm hover:bg-primary-hover"
           >
-            <LogIn className="h-4 w-4" aria-hidden /> Masuk Karyawan
+            <UserRound className="h-4 w-4" aria-hidden /> Portal Pelamar
           </Link>
         </div>
 
@@ -85,11 +81,11 @@ export const KepalaPublik = () => {
               </Link>
             ))}
             <div className="mt-2 grid gap-2 border-t border-border pt-3">
-              <Link href="/karier/masuk" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium">
+              <Link href="/karier/masuk" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-on-primary">
                 <Briefcase className="h-4 w-4" aria-hidden /> Portal Pelamar
               </Link>
-              <Link href="/login" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary text-sm font-medium text-on-primary">
-                <LogIn className="h-4 w-4" aria-hidden /> Masuk Karyawan
+              <Link href="/login" className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border text-sm font-medium">
+                <LogIn className="h-4 w-4" aria-hidden /> Masuk karyawan
               </Link>
             </div>
           </nav>

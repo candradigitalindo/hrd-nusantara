@@ -11,7 +11,8 @@ export const KakiPublik = ({ nama }: { nama: string }) => (
           <span className="font-bold">{nama}</span>
         </div>
         <p className="mt-3 max-w-xs text-sm text-muted">
-          Sistem kepegawaian untuk industri F&amp;B, restoran, dan hotel: presensi, cuti, penggajian, pelatihan, sampai rekrutmen.
+          Jaringan restoran dan hotel yang terus membuka kesempatan bagi orang yang senang melayani tamu dan mau
+          berkembang bersama.
         </p>
       </div>
 
@@ -22,6 +23,7 @@ export const KakiPublik = ({ nama }: { nama: string }) => (
           <li><Link href="/karier/daftar" className="hover:text-foreground">Daftar akun pelamar</Link></li>
           <li><Link href="/karier/masuk" className="hover:text-foreground">Masuk portal pelamar</Link></li>
           <li><Link href="/#proses" className="hover:text-foreground">Tahap seleksi</Link></li>
+          <li><Link href="/#faq" className="hover:text-foreground">Tanya jawab pelamar</Link></li>
         </ul>
       </nav>
 
@@ -30,7 +32,7 @@ export const KakiPublik = ({ nama }: { nama: string }) => (
         <ul className="mt-3 space-y-2 text-sm text-muted">
           <li><Link href="/login" className="hover:text-foreground">Masuk aplikasi web</Link></li>
           <li><Link href="/unduh" className="hover:text-foreground">Unduh aplikasi Android</Link></li>
-          <li><Link href="/#fitur" className="hover:text-foreground">Fitur untuk karyawan</Link></li>
+
         </ul>
       </nav>
 
