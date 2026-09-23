@@ -10,6 +10,9 @@ import 'fitur/chat/layar_chat.dart';
 import 'fitur/cuti/layar_cuti.dart';
 import 'fitur/gaji/layar_gaji.dart';
 import 'fitur/jadwal/layar_jadwal.dart';
+import 'fitur/kasus/layar_kasus.dart';
+import 'fitur/kinerja/layar_kinerja.dart';
+import 'fitur/pelatihan/layar_pelatihan.dart';
 import 'fitur/pengumuman/layar_pengumuman.dart';
 import 'fitur/presensi/layar_presensi.dart';
 import 'fitur/profil/layar_profil.dart';
@@ -54,6 +57,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(path: '/jadwal', builder: (_, _) => const LayarJadwal()),
+      GoRoute(path: '/kinerja', builder: (_, _) => const LayarKinerja()),
+      GoRoute(path: '/pelatihan', builder: (_, _) => const LayarPelatihan()),
+      GoRoute(path: '/kasus', builder: (_, _) => const LayarKasus()),
       GoRoute(path: '/pengumuman', builder: (_, _) => const LayarPengumuman()),
       GoRoute(path: '/survei', builder: (_, _) => const LayarSurvei()),
       GoRoute(path: '/chat', builder: (_, _) => const LayarChat()),

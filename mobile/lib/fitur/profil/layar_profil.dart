@@ -75,6 +75,18 @@ class LayarProfil extends ConsumerWidget {
               children: [
                 ListTile(leading: const Icon(Icons.calendar_month_outlined), title: const Text('Jadwal shift'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/jadwal')),
                 const Divider(),
+                if (p.punyaIzin('kinerja.lihat')) ...[
+                  ListTile(leading: const Icon(Icons.insights_outlined), title: const Text('Kinerja & KPI'), subtitle: const Text('Hasil penilaian, penilaian diri, umpan balik'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/kinerja')),
+                  const Divider(),
+                ],
+                if (p.punyaIzin('pelatihan.lihat')) ...[
+                  ListTile(leading: const Icon(Icons.school_outlined), title: const Text('Pelatihan'), subtitle: const Text('Sesi terjadwal dan riwayat Anda'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/pelatihan')),
+                  const Divider(),
+                ],
+                if (p.punyaIzin('kasus.lihat')) ...[
+                  ListTile(leading: const Icon(Icons.outlined_flag), title: const Text('Keluhan & Disiplin'), subtitle: const Text('Ajukan keluhan · hanya HR yang membaca'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/kasus')),
+                  const Divider(),
+                ],
                 ListTile(leading: const Icon(Icons.poll_outlined), title: const Text('Survei karyawan'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/survei')),
                 const Divider(),
                 ListTile(leading: const Icon(Icons.forum_outlined), title: const Text('Chat tim'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/chat')),

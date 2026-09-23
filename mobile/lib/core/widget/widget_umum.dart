@@ -17,10 +17,10 @@ Color warnaNada(Nada nada, ColorScheme skema) => switch (nada) {
 
 /// Nada lencana dari kode status backend — satu tempat, dipakai semua layar.
 Nada nadaStatus(String? kode) => switch (kode) {
-      'present' || 'approved' || 'paid' || 'connected' || 'completed' || 'active' || 'confirmed' || 'reconnected' => Nada.sukses,
-      'late' || 'pending' || 'pending_scan' || 'calculated' || 'important' || 'probation' || 'no_checkout' => Nada.peringatan,
-      'absent' || 'rejected' || 'disconnected' || 'scan_required' || 'urgent' || 'logged_out' || 'qr_required' || 'terminated' => Nada.bahaya,
-      'draft' || 'scheduled' || 'published' || 'contract' => Nada.info,
+      'present' || 'approved' || 'paid' || 'connected' || 'completed' || 'active' || 'confirmed' || 'reconnected' || 'acknowledged' || 'finalized' || 'resolved' || 'attended' || 'praise' => Nada.sukses,
+      'late' || 'pending' || 'pending_scan' || 'calculated' || 'important' || 'probation' || 'no_checkout' || 'submitted' || 'open' || 'waitlisted' || 'teguran_lisan' || 'improvement' => Nada.peringatan,
+      'absent' || 'rejected' || 'disconnected' || 'scan_required' || 'urgent' || 'logged_out' || 'qr_required' || 'terminated' || 'dismissed' || 'failed' || 'no_show' || 'sp1' || 'sp2' || 'sp3' => Nada.bahaya,
+      'draft' || 'scheduled' || 'published' || 'contract' || 'under_review' || 'ongoing' || 'registered' => Nada.info,
       _ => Nada.netral,
     };
 

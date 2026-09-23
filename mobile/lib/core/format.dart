@@ -114,6 +114,38 @@ const Map<String, String> labelStatus = {
   'registered': 'Terdaftar',
   'waitlisted': 'Daftar tunggu',
   'attended': 'Hadir',
+  'failed': 'Tidak Lulus',
+  'no_show': 'Tidak Hadir',
+  'ongoing': 'Berlangsung',
+  'submitted': 'Terkirim',
+  'acknowledged': 'Dikonfirmasi',
+  'finalized': 'Final',
+  'open': 'Terbuka',
+  'under_review': 'Ditinjau',
+  'resolved': 'Selesai',
+  'dismissed': 'Ditolak',
+  'teguran_lisan': 'Teguran Lisan',
+  'sp1': 'SP 1',
+  'sp2': 'SP 2',
+  'sp3': 'SP 3',
+  'praise': 'Apresiasi',
+  'improvement': 'Perbaikan',
+  'note': 'Catatan',
+};
+
+/// Sudut pandang penilai pada penilaian kinerja 360°.
+const Map<String, String> labelPenilai = {
+  'self': 'Diri sendiri',
+  'manager': 'Atasan',
+  'peer': 'Rekan kerja',
+  'subordinate': 'Bawahan',
+};
+
+/// Jenis umpan balik informal.
+const Map<String, String> labelUmpan = {
+  'praise': 'Apresiasi',
+  'improvement': 'Perbaikan',
+  'note': 'Catatan',
 };
 
 String labelUntuk(String? kode) {

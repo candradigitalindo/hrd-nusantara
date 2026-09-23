@@ -13,6 +13,8 @@ import '../gaji/model_gaji.dart';
 import '../gaji/repo_gaji.dart';
 import '../jadwal/model_shift.dart';
 import '../jadwal/repo_jadwal.dart';
+import '../kinerja/model_kinerja.dart';
+import '../kinerja/repo_kinerja.dart';
 import '../pelatihan/repo_pelatihan.dart';
 import '../pengumuman/layar_pengumuman.dart';
 import '../pengumuman/model_pengumuman.dart';
@@ -25,8 +27,9 @@ import '../survei/repo_survei.dart';
 import '../whatsapp/repo_whatsapp.dart';
 
 /// Beranda karyawan: apa yang harus dikerjakan hari ini, lalu ringkasan
-/// kehadiran, jadwal, cuti, gaji, pelatihan, dan pengumuman. Setiap bagian
-/// hanya tampil bila menunya termasuk peran pengguna (izin halaman.*), dan
+/// kehadiran, jadwal, cuti, gaji, kinerja, pelatihan, dan pengumuman. Setiap
+/// bagian hanya tampil bila menunya termasuk peran pengguna (izin
+/// `<halaman>.lihat`, sama dengan sidebar web), dan
 /// datanya baru diminta bila bagian itu memang tampil.
 class LayarBeranda extends ConsumerWidget {
   const LayarBeranda({super.key});
@@ -35,13 +38,15 @@ class LayarBeranda extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final p = ref.watch(penggunaProvider);
     bool boleh(String izin) => p == null || p.punyaIzin(izin);
-    final bolehPresensi = boleh('halaman.presensi');
-    final bolehCuti = boleh('halaman.cuti');
-    final bolehGaji = boleh('halaman.gaji');
-    final bolehPengumuman = boleh('halaman.pengumuman');
-    final bolehChat = boleh('halaman.chat');
-    final bolehWa = boleh('halaman.whatsapp_saya');
-    final bolehPelatihan = boleh('halaman.pelatihan');
+    final bolehPresensi = boleh('presensi.lihat');
+    final bolehCuti = boleh('cuti.lihat');
+    final bolehGaji = boleh('gaji.lihat');
+    final bolehPengumuman = boleh('pengumuman.lihat');
+    final bolehChat = boleh('chat.lihat');
+    final bolehWa = boleh('whatsapp_saya.lihat');
+    final bolehPelatihan = boleh('pelatihan.lihat');
+    final bolehKinerja = boleh('kinerja.lihat');
+    final bolehKasus = boleh('kasus.lihat');
 
     // ref.watch bersyarat sengaja: bagian yang tidak tampil tidak perlu
     // memanggil API-nya (server toh akan menolak dengan 403).
@@ -58,6 +63,7 @@ class LayarBeranda extends ConsumerWidget {
         ? ref.watch(pelatihanMendatangProvider)
         : null;
     final tautanWa = bolehWa ? ref.watch(tautanWhatsAppProvider).value : null;
+    final penilaian = bolehKinerja ? ref.watch(penilaianProvider) : null;
 
     Future<void> segarkan() async {
       for (final prov in [
@@ -72,6 +78,7 @@ class LayarBeranda extends ConsumerWidget {
         if (bolehPengumuman) ...[pengumumanProvider, surveiProvider],
         if (bolehPelatihan) pelatihanMendatangProvider,
         if (bolehWa) tautanWhatsAppProvider,
+        if (bolehKinerja) penilaianProvider,
       ]) {
         ref.invalidate(prov);
       }
@@ -86,6 +93,8 @@ class LayarBeranda extends ConsumerWidget {
       pengumuman: pengumuman?.value,
       survei: survei?.value,
       cuti: cuti?.value,
+      penilaian: penilaian?.value,
+      saya: p?.id ?? '',
       waPerluTindakan:
           tautanWa != null && tautanWa.perluTindakan && tautanWa.driverAktif,
       waBelumPernah: tautanWa?.belumPernah ?? false,
@@ -137,6 +146,19 @@ class LayarBeranda extends ConsumerWidget {
                 ),
               ),
             ],
+            if (bolehKinerja) ...[
+              _Judul(
+                'Kinerja',
+                aksi: TextButton(
+                  onPressed: () => context.push('/kinerja'),
+                  child: const Text('Selengkapnya'),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _KartuKinerja(penilaian: penilaian!, saya: p?.id ?? ''),
+              ),
+            ],
             if (bolehPelatihan)
               pelatihan!.maybeWhen(
                 data: (d) => d.isEmpty
@@ -144,7 +166,13 @@ class LayarBeranda extends ConsumerWidget {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _Judul('Pelatihan mendatang'),
+                          _Judul(
+                            'Pelatihan mendatang',
+                            aksi: TextButton(
+                              onPressed: () => context.push('/pelatihan'),
+                              child: const Text('Semua'),
+                            ),
+                          ),
                           _KartuPelatihan(d.first),
                         ],
                       ),
@@ -158,6 +186,9 @@ class LayarBeranda extends ConsumerWidget {
               bolehPengumuman: bolehPengumuman,
               bolehChat: bolehChat,
               bolehWa: bolehWa,
+              bolehKinerja: bolehKinerja,
+              bolehPelatihan: bolehPelatihan,
+              bolehKasus: bolehKasus,
             ),
             if (bolehPengumuman) ...[
               _Judul(
@@ -203,6 +234,8 @@ class LayarBeranda extends ConsumerWidget {
     List<Pengumuman>? pengumuman,
     List<Survei>? survei,
     List<Cuti>? cuti,
+    List<Penilaian>? penilaian,
+    required String saya,
     required bool waPerluTindakan,
     required bool waBelumPernah,
     required bool waTanpaGrup,
@@ -280,6 +313,40 @@ class LayarBeranda extends ConsumerWidget {
           keterangan:
               '${formatTanggalSaja(c.mulai, pola: 'd MMM')} – ${formatTanggalSaja(c.selesai, pola: 'd MMM')} · ${c.totalHari} hari',
           onTap: () => context.go('/cuti'),
+        ),
+      );
+    }
+    final tugasKpi = (penilaian ?? const <Penilaian>[])
+        .where((r) => r.sayaPenilai(saya) && r.draf)
+        .toList();
+    if (tugasKpi.isNotEmpty) {
+      final t = tugasKpi.first;
+      daftar.add(
+        _Tindakan(
+          ikon: Icons.edit_note_rounded,
+          nada: Nada.peringatan,
+          judul: tugasKpi.length == 1
+              ? (t.penilaianDiri
+                    ? 'Penilaian diri periode ${t.periode} belum diisi'
+                    : 'Penilaian untuk ${t.dinilaiNama} belum diisi')
+              : '${tugasKpi.length} penilaian kinerja belum diisi',
+          keterangan: 'Isi sebelum siklus penilaian ditutup HR.',
+          onTap: () => context.push('/kinerja'),
+        ),
+      );
+    }
+    final hasilBaru = (penilaian ?? const <Penilaian>[])
+        .where((r) => r.sayaDinilai(saya) && r.menungguKonfirmasi)
+        .toList();
+    if (hasilBaru.isNotEmpty) {
+      daftar.add(
+        _Tindakan(
+          ikon: Icons.insights_outlined,
+          nada: Nada.info,
+          judul: 'Hasil penilaian kinerja Anda sudah keluar',
+          keterangan:
+              'Periode ${hasilBaru.first.periode} · baca, lalu konfirmasi.',
+          onTap: () => context.push('/kinerja'),
         ),
       );
     }
@@ -694,7 +761,7 @@ class _KartuPresensiHariIni extends ConsumerWidget {
   int? _menitBerjalan(Presensi h) {
     if (h.jamMasuk == null) return null;
     if (h.jamPulang != null) return h.menitKerja;
-    return DateTime.now().difference(h.jamMasuk!).inMinutes;
+    return DateTime.now().difference(h.jamMasuk!).inMinutes.clamp(0, 24 * 60);
   }
 }
 
@@ -1332,6 +1399,57 @@ class _KartuRingkas extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
+// Kinerja: nilai KPI terakhir dan penilaian yang menunggu diisi.
+// ---------------------------------------------------------------------------
+
+class _KartuKinerja extends StatelessWidget {
+  const _KartuKinerja({required this.penilaian, required this.saya});
+  final AsyncValue<List<Penilaian>> penilaian;
+  final String saya;
+
+  @override
+  Widget build(BuildContext context) {
+    final skema = Theme.of(context).colorScheme;
+    final daftar = penilaian.value ?? const <Penilaian>[];
+    final terbaru = nilaiTerbaru(
+      daftar.where((r) => r.sayaDinilai(saya) && r.adaHasil).toList(),
+    );
+    final tugas = daftar.where((r) => r.sayaPenilai(saya) && r.draf).length;
+    final perluKonfirmasi = daftar
+        .where((r) => r.sayaDinilai(saya) && r.menungguKonfirmasi)
+        .length;
+    final catatan = [
+      if (tugas > 0) '$tugas perlu diisi',
+      if (perluKonfirmasi > 0) '$perluKonfirmasi perlu konfirmasi',
+    ].join(' · ');
+    return _KartuRingkas(
+      ikon: Icons.insights_outlined,
+      nada: Nada.info,
+      label: 'Nilai kinerja terakhir',
+      nilai: penilaian.isLoading
+          ? '…'
+          : terbaru == null
+          ? '—'
+          : '${formatAngka(terbaru.nilaiTotal)} / 100',
+      keterangan: terbaru == null
+          ? (catatan.isEmpty ? 'belum ada penilaian' : catatan)
+          : 'Periode ${terbaru.periode} · ${terbaru.labelSudutPandang.toLowerCase()}${catatan.isEmpty ? '' : ' · $catatan'}',
+      onTap: () => context.push('/kinerja'),
+      bawah: terbaru == null
+          ? null
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: ((terbaru.nilaiTotal ?? 0) / 100).clamp(0, 1).toDouble(),
+                minHeight: 6,
+                backgroundColor: skema.surfaceContainerHighest,
+              ),
+            ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Pelatihan mendatang
 // ---------------------------------------------------------------------------
 
@@ -1352,6 +1470,7 @@ class _KartuPelatihan extends StatelessWidget {
       child: Card(
         margin: EdgeInsets.zero,
         child: ListTile(
+          onTap: () => context.push('/pelatihan'),
           leading: Container(
             width: 46,
             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -1409,6 +1528,9 @@ class _AksesCepat extends StatelessWidget {
     required this.bolehPengumuman,
     required this.bolehChat,
     required this.bolehWa,
+    required this.bolehKinerja,
+    required this.bolehPelatihan,
+    required this.bolehKasus,
   });
   final bool bolehPresensi;
   final bool bolehCuti;
@@ -1416,6 +1538,9 @@ class _AksesCepat extends StatelessWidget {
   final bool bolehPengumuman;
   final bool bolehChat;
   final bool bolehWa;
+  final bool bolehKinerja;
+  final bool bolehPelatihan;
+  final bool bolehKasus;
 
   @override
   Widget build(BuildContext context) {
@@ -1448,6 +1573,20 @@ class _AksesCepat extends StatelessWidget {
           nada: Nada.peringatan,
           onTap: () => context.go('/gaji'),
         ),
+      if (bolehKinerja)
+        _Pintasan(
+          ikon: Icons.insights_outlined,
+          label: 'KPI',
+          nada: Nada.info,
+          onTap: () => context.push('/kinerja'),
+        ),
+      if (bolehPelatihan)
+        _Pintasan(
+          ikon: Icons.school_outlined,
+          label: 'Pelatihan',
+          nada: Nada.utama,
+          onTap: () => context.push('/pelatihan'),
+        ),
       if (bolehPengumuman)
         _Pintasan(
           ikon: Icons.campaign_outlined,
@@ -1475,6 +1614,13 @@ class _AksesCepat extends StatelessWidget {
           label: 'WhatsApp',
           nada: Nada.sukses,
           onTap: () => context.push('/whatsapp'),
+        ),
+      if (bolehKasus)
+        _Pintasan(
+          ikon: Icons.outlined_flag,
+          label: 'Keluhan',
+          nada: Nada.bahaya,
+          onTap: () => context.push('/kasus'),
         ),
     ];
     return Padding(

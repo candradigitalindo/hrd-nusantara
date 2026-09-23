@@ -36,6 +36,9 @@ ThemeData _tema(Brightness brightness) {
     surfaceContainerHighest: terang ? const Color(0xFFEEF3F0) : const Color(0xFF1A2B23),
     outlineVariant: terang ? const Color(0xFFDBE4DE) : const Color(0xFF26392F),
   );
+  // Gaya teks AppBar dan tombol diturunkan dari textTheme, bukan TextStyle
+  // kosong: TextStyle tanpa fontFamily membuang keluarga font platform.
+  final teks = ThemeData(useMaterial3: true, colorScheme: skema).textTheme;
   return ThemeData(
     useMaterial3: true,
     colorScheme: skema,
@@ -46,7 +49,7 @@ ThemeData _tema(Brightness brightness) {
       scrolledUnderElevation: 0,
       backgroundColor: Colors.transparent,
       foregroundColor: skema.onSurface,
-      titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: skema.onSurface),
+      titleTextStyle: teks.titleLarge?.copyWith(fontSize: 20, fontWeight: FontWeight.w700, color: skema.onSurface),
     ),
     cardTheme: CardThemeData(
       elevation: 0,
@@ -63,7 +66,7 @@ ThemeData _tema(Brightness brightness) {
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     ),
     filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: const TextStyle(fontWeight: FontWeight.w600)),
+      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: teks.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(48), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),

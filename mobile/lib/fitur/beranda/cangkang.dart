@@ -29,7 +29,7 @@ const _semuaTab = [
       selectedIcon: Icon(Icons.fingerprint),
       label: 'Presensi',
     ),
-    'halaman.presensi',
+    'presensi.lihat',
   ),
   _Tab(
     2,
@@ -38,7 +38,7 @@ const _semuaTab = [
       selectedIcon: Icon(Icons.beach_access),
       label: 'Cuti',
     ),
-    'halaman.cuti',
+    'cuti.lihat',
   ),
   _Tab(
     3,
@@ -47,7 +47,7 @@ const _semuaTab = [
       selectedIcon: Icon(Icons.receipt_long),
       label: 'Gaji',
     ),
-    'halaman.gaji',
+    'gaji.lihat',
   ),
   _Tab(
     4,

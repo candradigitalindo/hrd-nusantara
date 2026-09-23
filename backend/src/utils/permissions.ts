@@ -326,9 +326,9 @@ export const migrasiIzin = (izin: readonly string[]): string[] => {
 };
 
 /**
- * Alias kunci lama yang masih dibaca aplikasi mobile yang sudah terpasang.
- * Hanya ditambahkan pada izin yang dikirim ke klien; penjaga rute memakai
- * kunci sekarang.
+ * Alias kunci lama yang masih dibaca APK mobile sebelum versi 0.2.0 (yang
+ * lebih baru membaca kunci `halaman.lihat` langsung). Hanya ditambahkan pada
+ * izin yang dikirim ke klien; penjaga rute memakai kunci sekarang.
  */
 const ALIAS_KLIEN_LAMA: Readonly<Record<string, string>> = {
   'presensi.lihat': 'halaman.presensi',

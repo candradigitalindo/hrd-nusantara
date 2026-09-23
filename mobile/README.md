@@ -1,8 +1,11 @@
 # HRD Nusantara — Aplikasi Mobile (Flutter)
 
 Aplikasi karyawan untuk Android dan iOS: presensi (GPS, wajah, QR), cuti,
-slip gaji, jadwal shift, pengumuman, survei, chat tim, pemeriksaan tautan
-WhatsApp (pemindaian QR dilakukan di web), dan notifikasi push. Memakai API backend yang sama dengan web.
+slip gaji, kinerja & KPI (penilaian diri, hasil, umpan balik), pelatihan
+(daftar sesi, riwayat), keluhan & disiplin, jadwal shift, pengumuman, survei,
+chat tim, pemeriksaan tautan WhatsApp (pemindaian QR dilakukan di web), dan
+notifikasi push. Memakai API backend yang sama dengan web; menu dan bagian
+beranda mengikuti izin `<halaman>.lihat` peran pengguna, sama dengan sidebar web.
 
 ## Menjalankan
 
@@ -36,8 +39,10 @@ lib/
   core/            konfigurasi, klien API (dio + token), penyimpanan aman, format, tema, widget umum
   fitur/
     auth/          login, sesi (Riverpod Notifier), model pengguna
-    beranda/       beranda karyawan (shift & presensi hari ini, perlu tindakan, ringkasan kehadiran, jadwal, cuti & gaji, pelatihan, akses cepat, pengumuman) + cangkang navigasi bawah
-    pelatihan/     pendaftaran pelatihan milik pengguna (untuk beranda)
+    beranda/       beranda karyawan (shift & presensi hari ini, perlu tindakan, ringkasan kehadiran, jadwal, cuti & gaji, kinerja, pelatihan, akses cepat, pengumuman) + cangkang navigasi bawah
+    kinerja/       nilai KPI terakhir, penilaian yang harus diisi (per kriteria, perkiraan nilai), rincian hasil + diskusi + konfirmasi, umpan balik
+    pelatihan/     sesi terjadwal (daftar / daftar tunggu / batalkan), riwayat & hasil evaluasi
+    kasus/         ajukan keluhan (hanya HR yang membaca), tindakan disiplin yang ditujukan ke pengguna
     presensi/      check-in/out GPS · wajah (kamera depan) · QR, riwayat
     cuti/          saldo, riwayat, ajukan, batalkan
     gaji/          daftar slip, rincian
@@ -144,7 +149,25 @@ flutter test
 ```
 
 Tes mencakup pemformat, pemetaan galat API, haversine & pemilihan lokasi
-terdekat, model dari JSON server, rute push, dan validasi layar login.
+terdekat, model dari JSON server, rute push, validasi layar login, serta tes
+tampilan ukuran ponsel (390 dp) untuk beranda, kinerja, pelatihan, dan keluhan
+dengan data contoh (`test/data_uji.dart`) — layout yang meluap (overflow)
+langsung menggagalkan tes.
+
+Tes tampilan bisa sekalian memotret layarnya dengan font asli (Roboto dari
+SDK), berguna untuk memeriksa tampilan tanpa emulator:
+
+```bash
+flutter test --dart-define=POTRET_DIR=/tmp/potret   # menulis beranda.png, kinerja.png, …
+```
+
+Tanpa SDK Flutter lokal, semuanya bisa dijalankan lewat Docker:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work -v "$PWD/../potret:/potret" \
+  ghcr.io/cirruslabs/flutter:latest sh -c \
+  "flutter pub get && flutter analyze && flutter test --dart-define=POTRET_DIR=/potret"
+```
 
 ## Build rilis dan distribusi
 
