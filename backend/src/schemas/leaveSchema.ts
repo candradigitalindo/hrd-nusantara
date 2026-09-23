@@ -29,9 +29,38 @@ export const createLeaveTypeSchema = z
   })
   .strict();
 
-export const updateLeaveTypeSchema = createLeaveTypeSchema
-  .partial()
-  .extend({ isActive: z.boolean().optional() })
+/**
+ * Ditulis ulang field demi field, BUKAN `createLeaveTypeSchema.partial()`.
+ *
+ * Zod mempertahankan nilai bawaan pada skema yang di-partial: `parse({ name })`
+ * tetap mengembalikan `isPaid: true`, `deductsBalance: true`, dan seterusnya.
+ * Karena controller mengirim hasil parse itu apa adanya ke prisma.update,
+ * sekadar mengganti nama jenis cuti akan mengembalikan kelima tanda itu ke
+ * bawaan — cuti tak berbayar berubah jadi berbayar, dan pemotongan cuti
+ * bersama hilang tanpa ada yang menyentuhnya. Di sini semuanya optional tanpa
+ * bawaan, jadi yang tidak dikirim benar-benar tidak berubah.
+ */
+export const updateLeaveTypeSchema = z
+  .object({
+    code: z
+      .string()
+      .trim()
+      .min(2)
+      .max(40)
+      .regex(/^[a-z0-9_]+$/, 'Kode hanya boleh huruf kecil, angka, dan garis bawah')
+      .optional(),
+    name: z.string().trim().min(1).max(100).optional(),
+    description: z.string().trim().max(500).optional(),
+    defaultQuotaDays: z.coerce.number().int().min(0).max(365).nullable().optional(),
+    isPaid: z.boolean().optional(),
+    deductsBalance: z.boolean().optional(),
+    requiresAttachment: z.boolean().optional(),
+    maxConsecutiveDays: z.coerce.number().int().min(1).max(365).nullable().optional(),
+    genderRestriction: z.enum(GENDERS).nullable().optional(),
+    countsCalendarDays: z.boolean().optional(),
+    absorbsCollectiveLeave: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+  })
   .strict()
   .refine((d) => Object.keys(d).length > 0, { message: 'Tidak ada field yang diubah' });
 

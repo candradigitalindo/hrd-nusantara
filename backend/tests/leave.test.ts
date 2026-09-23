@@ -584,3 +584,57 @@ describe('Pembacaan dan kalender', () => {
     expect(res.body.holidays[0].name).toBe('Nyepi');
   });
 });
+
+describe('PUT /api/leave-types/:id', () => {
+  /**
+   * Penjaga terhadap bug yang sempat ada: skema ubah dibuat dari
+   * createLeaveTypeSchema.partial(), dan Zod tetap memasang nilai bawaan pada
+   * field yang tidak dikirim. Karena controller meneruskan hasil parse apa
+   * adanya ke prisma.update, mengganti nama saja mengembalikan lima tanda
+   * penting ke bawaan — cuti tak berbayar berubah jadi berbayar, dan potongan
+   * cuti bersama hilang tanpa ada yang menyentuhnya.
+   */
+  it('mengganti nama tidak mengubah setelan lain yang tidak dikirim', async () => {
+    const tipe = await prisma.leaveType.create({
+      data: {
+        id: (await import('../src/utils/generateULID')).generateULID(),
+        code: 'cuti_besar',
+        name: 'Cuti Besar',
+        defaultQuotaDays: 30,
+        isPaid: false,
+        deductsBalance: false,
+        requiresAttachment: true,
+        countsCalendarDays: true,
+        absorbsCollectiveLeave: true,
+      },
+    });
+
+    const res = await request(app).put(`/api/leave-types/${tipe.id}`).set(auth(hrToken)).send({ name: 'Cuti Besar 2026' });
+    expect(res.status).toBe(200);
+
+    const sesudah = await prisma.leaveType.findUniqueOrThrow({ where: { id: tipe.id } });
+    expect(sesudah).toMatchObject({
+      name: 'Cuti Besar 2026',
+      isPaid: false,
+      deductsBalance: false,
+      requiresAttachment: true,
+      countsCalendarDays: true,
+      absorbsCollectiveLeave: true,
+      defaultQuotaDays: 30,
+    });
+  });
+
+  it('yang memang dikirim tetap berubah', async () => {
+    const tipe = await makeLeaveType({ code: 'cuti_x', deductsBalance: true });
+    expect((await request(app).put(`/api/leave-types/${tipe.id}`).set(auth(hrToken)).send({ deductsBalance: false, isPaid: false })).status).toBe(200);
+
+    const sesudah = await prisma.leaveType.findUniqueOrThrow({ where: { id: tipe.id } });
+    expect(sesudah).toMatchObject({ deductsBalance: false, isPaid: false });
+  });
+
+  it('body kosong dan field asing ditolak', async () => {
+    const tipe = await makeLeaveType({ code: 'cuti_y' });
+    expect((await request(app).put(`/api/leave-types/${tipe.id}`).set(auth(hrToken)).send({})).status).toBe(400);
+    expect((await request(app).put(`/api/leave-types/${tipe.id}`).set(auth(hrToken)).send({ nama: 'salah' })).status).toBe(400);
+  });
+});
