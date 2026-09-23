@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, CheckCheck } from "lucide-react";
+import { MessageSquare, CheckCheck, Send, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button } from "@/components/ui/button";
@@ -58,9 +58,9 @@ const FormPenilaian = ({ review, kriteria, memuat, saya, onClose }: Props & { re
   return (
     <Modal open onClose={onClose} size="lg" title={`Penilaian ${review.reviewee.name}`} description={`${LABEL_PENILAI[review.reviewerType]}: ${review.reviewer.name} · ${labelStatus(review.status)}`}
       footer={<>
-        <Button variant="outline" onClick={onClose}>Tutup</Button>
-        {bisaIsi && <Button onClick={() => kirim.mutate()} loading={kirim.isPending}>Kirim Penilaian</Button>}
-        {sayaDinilai && review.status === "submitted" && <Button onClick={() => akui.mutate()} loading={akui.isPending}><CheckCheck className="h-4 w-4" aria-hidden /> Saya Sudah Membaca</Button>}
+        <Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Tutup</Button>
+        {bisaIsi && <Button onClick={() => kirim.mutate()} loading={kirim.isPending}>{!kirim.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim Penilaian</Button>}
+        {sayaDinilai && review.status === "submitted" && <Button onClick={() => akui.mutate()} loading={akui.isPending}>{!akui.isPending && <CheckCheck className="h-4 w-4" aria-hidden />} Saya Sudah Membaca</Button>}
       </>}>
       <div className="space-y-5 text-sm">
         {review.totalScore !== null && (
@@ -98,7 +98,7 @@ const FormPenilaian = ({ review, kriteria, memuat, saya, onClose }: Props & { re
               <ul className="space-y-2">{review.discussions.map((d) => <li key={d.id} className="rounded-lg bg-surface-2 px-3 py-2"><p className="whitespace-pre-wrap">{d.note}</p><p className="mt-1 text-xs text-muted">{d.authorId === review.reviewerId ? review.reviewer.name : d.authorId === review.revieweeId ? review.reviewee.name : "HR"} · {formatTanggal(d.createdAt, "d MMM yyyy HH:mm")}</p></li>)}</ul>
             )}
             {(sayaPenilai || sayaDinilai) && (
-              <div className="mt-2 flex gap-2"><Textarea rows={2} placeholder="Tambahkan catatan dari sesi evaluasi…" value={catatan} onChange={(e) => setCatatan(e.target.value)} /><Button variant="outline" onClick={() => diskusi.mutate()} loading={diskusi.isPending} disabled={!catatan.trim()}>Kirim</Button></div>
+              <div className="mt-2 flex gap-2"><Textarea rows={2} placeholder="Tambahkan catatan dari sesi evaluasi…" value={catatan} onChange={(e) => setCatatan(e.target.value)} /><Button variant="outline" onClick={() => diskusi.mutate()} loading={diskusi.isPending} disabled={!catatan.trim()}>{!diskusi.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim</Button></div>
             )}
           </section>
         )}

@@ -196,7 +196,7 @@ export default function HalamanLaporan() {
             <div><CardTitle>Data mentah</CardTitle><CardDescription>Pilih kumpulan data dan periode, lalu unduh CSV untuk diolah sendiri di spreadsheet</CardDescription></div>
             <div className="flex flex-wrap gap-2">
               <Select value={dataset} onChange={(e) => { setDataset(e.target.value as DatasetMentah); setHalaman(1); }} aria-label="Kumpulan data" className="w-44">{Object.entries(LABEL_DATASET).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
-              <Button onClick={() => unduh.mutate()} loading={unduh.isPending} disabled={!mentah.data?.pagination.total}><Download className="h-4 w-4" aria-hidden /> Unduh CSV{mentah.data ? ` (${formatAngka(Math.min(mentah.data.pagination.total, 5000))})` : ""}</Button>
+              <Button onClick={() => unduh.mutate()} loading={unduh.isPending} disabled={!mentah.data?.pagination.total}>{!unduh.isPending && <Download className="h-4 w-4" aria-hidden />} Unduh CSV{mentah.data ? ` (${formatAngka(Math.min(mentah.data.pagination.total, 5000))})` : ""}</Button>
             </div>
           </CardHeader>
           {mentah.isLoading ? <SkeletonBaris /> : !mentah.data?.data.length ? <EmptyState icon={Database} title="Tidak ada baris" description="Tidak ada data pada kumpulan, periode, dan departemen ini." /> : (

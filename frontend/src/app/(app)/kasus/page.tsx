@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { ShieldAlert, MessageSquareWarning, Plus, ChevronRight } from "lucide-react";
+import { ShieldAlert, MessageSquareWarning, Plus, ChevronRight, ArrowRight, ClipboardPen, Save, Send, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, bolehHr, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -148,7 +148,7 @@ export default function HalamanKasus() {
       </Card>
 
       <Modal open={Boolean(detail)} onClose={() => setDetail(null)} title={detail?.title ?? ""} description={detail ? `${detail.type === "complaint" ? "Keluhan" : "Tindakan disiplin"} · ${detail.employee.name}` : undefined}
-        footer={detail && bolehTindak(detail) ? <><Button variant="outline" onClick={() => setDetail(null)}>Tutup</Button><Button onClick={() => { setUbahStatus(detail); fs.reset({ status: detail.status === "open" ? "under_review" : "resolved", resolutionNotes: "" }); }}>Tindak Lanjuti</Button></> : <Button variant="outline" onClick={() => setDetail(null)}>Tutup</Button>}>
+        footer={detail && bolehTindak(detail) ? <><Button variant="outline" onClick={() => setDetail(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button><Button onClick={() => { setUbahStatus(detail); fs.reset({ status: detail.status === "open" ? "under_review" : "resolved", resolutionNotes: "" }); }}><ArrowRight className="h-4 w-4" aria-hidden /> Tindak Lanjuti</Button></> : <Button variant="outline" onClick={() => setDetail(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
         {detail && (
           <div className="space-y-4 text-sm">
             <div className="flex flex-wrap gap-2">
@@ -168,7 +168,7 @@ export default function HalamanKasus() {
       </Modal>
 
       <Modal open={Boolean(ubahStatus)} onClose={() => setUbahStatus(null)} title="Tindak lanjuti kasus" description={ubahStatus?.title}
-        footer={<><Button variant="outline" onClick={() => setUbahStatus(null)}>Batal</Button><Button form="form-status" type="submit" loading={simpanStatus.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setUbahStatus(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-status" type="submit" loading={simpanStatus.isPending}>{!simpanStatus.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-status" onSubmit={fs.handleSubmit((v) => simpanStatus.mutate(v))} className="space-y-4" noValidate>
           <Field label="Status baru">
             <Select {...fs.register("status")}>
@@ -184,7 +184,7 @@ export default function HalamanKasus() {
       </Modal>
 
       <Modal open={keluhanBuka} onClose={() => setKeluhanBuka(false)} title="Ajukan Keluhan" description="Hanya HR yang bisa membaca keluhan ini. Orang yang dikeluhkan tidak akan melihatnya."
-        footer={<><Button variant="outline" onClick={() => setKeluhanBuka(false)}>Batal</Button><Button form="form-keluhan" type="submit" loading={ajukanKeluhan.isPending}>Ajukan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setKeluhanBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-keluhan" type="submit" loading={ajukanKeluhan.isPending}>{!ajukanKeluhan.isPending && <Send className="h-4 w-4" aria-hidden />} Ajukan</Button></>}>
         <form id="form-keluhan" onSubmit={fk.handleSubmit((v) => ajukanKeluhan.mutate(v))} className="space-y-4" noValidate>
           <Field label="Judul" error={fk.formState.errors.title?.message}>
             <Input {...fk.register("title", { required: "Judul wajib diisi", minLength: { value: 3, message: "Minimal 3 karakter" } })} placeholder="Jadwal shift berubah mendadak" />
@@ -207,7 +207,7 @@ export default function HalamanKasus() {
       </Modal>
 
       <Modal open={disiplinBuka} onClose={() => setDisiplinBuka(false)} title="Tindakan Disiplin" description="Karyawan yang bersangkutan berhak dan akan melihat ini"
-        footer={<><Button variant="outline" onClick={() => setDisiplinBuka(false)}>Batal</Button><Button variant="danger" form="form-disiplin" type="submit" loading={beriSP.isPending}>Catat</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setDisiplinBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant="danger" form="form-disiplin" type="submit" loading={beriSP.isPending}>{!beriSP.isPending && <ClipboardPen className="h-4 w-4" aria-hidden />} Catat</Button></>}>
         <form id="form-disiplin" onSubmit={fd.handleSubmit((v) => beriSP.mutate(v))} className="space-y-4" noValidate>
           <Field label="Karyawan" error={fd.formState.errors.employeeId?.message}>
             <Select {...fd.register("employeeId", { required: "Pilih karyawan" })}>

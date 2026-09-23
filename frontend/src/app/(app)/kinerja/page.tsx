@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Target, Plus, ClipboardList, UserPlus, MessageSquareHeart, BarChart3 } from "lucide-react";
+import { Target, Plus, ClipboardList, UserPlus, MessageSquareHeart, BarChart3, Lock, MessageSquarePlus, Send, Unlock, UserCheck, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -124,7 +124,7 @@ export default function HalamanKinerja() {
         <Card>
           {hr && <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanUntuk} onChange={(e) => setUmpanUntuk(e.target.value)} aria-label="Penerima"><option value="">Umpan balik untuk saya</option>{(karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>}
           {umpan.isLoading ? <SkeletonBaris /> : !umpan.data?.length ? (
-            <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}>Beri Umpan Balik</Button>} />
+            <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}><MessageSquarePlus className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button>} />
           ) : (
             <ul className="divide-y divide-border">
               {umpan.data.map((u) => (
@@ -142,7 +142,7 @@ export default function HalamanKinerja() {
       )}
 
       {tab === "siklus" && hr && (
-        siklus.isLoading ? <SkeletonBaris /> : !siklus.data?.length ? <Card><EmptyState icon={Target} title="Belum ada siklus" description="Evaluasi triwulan, semester, atau tahunan." action={<Button onClick={() => setSiklusBuka(true)}>Buat Siklus</Button>} /></Card> : (
+        siklus.isLoading ? <SkeletonBaris /> : !siklus.data?.length ? <Card><EmptyState icon={Target} title="Belum ada siklus" description="Evaluasi triwulan, semester, atau tahunan." action={<Button onClick={() => setSiklusBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Buat Siklus</Button>} /></Card> : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {siklus.data.map((s) => (
               <Card key={s.id} className="animate-fade-up">
@@ -151,8 +151,8 @@ export default function HalamanKinerja() {
                   <Badge tone={nadaStatus(s.status)} dot className="shrink-0">{labelStatus(s.status)}</Badge>
                 </CardHeader>
                 <CardContent className="flex gap-2">
-                  {bolehUbah && s.status === "draft" && <Button size="sm" onClick={() => ubahSiklus.mutate({ s, status: "open" })}>Buka</Button>}
-                  {bolehUbah && s.status === "open" && <Button size="sm" variant="outline" onClick={() => ubahSiklus.mutate({ s, status: "closed" })}>Tutup & Finalkan</Button>}
+                  {bolehUbah && s.status === "draft" && <Button size="sm" onClick={() => ubahSiklus.mutate({ s, status: "open" })}><Unlock className="h-4 w-4" aria-hidden /> Buka</Button>}
+                  {bolehUbah && s.status === "open" && <Button size="sm" variant="outline" onClick={() => ubahSiklus.mutate({ s, status: "closed" })}><Lock className="h-4 w-4" aria-hidden /> Tutup & Finalkan</Button>}
                 </CardContent>
               </Card>
             ))}
@@ -161,7 +161,7 @@ export default function HalamanKinerja() {
       )}
 
       {tab === "template" && hr && (
-        template.isLoading ? <SkeletonBaris /> : !template.data?.length ? <Card><EmptyState icon={ClipboardList} title="Belum ada form KPI" description="Contoh: kecepatan pelayanan untuk waiter, kerapian untuk housekeeper." action={<Button onClick={() => setTemplateBuka(true)}>Buat Form</Button>} /></Card> : (
+        template.isLoading ? <SkeletonBaris /> : !template.data?.length ? <Card><EmptyState icon={ClipboardList} title="Belum ada form KPI" description="Contoh: kecepatan pelayanan untuk waiter, kerapian untuk housekeeper." action={<Button onClick={() => setTemplateBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Buat Form</Button>} /></Card> : (
           <div className="grid gap-3 sm:grid-cols-2">
             {template.data.map((t) => (
               <Card key={t.id} className="animate-fade-up">
@@ -195,7 +195,7 @@ export default function HalamanKinerja() {
       <IsiPenilaian review={review ? (detail.data ?? review) : null} kriteria={detail.data?.criteria ?? review?.scores.map((s, i) => ({ id: s.criterionId, code: s.criterion.code, name: s.criterion.name, description: null, category: null, weight: s.criterion.weight, maxScore: s.criterion.maxScore, sortOrder: i })) ?? []} memuat={detail.isLoading} saya={saya} onClose={() => setReview(null)} />
       <FormTemplate open={templateBuka} onClose={() => setTemplateBuka(false)} />
 
-      <Modal open={siklusBuka} onClose={() => setSiklusBuka(false)} title="Siklus Penilaian Baru" footer={<><Button variant="outline" onClick={() => setSiklusBuka(false)}>Batal</Button><Button form="form-siklus" type="submit" loading={buatSiklus.isPending}>Buat</Button></>}>
+      <Modal open={siklusBuka} onClose={() => setSiklusBuka(false)} title="Siklus Penilaian Baru" footer={<><Button variant="outline" onClick={() => setSiklusBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-siklus" type="submit" loading={buatSiklus.isPending}>{!buatSiklus.isPending && <Plus className="h-4 w-4" aria-hidden />} Buat</Button></>}>
         <form id="form-siklus" onSubmit={fs.handleSubmit((v) => buatSiklus.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Kode" error={fs.formState.errors.code?.message}><Input className="font-mono" {...fs.register("code", { required: "Wajib diisi", pattern: { value: /^[A-Za-z0-9_-]{3,40}$/, message: "3–40 karakter: huruf, angka, _ -" } })} placeholder="Q4-2026" /></Field>
           <Field label="Nama" error={fs.formState.errors.name?.message}><Input {...fs.register("name", { required: "Wajib diisi" })} placeholder="Evaluasi Triwulan IV 2026" /></Field>
@@ -208,7 +208,7 @@ export default function HalamanKinerja() {
       </Modal>
 
       <Modal open={tugasBuka} onClose={() => setTugasBuka(false)} title="Tugaskan Penilai" description="Satu penugasan = satu penilai untuk satu karyawan. Ulangi untuk atasan, rekan, dan bawahan (360°)."
-        footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}>Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending}>Tugaskan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending}>{!tugaskan.isPending && <UserCheck className="h-4 w-4" aria-hidden />} Tugaskan</Button></>}>
         <form id="form-tugas" onSubmit={ft.handleSubmit((v) => tugaskan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Siklus" error={ft.formState.errors.cycleId?.message} className="sm:col-span-2"><Select {...ft.register("cycleId", { required: "Pilih siklus" })}><option value="">— Pilih —</option>{(siklus.data ?? []).filter((s) => s.status !== "closed").map((s) => <option key={s.id} value={s.id}>{s.name} ({labelStatus(s.status)})</option>)}</Select></Field>
           <Field label="Yang dinilai" error={ft.formState.errors.revieweeId?.message}><Select {...ft.register("revieweeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
@@ -219,7 +219,7 @@ export default function HalamanKinerja() {
       </Modal>
 
       <Modal open={umpanBuka} onClose={() => setUmpanBuka(false)} title="Beri Umpan Balik" description="Informal, tercatat, dan bisa dilihat penerimanya — untuk momen yang tidak perlu menunggu siklus penilaian"
-        footer={<><Button variant="outline" onClick={() => setUmpanBuka(false)}>Batal</Button><Button form="form-umpan" type="submit" loading={kirimUmpan.isPending}>Kirim</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setUmpanBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-umpan" type="submit" loading={kirimUmpan.isPending}>{!kirimUmpan.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim</Button></>}>
         <form id="form-umpan" onSubmit={fu.handleSubmit((v) => kirimUmpan.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Untuk" error={fu.formState.errors.recipientId?.message}><Select {...fu.register("recipientId", { required: "Pilih penerima" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>

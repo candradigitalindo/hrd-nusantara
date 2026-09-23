@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Wallet, Plus, Trash2, History } from "lucide-react";
+import { Wallet, Plus, Trash2, History, Save, X, Unlink } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -128,7 +128,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
       </CardContent>
 
       <Modal open={gajiBuka} onClose={() => setGajiBuka(false)} title={berlaku ? "Ubah Gaji Pokok" : "Tetapkan Gaji Pokok"} description="Gaji yang berlaku sebelumnya ditutup otomatis sehari sebelum tanggal berlaku yang baru"
-        footer={<><Button variant="outline" onClick={() => setGajiBuka(false)}>Batal</Button><Button form="form-gaji" type="submit" loading={setGaji.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setGajiBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-gaji" type="submit" loading={setGaji.isPending}>{!setGaji.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-gaji" onSubmit={fg.handleSubmit((v) => setGaji.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Jenis">
             <Select {...fg.register("salaryType")}>{Object.entries(LABEL_SALARY_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
@@ -144,7 +144,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
       </Modal>
 
       <Modal open={komponenBuka} onClose={() => setKomponenBuka(false)} title="Tambah Komponen" description="Kosongkan nominal/persentase untuk memakai nilai bawaan komponen"
-        footer={<><Button variant="outline" onClick={() => setKomponenBuka(false)}>Batal</Button><Button form="form-komponen" type="submit" loading={tambahKomponen.isPending}>Tambah</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setKomponenBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-komponen" type="submit" loading={tambahKomponen.isPending}>{!tambahKomponen.isPending && <Plus className="h-4 w-4" aria-hidden />} Tambah</Button></>}>
         <form id="form-komponen" onSubmit={fk.handleSubmit((v) => tambahKomponen.mutate(v))} className="space-y-4" noValidate>
           <Field label="Komponen" error={fk.formState.errors.componentId?.message}>
             <Select {...fk.register("componentId", { required: "Pilih komponen" })}>
@@ -164,7 +164,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
         </form>
       </Modal>
 
-      <Modal open={riwayatBuka} onClose={() => setRiwayatBuka(false)} title="Riwayat Gaji Pokok" footer={<Button onClick={() => setRiwayatBuka(false)}>Tutup</Button>}>
+      <Modal open={riwayatBuka} onClose={() => setRiwayatBuka(false)} title="Riwayat Gaji Pokok" footer={<Button onClick={() => setRiwayatBuka(false)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
         <ul className="divide-y divide-border text-sm">
           {(gaji.data?.salaries ?? []).map((s) => (
             <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
@@ -176,7 +176,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
       </Modal>
 
       <ConfirmDialog open={Boolean(hapus)} onClose={() => setHapus(null)} onConfirm={() => hapus && hapusKomponen.mutate(hapus)} loading={hapusKomponen.isPending} danger
-        title="Lepas komponen?" description={`${hapus?.component.name ?? ""} tidak akan dihitung lagi untuk karyawan ini mulai batch berikutnya. Slip yang sudah disetujui tidak berubah.`} confirmLabel="Lepas" />
+        title="Lepas komponen?" description={`${hapus?.component.name ?? ""} tidak akan dihitung lagi untuk karyawan ini mulai batch berikutnya. Slip yang sudah disetujui tidak berubah.`} confirmLabel="Lepas" confirmIcon={Unlink} />
     </Card>
   );
 };

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { FileText, Upload, Download, Trash2, AlertTriangle, Clock } from "lucide-react";
+import { FileText, Upload, Download, Trash2, AlertTriangle, Clock, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -158,7 +158,7 @@ export const PanelDokumen = ({ employeeId, bolehUnggah, bolehHapus }: { employee
       </CardContent>
 
       <Modal open={unggahBuka} onClose={() => { setUnggahBuka(false); setBerkas(null); }} title="Unggah Dokumen" description="PDF, JPG, PNG, WebP, atau DOCX — maksimal 5 MB"
-        footer={<><Button variant="outline" onClick={() => { setUnggahBuka(false); setBerkas(null); }}>Batal</Button><Button form="form-unggah" type="submit" loading={unggah.isPending} disabled={!berkas}>Unggah</Button></>}>
+        footer={<><Button variant="outline" onClick={() => { setUnggahBuka(false); setBerkas(null); }}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-unggah" type="submit" loading={unggah.isPending} disabled={!berkas}>{!unggah.isPending && <Upload className="h-4 w-4" aria-hidden />} Unggah</Button></>}>
         <form id="form-unggah" onSubmit={fu.handleSubmit((v) => unggah.mutate(v))} className="space-y-4" noValidate>
           <label
             onDragOver={(e) => { e.preventDefault(); setSeret(true); }}
@@ -194,7 +194,7 @@ export const PanelDokumen = ({ employeeId, bolehUnggah, bolehHapus }: { employee
       </Modal>
 
       <ConfirmDialog open={Boolean(hapus)} onClose={() => setHapus(null)} onConfirm={() => hapus && hapusDok.mutate(hapus)} loading={hapusDok.isPending} danger
-        title="Hapus dokumen?" description={`"${hapus?.title}" akan disembunyikan dari daftar. Berkasnya tidak benar-benar dihapus — kontrak dan dokumen legal tetap tersimpan sebagai bukti.`} confirmLabel="Hapus" />
+        title="Hapus dokumen?" description={`"${hapus?.title}" akan disembunyikan dari daftar. Berkasnya tidak benar-benar dihapus — kontrak dan dokumen legal tetap tersimpan sebagai bukti.`} confirmLabel="Hapus" confirmIcon={Trash2} />
     </Card>
   );
 };

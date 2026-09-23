@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { CalendarCheck, Clock, ShieldCheck, ShieldOff } from "lucide-react";
+import { CalendarCheck, Clock, ShieldCheck, ShieldOff, Check, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -128,8 +128,8 @@ export default function HalamanPresensi() {
         return bolehLembur ? (
           <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
             <span className="mr-1 tabular-nums">{jam} jam</span>
-            <Button size="sm" variant="outline" onClick={() => setujuiLembur.mutate({ id: p.id, approved: true })}>Setujui</Button>
-            <Button size="sm" variant="ghost" className="text-danger" onClick={() => setujuiLembur.mutate({ id: p.id, approved: false })}>Tolak</Button>
+            <Button size="sm" variant="outline" onClick={() => setujuiLembur.mutate({ id: p.id, approved: true })}><Check className="h-4 w-4" aria-hidden /> Setujui</Button>
+            <Button size="sm" variant="ghost" className="text-danger" onClick={() => setujuiLembur.mutate({ id: p.id, approved: false })}><X className="h-4 w-4" aria-hidden /> Tolak</Button>
           </div>
         ) : (
           <Badge tone="warning">{jam} jam · menunggu</Badge>

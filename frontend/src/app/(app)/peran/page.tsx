@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Plus, KeyRound, Pencil, Trash2, Lock, Users, ShieldCheck, Eye, FilePlus2, PencilLine, Eraser, type LucideIcon } from "lucide-react";
+import { Plus, KeyRound, Pencil, Trash2, Lock, Users, ShieldCheck, Eye, FilePlus2, PencilLine, Eraser, type LucideIcon, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -22,6 +22,9 @@ import type { KatalogIzin, PeranKustom, Role, AksiIzin, DefinisiHalamanIzin } fr
 type FormPeran = { name: string; description: string; baseRole: Role; permissions: string[] };
 
 const URUTAN_LINGKUP: Role[] = ["EMPLOYEE", "MANAGER", "HR_ADMIN", "SUPER_ADMIN"];
+
+/** Lingkup yang hanya boleh diberikan Super Admin. */
+const LINGKUP_TINGGI = new Set<Role>(["HR_ADMIN", "SUPER_ADMIN"]);
 
 const KOLOM: { aksi: AksiIzin; label: string; icon: LucideIcon }[] = [
   { aksi: "lihat", label: "Lihat", icon: Eye },
@@ -126,6 +129,22 @@ export default function HalamanPeran() {
   const terkunci = form.item?.code === "SUPER_ADMIN";
   const izinSaya = React.useMemo(() => new Set(saya?.permissions ?? []), [saya]);
   const bolehBeri = (k: string) => pemilik || izinSaya.has(k);
+
+  // Lingkup Super Admin dan HR Admin hanya ditawarkan kepada pemilik sistem;
+  // yang lain membuat peran dari nama dan hak akses saja.
+  const lingkupPilihan = React.useMemo(
+    () => URUTAN_LINGKUP.filter((r) => pemilik || !LINGKUP_TINGGI.has(r) || r === form.item?.baseRole),
+    [pemilik, form.item]
+  );
+
+  /**
+   * Peran yang tidak boleh ia sentuh sama sekali: Super Admin selalu terkunci,
+   * dan bagi yang bukan pemilik juga peran berlingkup tinggi atau yang memuat
+   * izin di luar miliknya sendiri. Server menolak keduanya.
+   */
+  const terlindungi = (r: PeranKustom) =>
+    r.code === "SUPER_ADMIN" ||
+    (!pemilik && (LINGKUP_TINGGI.has(r.baseRole) || r.permissions.some((k) => !izinSaya.has(k))));
   const dipilih = React.useMemo(() => new Set(terpilih), [terpilih]);
 
   const ubahKunci = (kunci: string[], nyala: boolean) => {
@@ -191,7 +210,8 @@ export default function HalamanPeran() {
 
       {!pemilik && (
         <Alert tone="info" title="Batas pengelola peran">
-          Anda hanya bisa memberikan izin yang Anda pegang sendiri, dan tidak bisa membuat peran berlingkup HR Admin atau Super Admin.
+          Anda hanya bisa memberikan izin yang Anda pegang sendiri. Peran berlingkup HR Admin atau Super Admin tidak bisa Anda buat,
+          sunting, maupun hapus — begitu juga peran yang memuat izin di luar milik Anda.
         </Alert>
       )}
 
@@ -202,7 +222,8 @@ export default function HalamanPeran() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {peran.data.map((r) => {
-            const kunci = r.code === "SUPER_ADMIN";
+            const semuaIzin = r.code === "SUPER_ADMIN";
+            const kunci = terlindungi(r);
             return (
               <Card key={r.id} className="animate-fade-up flex flex-col">
                 <CardHeader className="flex-row items-start justify-between gap-3">
@@ -215,19 +236,24 @@ export default function HalamanPeran() {
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {kunci ? (
-                      <span className="grid h-9 w-9 place-items-center text-muted" title="Terkunci"><Lock className="h-4 w-4" aria-hidden /><span className="sr-only">Terkunci</span></span>
+                      <span
+                        className="grid h-9 w-9 place-items-center text-muted"
+                        title={semuaIzin ? "Peran Super Admin terkunci" : "Hanya Super Admin yang bisa mengelola peran ini"}
+                      >
+                        <Lock className="h-4 w-4" aria-hidden /><span className="sr-only">Terkunci</span>
+                      </span>
                     ) : bolehUbah ? (
                       <Button variant="ghost" size="icon" onClick={() => setForm({ open: true, item: r })} aria-label={`Sunting ${r.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>
                     ) : null}
-                    {!r.isSystem && bolehHapus && (
+                    {!r.isSystem && bolehHapus && !kunci && (
                       <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus(r)} aria-label={`Hapus ${r.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent className="mt-auto space-y-2 text-xs text-muted">
                   <p className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" aria-hidden /> Lingkup: {LABEL_LINGKUP[r.baseRole]}</p>
-                  <p className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" aria-hidden /> {r._count.employees} karyawan · {kunci ? "semua izin" : `${r.permissions.length} izin`}</p>
-                  {!kunci && r.permissions.length > 0 && (
+                  <p className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" aria-hidden /> {r._count.employees} karyawan · {semuaIzin ? "semua izin" : `${r.permissions.length} izin`}</p>
+                  {!semuaIzin && r.permissions.length > 0 && (
                     <p className="line-clamp-3">{ringkasIzin(r.permissions, katalog.data?.pages)}</p>
                   )}
                 </CardContent>
@@ -245,8 +271,8 @@ export default function HalamanPeran() {
         description={form.item?.isSystem ? "Peran sistem: nama dan izinnya boleh diubah, lingkup datanya tidak." : "Centang per halaman apa yang boleh dilihat, dibuat, diubah, dan dihapus"}
         footer={
           <>
-            <Button variant="outline" onClick={() => setForm({ open: false, item: null })} disabled={simpan.isPending}>Batal</Button>
-            <Button form="form-peran" type="submit" loading={simpan.isPending} disabled={terkunci}>Simpan</Button>
+            <Button variant="outline" onClick={() => setForm({ open: false, item: null })} disabled={simpan.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
+            <Button form="form-peran" type="submit" loading={simpan.isPending} disabled={terkunci}>{!simpan.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button>
           </>
         }
       >
@@ -257,8 +283,8 @@ export default function HalamanPeran() {
             </Field>
             <Field label="Lingkup data" hint="Seberapa luas data yang bisa dilihat: diri sendiri, departemen, atau seluruh perusahaan">
               <Select {...f.register("baseRole")} disabled={Boolean(form.item?.isSystem)}>
-                {URUTAN_LINGKUP.map((r) => (
-                  <option key={r} value={r} disabled={!pemilik && (r === "HR_ADMIN" || r === "SUPER_ADMIN")}>
+                {lingkupPilihan.map((r) => (
+                  <option key={r} value={r}>
                     {LABEL_LINGKUP[r]}
                   </option>
                 ))}
@@ -328,6 +354,7 @@ export default function HalamanPeran() {
         title="Hapus peran?"
         description={`"${hapus?.name}" akan dihapus. Ini ditolak otomatis bila masih ada karyawan yang memegangnya.`}
         confirmLabel="Hapus"
+        confirmIcon={Trash2}
       />
     </>
   );

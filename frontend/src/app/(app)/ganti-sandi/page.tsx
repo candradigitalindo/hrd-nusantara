@@ -57,7 +57,7 @@ export default function HalamanGantiSandi() {
               <Input type="password" autoComplete="new-password" {...register("ulang", { validate: (v) => v === baru || "Tidak sama dengan sandi baru" })} />
             </Field>
             <Button type="submit" loading={isSubmitting} className="w-full sm:w-auto">
-              <KeyRound className="h-4 w-4" aria-hidden /> {wajib ? "Simpan & lanjutkan" : "Simpan sandi baru"}
+              {!isSubmitting && <KeyRound className="h-4 w-4" aria-hidden />} {wajib ? "Simpan & lanjutkan" : "Simpan sandi baru"}
             </Button>
           </form>
         </CardContent>

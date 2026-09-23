@@ -61,8 +61,8 @@ class _LayarIsiPenilaianState extends ConsumerState<LayarIsiPenilaian> {
         title: const Text('Kirim penilaian?'),
         content: const Text('Setelah dikirim, nilai tidak bisa diubah lagi. Nilai akhir dihitung sistem dari bobot tiap kriteria.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Periksa lagi')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Kirim')),
+          TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.edit_outlined), label: const Text('Periksa lagi')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.send), label: const Text('Kirim')),
         ],
       ),
     );
@@ -171,11 +171,10 @@ class _LayarIsiPenilaianState extends ConsumerState<LayarIsiPenilaian> {
                 ),
               ),
               const SizedBox(height: 14),
-              FilledButton(
+              FilledButton.icon(
                 onPressed: _mengirim ? null : () => _kirim(r),
-                child: _mengirim
-                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('Kirim Penilaian'),
+                icon: _mengirim ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+                label: const Text('Kirim Penilaian'),
               ),
             ],
           );

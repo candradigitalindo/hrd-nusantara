@@ -5,6 +5,9 @@
 //     HR_ADMIN atau SUPER_ADMIN, dan tidak boleh memberikan izin yang tidak
 //     ia pegang sendiri — siapa pun yang bisa mengelola peran tidak boleh
 //     memakai jalur itu untuk menaikkan haknya sendiri.
+//   - Aturan yang sama berlaku untuk peran yang SUDAH ada: peran berlingkup
+//     HR_ADMIN/SUPER_ADMIN, atau yang memuat izin di luar milik aktor, tidak
+//     bisa ia sunting maupun hapus — termasuk hanya untuk mengganti namanya.
 //   - Peran sistem SUPER_ADMIN terkunci sepenuhnya; peran sistem lain boleh
 //     diubah izinnya tetapi tidak lingkup datanya dan tidak bisa dihapus.
 //   - Peran yang masih dipegang karyawan tidak bisa dihapus.
@@ -31,20 +34,22 @@ const roleSelect = {
 const LINGKUP_TINGGI = new Set<Role>([Role.SUPER_ADMIN, Role.HR_ADMIN]);
 
 /**
- * Alasan penolakan bila aktor mencoba memberi hak yang melampaui miliknya,
- * atau null bila boleh. SUPER_ADMIN bebas.
+ * Alasan penolakan bila aktor mencoba menyentuh hak yang melampaui miliknya,
+ * atau null bila boleh. Dipakai untuk keadaan yang dituju (isi request) maupun
+ * keadaan peran yang sudah ada. SUPER_ADMIN bebas.
  */
 const pelanggaranEskalasi = (
   aktor: { role: Role; permissions: string[] },
-  target: { baseRole?: Role; permissions?: string[] }
+  target: { baseRole?: Role; permissions?: string[] },
+  aksi: 'membuat' | 'mengubah' | 'menghapus'
 ): string | null => {
   if (aktor.role === Role.SUPER_ADMIN) return null;
   if (target.baseRole && LINGKUP_TINGGI.has(target.baseRole)) {
-    return 'Hanya SUPER_ADMIN yang boleh membuat peran berlingkup HR Admin atau Super Admin';
+    return `Hanya Super Admin yang boleh ${aksi} peran berlingkup HR Admin atau Super Admin`;
   }
   const asing = (target.permissions ?? []).filter((k) => !aktor.permissions.includes(k));
   if (asing.length > 0) {
-    return `Anda tidak bisa memberikan izin yang tidak Anda pegang sendiri: ${asing.join(', ')}`;
+    return `Anda tidak bisa ${aksi} peran dengan izin yang tidak Anda pegang sendiri: ${asing.join(', ')}`;
   }
   return null;
 };
@@ -79,7 +84,7 @@ export const createRole = async (req: Request, res: Response) => {
   const input = req.body as CreateRoleInput;
   const aktor = req.user!;
 
-  const tolak = pelanggaranEskalasi(aktor, input);
+  const tolak = pelanggaranEskalasi(aktor, input, 'membuat');
   if (tolak) return res.status(403).json({ error: tolak });
 
   try {
@@ -125,12 +130,19 @@ export const updateRole = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Lingkup data peran sistem tidak bisa diubah' });
   }
 
-  // Yang diperiksa adalah HASIL akhirnya: menyunting peran berlingkup tinggi
-  // sama berbahayanya dengan membuatnya, walau field baseRole tidak dikirim.
-  const tolak = pelanggaranEskalasi(aktor, {
-    baseRole: input.baseRole ?? lama.baseRole,
-    permissions: input.permissions,
-  });
+  // Peran yang sekarang lebih kuat dari aktor tidak boleh ia sentuh sama
+  // sekali — mengganti namanya saja sudah cukup untuk menyesatkan orang lain
+  // agar menugaskan peran itu.
+  const tolakLama = pelanggaranEskalasi(aktor, { baseRole: lama.baseRole, permissions: lama.permissions }, 'mengubah');
+  if (tolakLama) return res.status(403).json({ error: tolakLama });
+
+  // Lalu HASIL akhirnya: menyunting peran menjadi berlingkup tinggi sama
+  // berbahayanya dengan membuatnya, walau field baseRole tidak dikirim.
+  const tolak = pelanggaranEskalasi(
+    aktor,
+    { baseRole: input.baseRole ?? lama.baseRole, permissions: input.permissions },
+    'mengubah'
+  );
   if (tolak) return res.status(403).json({ error: tolak });
 
   // Menyunting peran yang sedang dipegang aktor sendiri = mengubah hak sendiri.
@@ -180,10 +192,15 @@ export const updateRole = async (req: Request, res: Response) => {
 
 export const deleteRole = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const aktor = req.user!;
 
   const role = await prisma.customRole.findUnique({ where: { id }, select: roleSelect });
   if (!role) return res.status(404).json({ error: 'Peran tidak ditemukan' });
   if (role.isSystem) return res.status(403).json({ error: 'Peran sistem tidak bisa dihapus' });
+
+  const tolak = pelanggaranEskalasi(aktor, { baseRole: role.baseRole, permissions: role.permissions }, 'menghapus');
+  if (tolak) return res.status(403).json({ error: tolak });
+
   if (role._count.employees > 0) {
     return res.status(409).json({
       error: `Peran masih dipegang ${role._count.employees} karyawan. Pindahkan mereka ke peran lain dulu.`,

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hijau sage merek: sama dengan warna primary di globals.css (web) dan
+         warnaUtama di core/tema.dart. -->
+    <color name="ic_launcher_background">#4A7C62</color>
+</resources>

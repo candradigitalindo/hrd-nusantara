@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ShieldCheck, Smartphone, ArrowLeft, Copy } from "lucide-react";
+import { Download, ShieldCheck, ArrowLeft, Copy } from "lucide-react";
 import { api } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { formatTanggal, formatUkuran } from "@/lib/utils";
+import { Logo } from "@/components/ui/logo";
 import type { RilisMobile } from "@/lib/types";
 
 /** Halaman publik: karyawan mengunduh aplikasi Android sebelum punya sesi di ponselnya. */
@@ -17,7 +18,7 @@ export default function HalamanUnduh() {
     <div className="flex min-h-dvh items-center justify-center bg-background p-4">
       <div className="w-full max-w-md space-y-4">
         <div className="text-center">
-          <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary text-on-primary"><Smartphone className="h-7 w-7" aria-hidden /></span>
+          <Logo className="mx-auto h-16 w-16" />
           <h1 className="mt-3 text-2xl font-bold">HRD Nusantara untuk Android</h1>
           <p className="text-sm text-muted">Presensi, cuti, slip gaji, dan jadwal di ponsel Anda</p>
         </div>

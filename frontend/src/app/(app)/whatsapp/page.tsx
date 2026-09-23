@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { MessageCircle, Plus, QrCode, Unplug, Search, Smartphone, ArrowDownLeft, ArrowUpRight, BellRing, Link2, Link2Off, ScanLine, UserX, Archive } from "lucide-react";
+import { MessageCircle, Plus, QrCode, Unplug, Search, Smartphone, ArrowDownLeft, ArrowUpRight, BellRing, Link2, Link2Off, ScanLine, UserX, Archive, Check, LogOut, Users, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -124,7 +124,7 @@ export default function HalamanWhatsApp() {
       <PageHeader
         title="Pemantauan WhatsApp"
         description="Setiap karyawan terdaftar wajib menautkan WhatsApp-nya lewat aplikasi mobile; nomor perusahaan didaftarkan HR. Seluruh pesan teks terarsip terenkripsi."
-        actions={tab === "nomor" ? bolehBuat && <Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor</Button> : tab === "kepatuhan" ? bolehUbah && <Button onClick={() => ingatkan.mutate(undefined)} loading={ingatkan.isPending} disabled={!kepatuhan.data || kepatuhan.data.summary.connected === kepatuhan.data.summary.total}><BellRing className="h-4 w-4" aria-hidden /> Ingatkan yang Belum</Button> : null}
+        actions={tab === "nomor" ? bolehBuat && <Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor</Button> : tab === "kepatuhan" ? bolehUbah && <Button onClick={() => ingatkan.mutate(undefined)} loading={ingatkan.isPending} disabled={!kepatuhan.data || kepatuhan.data.summary.connected === kepatuhan.data.summary.total}>{!ingatkan.isPending && <BellRing className="h-4 w-4" aria-hidden />} Ingatkan yang Belum</Button> : null}
       />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
@@ -162,7 +162,7 @@ export default function HalamanWhatsApp() {
                       <p className="text-xs text-muted tabular-nums">{b.phoneNumber ? `+${b.phoneNumber}` : "nomor belum diketahui"}{b.lastConnectedAt ? ` · tersambung ${formatRelatif(b.lastConnectedAt)}` : ""}{b.status === "disconnected" && b.lastDisconnectedAt ? ` · putus ${formatRelatif(b.lastDisconnectedAt)}` : ""}{b.status === "connected" ? (b.attendanceGroupName ? ` · foto absensi → ${b.attendanceGroupName}` : " · grup foto absensi belum dipilih") : ""}</p>
                     </div>
                     <Badge tone={nadaStatus(b.status)} dot>{labelStatus(b.status)}</Badge>
-                    {bolehUbah && b.status !== "connected" && <Button size="sm" variant="ghost" onClick={() => ingatkan.mutate([b.employee.id])} loading={ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id}><BellRing className="h-4 w-4" aria-hidden /> Ingatkan</Button>}
+                    {bolehUbah && b.status !== "connected" && <Button size="sm" variant="ghost" onClick={() => ingatkan.mutate([b.employee.id])} loading={ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id}>{!(ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id) && <BellRing className="h-4 w-4" aria-hidden />} Ingatkan</Button>}
                     {b.accountId && <Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan({ id: b.employee.id, name: b.employee.name }); setPage(1); setTab("arsip"); }}><Archive className="h-4 w-4" aria-hidden /> Arsip</Button>}
                   </li>
                 ))}
@@ -174,7 +174,7 @@ export default function HalamanWhatsApp() {
 
       {tab === "nomor" ? (
         akun.isLoading ? <SkeletonBaris /> : !akun.data?.length ? (
-          <Card><EmptyState icon={Smartphone} title="Belum ada nomor" description="Nomor pribadi muncul begitu karyawan menautkan lewat aplikasi mobile. Nomor CS outlet atau reservasi hotel didaftarkan di sini." action={<Button onClick={() => setFormBuka(true)}>Daftarkan Nomor Perusahaan</Button>} /></Card>
+          <Card><EmptyState icon={Smartphone} title="Belum ada nomor" description="Nomor pribadi muncul begitu karyawan menautkan lewat aplikasi mobile. Nomor CS outlet atau reservasi hotel didaftarkan di sini." action={<Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor Perusahaan</Button>} /></Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {akun.data.map((a) => (
@@ -195,12 +195,12 @@ export default function HalamanWhatsApp() {
                 <CardContent className="flex flex-wrap gap-2">
                   {!bolehUbah ? null : a.sessionStatus !== "connected" ? (
                     <Button size="sm" onClick={() => sambungkan.mutate(a)} loading={sambungkan.isPending && sambungkan.variables?.id === a.id}>
-                      <QrCode className="h-4 w-4" aria-hidden /> Sambungkan
+                      {!(sambungkan.isPending && sambungkan.variables?.id === a.id) && <QrCode className="h-4 w-4" aria-hidden />} Sambungkan
                     </Button>
                   ) : (
                     <>
                       <Button size="sm" variant="outline" onClick={() => setPutus({ akun: a, logout: false })}><Unplug className="h-4 w-4" aria-hidden /> Putus</Button>
-                      <Button size="sm" variant="ghost" className="text-danger" onClick={() => setPutus({ akun: a, logout: true })}>Logout</Button>
+                      <Button size="sm" variant="ghost" className="text-danger" onClick={() => setPutus({ akun: a, logout: true })}><LogOut className="h-4 w-4" aria-hidden /> Logout</Button>
                     </>
                   )}
                 </CardContent>
@@ -211,7 +211,7 @@ export default function HalamanWhatsApp() {
       ) : tab === "arsip" ? (
         <Card>
           <div className="border-b border-border p-3">
-            {arsipKaryawan && <div className="mb-2 flex items-center gap-2 text-sm"><Badge tone="info">Arsip {arsipKaryawan.name}</Badge><Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan(null); setPage(1); }}>Semua karyawan</Button></div>}
+            {arsipKaryawan && <div className="mb-2 flex items-center gap-2 text-sm"><Badge tone="info">Arsip {arsipKaryawan.name}</Badge><Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan(null); setPage(1); }}><Users className="h-4 w-4" aria-hidden /> Semua karyawan</Button></div>}
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
               <Input className="pl-9" placeholder="Cari kata dalam percakapan, mis. keluhan" value={cari} onChange={(e) => setCari(e.target.value)} aria-label="Cari percakapan" />
@@ -245,7 +245,7 @@ export default function HalamanWhatsApp() {
       ) : null}
 
       <Modal open={formBuka} onClose={() => setFormBuka(false)} title="Daftarkan Nomor Perusahaan" description="Nomor ini akan dipantau. Pastikan ini nomor milik perusahaan, bukan pribadi."
-        footer={<><Button variant="outline" onClick={() => setFormBuka(false)}>Batal</Button><Button form="form-akun" type="submit" loading={daftarkan.isPending}>Daftarkan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setFormBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-akun" type="submit" loading={daftarkan.isPending}>{!daftarkan.isPending && <Plus className="h-4 w-4" aria-hidden />} Daftarkan</Button></>}>
         <form id="form-akun" onSubmit={fa.handleSubmit((v) => daftarkan.mutate(v))} className="space-y-4" noValidate>
           <Field label="Nomor WhatsApp" error={fa.formState.errors.phoneNumber?.message} hint="Format 08xx atau +62xx">
             <Input inputMode="tel" placeholder="0811 1111 111" {...fa.register("phoneNumber", { required: "Nomor wajib diisi", minLength: { value: 8, message: "Nomor terlalu pendek" } })} />
@@ -265,7 +265,7 @@ export default function HalamanWhatsApp() {
       <Modal open={Boolean(qrUntuk)} onClose={() => setQrUntuk(null)} title="Pindai QR dengan WhatsApp" description={qrUntuk ? `${qrUntuk.label}${qrUntuk.phoneNumber ? ` · +${qrUntuk.phoneNumber}` : ""}` : undefined}>
         <div className="flex flex-col items-center gap-4">
           {tersambung ? (
-            <Alert tone="success" title="Tersambung" className="w-full" action={<Button size="sm" onClick={() => setQrUntuk(null)}>Selesai</Button>}>
+            <Alert tone="success" title="Tersambung" className="w-full" action={<Button size="sm" onClick={() => setQrUntuk(null)}><Check className="h-4 w-4" aria-hidden /> Selesai</Button>}>
               Nomor ini kini terpantau. Pesan yang masuk akan muncul di arsip.
             </Alert>
           ) : sesi.data?.qr ? (
@@ -284,7 +284,7 @@ export default function HalamanWhatsApp() {
       <ConfirmDialog open={Boolean(putus)} onClose={() => setPutus(null)} onConfirm={() => putus && putuskan.mutate(putus)} loading={putuskan.isPending} danger={putus?.logout}
         title={putus?.logout ? "Logout sesi WhatsApp?" : "Putus sesi sementara?"}
         description={putus?.logout ? "Pairing dihapus di sisi WhatsApp. Pemegang nomor harus memindai QR lagi untuk menyambungkan." : "Sesi ditutup tanpa menghapus pairing, bisa disambungkan lagi tanpa scan ulang."}
-        confirmLabel={putus?.logout ? "Logout" : "Putus"} />
+        confirmLabel={putus?.logout ? "Logout" : "Putus"} confirmIcon={putus?.logout ? LogOut : Unplug} />
     </>
   );
 }

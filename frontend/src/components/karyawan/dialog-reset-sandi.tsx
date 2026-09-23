@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, KeyRound } from "lucide-react";
+import { Check, Copy, KeyRound, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Modal } from "@/components/ui/modal";
@@ -60,12 +60,12 @@ const IsiResetSandi = ({ karyawan, onClose }: { karyawan: Karyawan; onClose: () 
       description={`${karyawan.name} · ${karyawan.nik}`}
       footer={
         hasil ? (
-          <Button onClick={onClose}>Selesai</Button>
+          <Button onClick={onClose}><Check className="h-4 w-4" aria-hidden /> Selesai</Button>
         ) : (
           <>
-            <Button variant="outline" onClick={onClose} disabled={reset.isPending}>Batal</Button>
+            <Button variant="outline" onClick={onClose} disabled={reset.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
             <Button onClick={() => reset.mutate()} loading={reset.isPending} disabled={!bolehKirim}>
-              <KeyRound className="h-4 w-4" aria-hidden /> Atur ulang
+              {!reset.isPending && <KeyRound className="h-4 w-4" aria-hidden />} Atur ulang
             </Button>
           </>
         )

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ikon adaptif (Android 8+): latar warna merek, lapisan depan glif presensi.
+     PNG di mipmap-<kerapatan> tetap dipakai Android 7 ke bawah. Berkasnya
+     dibuat oleh merek/buat-ikon.mjs. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <!-- Ikon bertema Android 13+: sistem memakai bentuknya saja, bukan warnanya. -->
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>

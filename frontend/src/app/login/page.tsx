@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { Logo } from "@/components/ui/logo";
 
 // Username = nomor HP/WhatsApp; email tetap diterima sebagai cadangan.
 const skema = z.object({
@@ -90,9 +91,7 @@ export default function LoginPage() {
     <div className="flex min-h-dvh items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-6 animate-fade-up">
         <div className="text-center">
-          <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-primary text-on-primary text-xl font-bold">
-            H
-          </span>
+          <Logo className="mx-auto h-14 w-14" />
           <h1 className="mt-4 text-2xl font-semibold tracking-tight">HRD Nusantara</h1>
           <p className="mt-1 text-sm text-muted">Masuk dengan akun karyawan Anda</p>
         </div>

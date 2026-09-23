@@ -4,9 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Building2, Briefcase, KeyRound } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Building2, Briefcase, KeyRound, Pencil } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola, bolehKelolaAkun } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge, nadaStatus } from "@/components/ui/badge";
@@ -61,7 +61,7 @@ export default function HalamanDetailKaryawan() {
             description={`${k.nik} · ${k.customRole?.name ?? LABEL_ROLE[k.role]}`}
             actions={
               <div className="flex flex-wrap items-center gap-2">
-                {hr && k.id !== saya?.id && (
+                {hr && k.id !== saya?.id && bolehKelolaAkun(saya, k) && (
                   <Button variant="outline" size="sm" onClick={() => setResetSandi(true)}>
                     <KeyRound className="h-4 w-4" aria-hidden /> Atur ulang sandi
                   </Button>
@@ -91,7 +91,7 @@ export default function HalamanDetailKaryawan() {
               </CardContent>
               {hr && (
                 <div className="border-t border-border p-4">
-                  <Button variant="outline" className="w-full" onClick={() => history.back()}>Sunting dari daftar</Button>
+                  <Button variant="outline" className="w-full" onClick={() => history.back()}><Pencil className="h-4 w-4" aria-hidden /> Sunting dari daftar</Button>
                 </div>
               )}
             </Card>

@@ -23,8 +23,8 @@ class LayarPenilaian extends ConsumerWidget {
           'Anda menyatakan sudah membaca hasil penilaian periode ${r.periode}. Ini bukan berarti setuju — tambahkan catatan diskusi bila ada yang ingin ditanggapi.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Konfirmasi')),
+          TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: const Text('Batal')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.check), label: const Text('Konfirmasi')),
         ],
       ),
     );
@@ -53,8 +53,8 @@ class LayarPenilaian extends ConsumerWidget {
           decoration: const InputDecoration(hintText: 'Tanggapan atau hal yang ingin dibahas dengan penilai'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, pengendali.text.trim()), child: const Text('Kirim')),
+          TextButton.icon(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close), label: const Text('Batal')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, pengendali.text.trim()), icon: const Icon(Icons.send), label: const Text('Kirim')),
         ],
       ),
     );

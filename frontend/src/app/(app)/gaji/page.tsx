@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Wallet, ChevronRight, Printer } from "lucide-react";
+import { Wallet, ChevronRight, Printer, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
@@ -59,7 +59,7 @@ export default function HalamanGaji() {
       </Card>
 
       <Modal open={Boolean(detail)} onClose={() => setDetail(null)} title="Slip Gaji" description={detail ? `${detail.employee.name} · ${detail.employee.nik}` : undefined} size="lg"
-        footer={<><Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" aria-hidden /> Cetak</Button><Button onClick={() => setDetail(null)}>Tutup</Button></>}>
+        footer={<><Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" aria-hidden /> Cetak</Button><Button onClick={() => setDetail(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button></>}>
         {detail && <DetailSlip slip={detail} />}
       </Modal>
     </>

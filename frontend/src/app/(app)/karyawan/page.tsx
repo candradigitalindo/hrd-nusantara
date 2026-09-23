@@ -3,9 +3,9 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Plus, Search, UserX, Users, Pencil, KeyRound } from "lucide-react";
+import { Plus, Search, UserX, Users, Pencil, KeyRound, UserPlus } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelolaAkun } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -113,22 +113,32 @@ export default function HalamanKaryawan() {
             hideOnMobile: false,
             className: "text-right",
             cell: (k: Karyawan) => (
+              // Akun berlingkup lebih tinggi (mis. Super Admin) tidak diberi
+              // tombol apa pun: server menolaknya, jadi jangan ditawarkan.
               <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                {bolehUbah && (
-                  <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, karyawan: k })} aria-label={`Sunting ${k.name}`}>
-                    <Pencil className="h-4 w-4" aria-hidden />
-                    <span className="hidden sm:inline">Sunting</span>
-                  </Button>
-                )}
-                {bolehUbah && k.id !== saya?.id && (
-                  <Button variant="ghost" size="sm" onClick={() => setResetSandi(k)} aria-label={`Atur ulang sandi ${k.name}`} title="Atur ulang kata sandi">
-                    <KeyRound className="h-4 w-4" aria-hidden />
-                  </Button>
-                )}
-                {bolehHapus && k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
-                  <Button variant="ghost" size="sm" className="text-danger" onClick={() => setNonaktif(k)} aria-label={`Nonaktifkan ${k.name}`}>
-                    <UserX className="h-4 w-4" aria-hidden />
-                  </Button>
+                {!bolehKelolaAkun(saya, k) ? (
+                  <span className="pr-2 text-xs text-muted" title="Hanya Super Admin yang bisa mengelola akun ini">
+                    Terlindungi
+                  </span>
+                ) : (
+                  <>
+                    {bolehUbah && (
+                      <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, karyawan: k })} aria-label={`Sunting ${k.name}`}>
+                        <Pencil className="h-4 w-4" aria-hidden />
+                        <span className="hidden sm:inline">Sunting</span>
+                      </Button>
+                    )}
+                    {bolehUbah && k.id !== saya?.id && (
+                      <Button variant="ghost" size="sm" onClick={() => setResetSandi(k)} aria-label={`Atur ulang sandi ${k.name}`} title="Atur ulang kata sandi">
+                        <KeyRound className="h-4 w-4" aria-hidden />
+                      </Button>
+                    )}
+                    {bolehHapus && k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
+                      <Button variant="ghost" size="sm" className="text-danger" onClick={() => setNonaktif(k)} aria-label={`Nonaktifkan ${k.name}`}>
+                        <UserX className="h-4 w-4" aria-hidden />
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             ),
@@ -188,7 +198,7 @@ export default function HalamanKaryawan() {
             icon={Users}
             title={cariTunda || status || dept ? "Tidak ada yang cocok" : "Belum ada karyawan"}
             description={cariTunda || status || dept ? "Coba ubah kata kunci atau saringan." : "Tambahkan karyawan pertama untuk memulai."}
-            action={bolehBuat && !cariTunda && <Button onClick={() => setForm({ open: true, karyawan: null })}>Tambah Karyawan</Button>}
+            action={bolehBuat && !cariTunda && <Button onClick={() => setForm({ open: true, karyawan: null })}><UserPlus className="h-4 w-4" aria-hidden /> Tambah Karyawan</Button>}
           />
         ) : (
           data && (
@@ -212,6 +222,7 @@ export default function HalamanKaryawan() {
         title="Nonaktifkan karyawan?"
         description={`${nonaktif?.name ?? ""} tidak akan bisa login lagi. Riwayat presensi dan penggajiannya tetap tersimpan — data karyawan tidak pernah dihapus.`}
         confirmLabel="Nonaktifkan"
+        confirmIcon={UserX}
       />
     </>
   );

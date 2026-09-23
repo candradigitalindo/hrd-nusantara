@@ -30,6 +30,17 @@ export const useLogout = () => {
 export const bolehHr = (role: string | undefined) => role === "SUPER_ADMIN" || role === "HR_ADMIN";
 export const bolehManajer = (role: string | undefined) => bolehHr(role) || role === "MANAGER";
 
+/** Lingkup data dari yang paling sempit ke paling luas. */
+const PERINGKAT_LINGKUP: Record<string, number> = { EMPLOYEE: 0, MANAGER: 1, HR_ADMIN: 2, SUPER_ADMIN: 3 };
+
+/**
+ * Akun berlingkup lebih luas tidak boleh disentuh dari bawah: hanya Super Admin
+ * yang boleh menyunting, menonaktifkan, atau mengatur ulang sandi akun Super
+ * Admin. Server menolaknya juga — ini supaya tombolnya tidak ditawarkan.
+ */
+export const bolehKelolaAkun = (saya: PenggunaSesi | undefined, target: { role: string }) =>
+  saya !== undefined && (PERINGKAT_LINGKUP[target.role] ?? 0) <= (PERINGKAT_LINGKUP[saya.role] ?? 0);
+
 /** Apakah pengguna memegang salah satu izin ini (peran dinamis). */
 export const punyaIzin = (saya: PenggunaSesi | undefined, ...izin: string[]) =>
   saya !== undefined && izin.some((k) => saya.permissions.includes(k));

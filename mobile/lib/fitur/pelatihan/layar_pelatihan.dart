@@ -35,8 +35,8 @@ class LayarPelatihan extends ConsumerWidget {
         title: const Text('Batalkan pendaftaran?'),
         content: Text('${p.judul}${p.mulai != null ? ' · ${formatTanggal(p.mulai, pola: 'EEE, d MMM')}' : ''}. Kursi Anda diberikan ke peserta daftar tunggu.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Tidak')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Batalkan')),
+          TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: const Text('Tidak')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.event_busy), label: const Text('Batalkan')),
         ],
       ),
     );
@@ -199,13 +199,19 @@ class _KartuSesi extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (p != null && p.aktif && s.status == 'scheduled')
-                  TextButton(
+                  TextButton.icon(
                     onPressed: () => onBatal(p),
                     style: TextButton.styleFrom(foregroundColor: skema.error, visualDensity: VisualDensity.compact),
-                    child: const Text('Batalkan'),
+                    icon: const Icon(Icons.event_busy, size: 18),
+                    label: const Text('Batalkan'),
                   )
                 else if (p == null && s.bukaPendaftaran)
-                  FilledButton.tonal(onPressed: onDaftar, style: tombolKecil, child: Text(s.penuh ? 'Daftar Tunggu' : 'Daftar'))
+                  FilledButton.tonalIcon(
+                    onPressed: onDaftar,
+                    style: tombolKecil,
+                    icon: Icon(s.penuh ? Icons.hourglass_empty : Icons.how_to_reg, size: 18),
+                    label: Text(s.penuh ? 'Daftar Tunggu' : 'Daftar'),
+                  )
                 else if (p == null)
                   Text('Pendaftaran ditutup', style: TextStyle(fontSize: 12, color: skema.onSurfaceVariant)),
               ],

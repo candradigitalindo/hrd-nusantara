@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { QrCode, Link2, Link2Off, History, RefreshCw, Users, Camera } from "lucide-react";
+import { QrCode, Link2, Link2Off, History, RefreshCw, Users, Camera, BellOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -111,11 +111,11 @@ export default function HalamanWhatsAppSaya() {
             {(t.status === "never_linked" || t.status === "disconnected") && (
               <>
                 <p className="text-sm text-muted">{t.status === "never_linked" ? "Prosesnya satu menit: tekan tombol, lalu pindai kode QR dengan WhatsApp di ponsel Anda." : `Sesi terputus${t.account?.lastDisconnectedAt ? ` ${formatRelatif(t.account.lastDisconnectedAt)}` : ""}. Sistem mencoba menyambung kembali; bila tidak berhasil, pindai ulang di sini.`}</p>
-                {bolehUbah && <Button onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><QrCode className="h-4 w-4" aria-hidden /> {t.status === "never_linked" ? "Tautkan WhatsApp" : "Pindai Ulang"}</Button>}
+                {bolehUbah && <Button onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}>{!sambungkan.isPending && <QrCode className="h-4 w-4" aria-hidden />} {t.status === "never_linked" ? "Tautkan WhatsApp" : "Pindai Ulang"}</Button>}
               </>
             )}
             {t.status === "inactive" && <p className="text-sm text-muted">HR menonaktifkan tautan WhatsApp Anda. Hubungi HR untuk mengaktifkannya kembali.</p>}
-            {bolehUbah && (t.status === "pending_scan" || t.status === "connecting") && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}><RefreshCw className="h-4 w-4" aria-hidden /> Minta kode baru</Button>}
+            {bolehUbah && (t.status === "pending_scan" || t.status === "connecting") && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}>{!sambungkan.isPending && <RefreshCw className="h-4 w-4" aria-hidden />} Minta kode baru</Button>}
           </CardContent>
         </Card>
       )}
@@ -124,11 +124,11 @@ export default function HalamanWhatsAppSaya() {
         <Card>
           <CardHeader className="flex-row items-start justify-between gap-3">
             <div><CardTitle className="flex items-center gap-2"><Camera className="h-4 w-4 text-primary" aria-hidden /> Grup tujuan foto absensi</CardTitle><CardDescription>Setiap check-in dan check-out, WhatsApp Anda mengirim foto ber-stempel (nama, jam, lokasi, metode) ke grup ini</CardDescription></div>
-            <Button variant="ghost" size="sm" onClick={() => grup.refetch()} loading={grup.isFetching}><RefreshCw className="h-4 w-4" aria-hidden /> Muat ulang</Button>
+            <Button variant="ghost" size="sm" onClick={() => grup.refetch()} loading={grup.isFetching}>{!grup.isFetching && <RefreshCw className="h-4 w-4" aria-hidden />} Muat ulang</Button>
           </CardHeader>
           <CardContent>
             {t.account?.attendanceGroup ? (
-              <Alert tone="success" title={`Terpilih: ${t.account.attendanceGroup.name ?? t.account.attendanceGroup.jid}`} action={<Button size="sm" variant="outline" onClick={() => pilihGrup.mutate(null)} loading={pilihGrup.isPending && pilihGrup.variables === null}>Berhenti mengirim</Button>}>Pilih grup lain di bawah untuk mengganti.</Alert>
+              <Alert tone="success" title={`Terpilih: ${t.account.attendanceGroup.name ?? t.account.attendanceGroup.jid}`} action={<Button size="sm" variant="outline" onClick={() => pilihGrup.mutate(null)} loading={pilihGrup.isPending && pilihGrup.variables === null}>{!(pilihGrup.isPending && pilihGrup.variables === null) && <BellOff className="h-4 w-4" aria-hidden />} Berhenti mengirim</Button>}>Pilih grup lain di bawah untuk mengganti.</Alert>
             ) : (
               <Alert tone="warning" title="Belum ada grup tujuan">Pilih grup outlet atau tim Anda; tanpa ini foto absensi tidak dikirim.</Alert>
             )}

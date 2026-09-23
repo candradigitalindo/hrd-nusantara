@@ -126,9 +126,10 @@ class _LayarAjukanCutiState extends ConsumerState<LayarAjukanCuti> {
               const SizedBox(height: 6),
               TextField(controller: _lampiran, keyboardType: TextInputType.url, decoration: InputDecoration(labelText: terpilih?.wajibLampiran == true ? 'Tautan lampiran (wajib)' : 'Tautan lampiran (opsional)', hintText: 'https://…', helperText: 'Unggah berkas ke Drive/foto, lalu tempel tautannya')),
               const SizedBox(height: 20),
-              FilledButton(
+              FilledButton.icon(
                 onPressed: _mengirim ? null : () => _kirim(daftar),
-                child: _mengirim ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Kirim Pengajuan'),
+                icon: _mengirim ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+                label: const Text('Kirim Pengajuan'),
               ),
               const SizedBox(height: 8),
               Text('Hari libur dan cuti bersama tidak dihitung; saldo dipotong setelah disetujui.', style: TextStyle(fontSize: 12, color: skema.onSurfaceVariant), textAlign: TextAlign.center),

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ export const FormTemplate = ({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <Modal open={open} onClose={onClose} size="lg" title="Form Penilaian Baru" description="KPI per jabatan — misalnya kecepatan pelayanan untuk waiter, kerapian untuk housekeeper"
-      footer={<><Button variant="outline" onClick={onClose}>Batal</Button><Button form="form-template" type="submit" loading={simpan.isPending} disabled={Math.abs(totalBobot - 100) > 0.01}>Buat</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-template" type="submit" loading={simpan.isPending} disabled={Math.abs(totalBobot - 100) > 0.01}>{!simpan.isPending && <Plus className="h-4 w-4" aria-hidden />} Buat</Button></>}>
       <form id="form-template" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-5" noValidate>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nama form" error={f.formState.errors.name?.message}><Input {...f.register("name", { required: "Wajib diisi" })} placeholder="KPI Waiter 2026" /></Field>

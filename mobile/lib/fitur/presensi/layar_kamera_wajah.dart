@@ -109,7 +109,11 @@ class _LayarKameraWajahState extends State<LayarKameraWajah> with WidgetsBinding
                     Text(_galat!, style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
                     if (_izinDitolak) ...[
                       const SizedBox(height: 16),
-                      FilledButton(onPressed: () => Geolocator.openAppSettings(), child: const Text('Buka pengaturan aplikasi')),
+                      FilledButton.icon(
+                        onPressed: () => Geolocator.openAppSettings(),
+                        icon: const Icon(Icons.settings_outlined),
+                        label: const Text('Buka pengaturan aplikasi'),
+                      ),
                     ],
                   ],
                 ),

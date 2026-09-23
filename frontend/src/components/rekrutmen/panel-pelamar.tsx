@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink } from "lucide-react";
+import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink, ClipboardPen, Save, UserPlus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -119,12 +119,12 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
           {bolehBuat && <Button onClick={() => setTambahBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Pelamar</Button>}
         </div>
         {kandidat.isLoading ? <SkeletonBaris /> : !kandidat.data?.data.length ? (
-          <EmptyState icon={UserCheck} title="Belum ada pelamar" description="Catat pelamar yang masuk dari lowongan yang sudah ditayangkan." action={bolehBuat && <Button onClick={() => setTambahBuka(true)}>Catat Pelamar</Button>} />
+          <EmptyState icon={UserCheck} title="Belum ada pelamar" description="Catat pelamar yang masuk dari lowongan yang sudah ditayangkan." action={bolehBuat && <Button onClick={() => setTambahBuka(true)}><ClipboardPen className="h-4 w-4" aria-hidden /> Catat Pelamar</Button>} />
         ) : (<><ResponsiveTable columns={kolom} rows={kandidat.data.data} rowKey={(k) => k.id} onRowClick={(k) => setDetail(k)} /><Pagination pagination={kandidat.data.pagination} onPage={setPage} /></>)}
       </Card>
 
       <Modal open={tambahBuka} onClose={() => setTambahBuka(false)} size="lg" title="Catat Pelamar"
-        footer={<><Button variant="outline" onClick={() => setTambahBuka(false)}>Batal</Button><Button form="form-kandidat" type="submit" loading={tambah.isPending}>Catat</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setTambahBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-kandidat" type="submit" loading={tambah.isPending}>{!tambah.isPending && <ClipboardPen className="h-4 w-4" aria-hidden />} Catat</Button></>}>
         <form id="form-kandidat" onSubmit={fk.handleSubmit((v) => tambah.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Lowongan" error={fk.formState.errors.jobPostingId?.message} className="sm:col-span-2"><Select {...fk.register("jobPostingId", { required: "Pilih lowongan" })}><option value="">— Pilih —</option>{(lowongan.data ?? []).filter((l) => l.status === "open").map((l) => <option key={l.id} value={l.id}>{l.title}</option>)}</Select></Field>
           <Field label="Nama" error={fk.formState.errors.name?.message}><Input {...fk.register("name", { required: "Wajib diisi" })} /></Field>
@@ -198,7 +198,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
       </Modal>
 
       <Modal open={aksi === "tahap"} onClose={() => setAksi(null)} title="Ubah Tahap" description={detail?.name}
-        footer={<><Button variant="outline" onClick={() => setAksi(null)}>Batal</Button><Button variant={tahapDipilih === "rejected" ? "danger" : "primary"} form="form-tahap" type="submit" loading={pindah.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant={tahapDipilih === "rejected" ? "danger" : "primary"} form="form-tahap" type="submit" loading={pindah.isPending}>{!pindah.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-tahap" onSubmit={ft.handleSubmit((v) => pindah.mutate(v))} className="space-y-4" noValidate>
           <Field label="Tahap baru"><Select {...ft.register("stage")}>{detail && tahapBerikut(detail.status).map((t) => <option key={t} value={t}>{LABEL_TAHAP[t]}</option>)}</Select></Field>
           {tahapDipilih === "rejected" ? (
@@ -211,7 +211,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
       </Modal>
 
       <Modal open={aksi === "wawancara"} onClose={() => setAksi(null)} title="Jadwalkan Wawancara" description={detail?.name}
-        footer={<><Button variant="outline" onClick={() => setAksi(null)}>Batal</Button><Button form="form-wawancara" type="submit" loading={jadwalkan.isPending}>Jadwalkan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-wawancara" type="submit" loading={jadwalkan.isPending}>{!jadwalkan.isPending && <CalendarPlus className="h-4 w-4" aria-hidden />} Jadwalkan</Button></>}>
         <form id="form-wawancara" onSubmit={fw.handleSubmit((v) => jadwalkan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Pewawancara" error={fw.formState.errors.interviewerId?.message} className="sm:col-span-2"><Select {...fw.register("interviewerId", { required: "Pilih pewawancara" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name} · {k.position?.name ?? k.nik}</option>)}</Select></Field>
           <Field label="Jenis"><Select {...fw.register("stage")}><option value="hr">HR</option><option value="user">User / atasan</option><option value="technical">Teknis / praktik</option><option value="final">Final</option></Select></Field>
@@ -223,7 +223,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
       </Modal>
 
       <Modal open={aksi === "psikotes"} onClose={() => setAksi(null)} title="Catat Hasil Psikotes" description={detail?.name}
-        footer={<><Button variant="outline" onClick={() => setAksi(null)}>Batal</Button><Button form="form-psikotes" type="submit" loading={catatPsikotes.isPending}>Catat</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-psikotes" type="submit" loading={catatPsikotes.isPending}>{!catatPsikotes.isPending && <ClipboardPen className="h-4 w-4" aria-hidden />} Catat</Button></>}>
         <form id="form-psikotes" onSubmit={fp.handleSubmit((v) => catatPsikotes.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Nama tes" error={fp.formState.errors.testName?.message}><Input {...fp.register("testName", { required: "Wajib diisi" })} placeholder="DISC, Kraepelin, MBTI" /></Field>
           <Field label="Tanggal tes"><Input type="date" {...fp.register("testDate")} /></Field>
@@ -234,7 +234,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
       </Modal>
 
       <Modal open={aksi === "hire"} onClose={() => setAksi(null)} title="Terima Kandidat" description="Data karyawan akan dibuat sekaligus. Gaji dan dokumen dilengkapi setelahnya."
-        footer={<><Button variant="outline" onClick={() => setAksi(null)}>Batal</Button><Button form="form-hire" type="submit" loading={terima.isPending}>Terima & Buat Karyawan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-hire" type="submit" loading={terima.isPending}>{!terima.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Terima & Buat Karyawan</Button></>}>
         <form id="form-hire" onSubmit={fh.handleSubmit((v) => terima.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="NIK" error={fh.formState.errors.nik?.message}><Input {...fh.register("nik", { required: "Wajib diisi" })} placeholder="EMP-0042" /></Field>
           <Field label="Tanggal bergabung" error={fh.formState.errors.joinDate?.message}><Input type="date" {...fh.register("joinDate", { required: "Wajib diisi" })} /></Field>

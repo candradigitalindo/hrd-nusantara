@@ -124,7 +124,11 @@ class _LayarIsiSurveiState extends ConsumerState<LayarIsiSurvei> {
             const SizedBox(height: 10),
           ],
           const SizedBox(height: 8),
-          FilledButton(onPressed: _mengirim ? null : _kirim, child: _mengirim ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Kirim Jawaban')),
+          FilledButton.icon(
+            onPressed: _mengirim ? null : _kirim,
+            icon: _mengirim ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+            label: const Text('Kirim Jawaban'),
+          ),
         ],
       ),
     );

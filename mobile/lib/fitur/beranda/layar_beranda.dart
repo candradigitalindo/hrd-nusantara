@@ -122,9 +122,11 @@ class LayarBeranda extends ConsumerWidget {
               _RingkasanKehadiran(riwayat: riwayat!, jadwal: jadwal!),
               _Judul(
                 'Jadwal 7 hari ke depan',
-                aksi: TextButton(
+                aksi: TextButton.icon(
                   onPressed: () => context.push('/jadwal'),
-                  child: const Text('Selengkapnya'),
+                  icon: const Icon(Icons.chevron_right),
+                  iconAlignment: IconAlignment.end,
+                  label: const Text('Selengkapnya'),
                 ),
               ),
               _JadwalMingguIni(jadwal: jadwal),
@@ -149,9 +151,11 @@ class LayarBeranda extends ConsumerWidget {
             if (bolehKinerja) ...[
               _Judul(
                 'Kinerja',
-                aksi: TextButton(
+                aksi: TextButton.icon(
                   onPressed: () => context.push('/kinerja'),
-                  child: const Text('Selengkapnya'),
+                  icon: const Icon(Icons.chevron_right),
+                  iconAlignment: IconAlignment.end,
+                  label: const Text('Selengkapnya'),
                 ),
               ),
               Padding(
@@ -168,9 +172,11 @@ class LayarBeranda extends ConsumerWidget {
                         children: [
                           _Judul(
                             'Pelatihan mendatang',
-                            aksi: TextButton(
+                            aksi: TextButton.icon(
                               onPressed: () => context.push('/pelatihan'),
-                              child: const Text('Semua'),
+                              icon: const Icon(Icons.chevron_right),
+                              iconAlignment: IconAlignment.end,
+                              label: const Text('Semua'),
                             ),
                           ),
                           _KartuPelatihan(d.first),
@@ -193,9 +199,11 @@ class LayarBeranda extends ConsumerWidget {
             if (bolehPengumuman) ...[
               _Judul(
                 'Pengumuman terbaru',
-                aksi: TextButton(
+                aksi: TextButton.icon(
                   onPressed: () => context.push('/pengumuman'),
-                  child: const Text('Semua'),
+                  icon: const Icon(Icons.chevron_right),
+                  iconAlignment: IconAlignment.end,
+                  label: const Text('Semua'),
                 ),
               ),
               Padding(

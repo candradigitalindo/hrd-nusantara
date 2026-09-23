@@ -10,6 +10,7 @@ import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/alert";
 import type { KaryawanDirektori, TipeCuti, SaldoCuti } from "@/lib/types";
+import { X, Save, Plus } from "lucide-react";
 
 type Nilai = { employeeId: string; leaveTypeId: string; year: string; entitledDays: string; carriedOverDays: string; note: string };
 
@@ -101,8 +102,8 @@ export const FormSaldoCuti = ({
       description={sunting && namaKaryawan ? `${namaKaryawan} · ${awal!.leaveType.name} ${awal!.year}` : "Hari yang dipakai dihitung otomatis dari cuti yang disetujui; yang ditetapkan di sini hanya jatahnya."}
       footer={
         <>
-          <Button variant="outline" onClick={onClose} disabled={simpan.isPending}>Batal</Button>
-          <Button form="form-saldo-cuti" type="submit" loading={simpan.isPending}>{sunting ? "Simpan" : "Tetapkan"}</Button>
+          <Button variant="outline" onClick={onClose} disabled={simpan.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
+          <Button form="form-saldo-cuti" type="submit" loading={simpan.isPending}>{!simpan.isPending && (sunting ? <Save className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />)} {sunting ? "Simpan" : "Tetapkan"}</Button>
         </>
       }
     >

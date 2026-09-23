@@ -279,6 +279,51 @@ describe('Perlindungan peran', () => {
     expectStatus(await request(app).put(`/api/employees/${staf.id}`).set(auth(token)).send({ customRoleId: wajar.body.id }), 200);
   });
 
+  it('pengelola peran non-Super Admin tidak bisa menyentuh peran yang lebih kuat dari dirinya', async () => {
+    const owner = await bikinPemilik();
+    const adminAkses = await request(app)
+      .post('/api/roles')
+      .set(auth(owner))
+      .send({
+        name: 'Admin Akses',
+        baseRole: 'MANAGER',
+        permissions: ['peran.lihat', 'peran.buat', 'peran.ubah', 'peran.hapus', 'karyawan.lihat'],
+      });
+    expectStatus(adminAkses, 201);
+    await makeEmployee({ email: 'akses@resto.id', role: Role.MANAGER, customRoleId: adminAkses.body.id });
+    const token = await login(app, 'akses@resto.id');
+
+    // Lingkup Super Admin hanya boleh diberikan pemilik sistem — baik pada
+    // peran baru maupun dengan menaikkan peran yang sudah ada.
+    expectStatus(await request(app).post('/api/roles').set(auth(token)).send({ name: 'Dewa', baseRole: 'SUPER_ADMIN', permissions: [] }), 403);
+
+    // Peran buatan pemilik yang memuat izin di luar miliknya: tidak bisa
+    // disunting (termasuk sekadar diganti nama) maupun dihapus.
+    const kuat = await request(app)
+      .post('/api/roles')
+      .set(auth(owner))
+      .send({ name: 'Staf Payroll', baseRole: 'EMPLOYEE', permissions: ['payroll.lihat'] });
+    expectStatus(kuat, 201);
+    expectStatus(await request(app).put(`/api/roles/${kuat.body.id}`).set(auth(token)).send({ name: 'Karyawan Biasa' }), 403);
+    expectStatus(await request(app).delete(`/api/roles/${kuat.body.id}`).set(auth(token)), 403);
+    expect(await prisma.customRole.findUnique({ where: { id: kuat.body.id } })).not.toBeNull();
+
+    // Peran sistem Super Admin tidak bisa ia sentuh sama sekali.
+    const sa = await peranSistem(Role.SUPER_ADMIN);
+    expectStatus(await request(app).put(`/api/roles/${sa.id}`).set(auth(token)).send({ name: 'Bos' }), 403);
+    expectStatus(await request(app).delete(`/api/roles/${sa.id}`).set(auth(token)), 403);
+
+    // Yang berada di dalam haknya tetap bisa ia kelola sampai menghapus.
+    const wajar = await request(app)
+      .post('/api/roles')
+      .set(auth(token))
+      .send({ name: 'Pembaca Karyawan', baseRole: 'EMPLOYEE', permissions: ['karyawan.lihat'] });
+    expectStatus(wajar, 201);
+    expectStatus(await request(app).put(`/api/roles/${wajar.body.id}`).set(auth(token)).send({ name: 'Pembaca' }), 200);
+    expectStatus(await request(app).put(`/api/roles/${wajar.body.id}`).set(auth(token)).send({ baseRole: 'SUPER_ADMIN' }), 403);
+    expectStatus(await request(app).delete(`/api/roles/${wajar.body.id}`).set(auth(token)), 204);
+  });
+
   it('tidak bisa mengubah peran diri sendiri lewat data karyawan', async () => {
     const owner = await bikinPemilik();
     const saya = await prisma.employee.findUniqueOrThrow({ where: { email: 'owner@resto.id' } });

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { MessagesSquare, Plus, Send, ArrowLeft, UserPlus, Trash2, Lock, Users, Search } from "lucide-react";
+import { MessagesSquare, Plus, Send, ArrowLeft, UserPlus, Trash2, Lock, Users, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, bolehHr, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -81,7 +81,7 @@ export default function HalamanChat() {
       <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
         <Card className={cn("overflow-hidden", aktif && "hidden lg:block")}>
           {ruang.isLoading ? <SkeletonBaris /> : !ruang.data?.length ? (
-            <EmptyState icon={MessagesSquare} title="Belum ada ruang" description="Buat ruang untuk tim atau departemen Anda, lalu tambahkan anggotanya." action={bolehBuatRuang && <Button onClick={() => setBuatBuka(true)}>Buat Ruang</Button>} />
+            <EmptyState icon={MessagesSquare} title="Belum ada ruang" description="Buat ruang untuk tim atau departemen Anda, lalu tambahkan anggotanya." action={bolehBuatRuang && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Buat Ruang</Button>} />
           ) : (
             <ul className="divide-y divide-border lg:max-h-[calc(100dvh-14rem)] lg:overflow-y-auto">
               {ruang.data.map((r) => (
@@ -143,7 +143,7 @@ export default function HalamanChat() {
 
               <form onSubmit={(e) => { e.preventDefault(); kirimTeks(); }} className="flex items-end gap-2 border-t border-border p-3 pb-safe">
                 <Textarea rows={1} value={teks} onChange={(e) => setTeks(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); kirimTeks(); } }} placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)" aria-label="Pesan" className="max-h-32 min-h-10 flex-1 resize-none" maxLength={5000} />
-                <Button type="submit" size="icon" loading={kirim.isPending} disabled={!teks.trim()} aria-label="Kirim"><Send className="h-4 w-4" aria-hidden /></Button>
+                <Button type="submit" size="icon" loading={kirim.isPending} disabled={!teks.trim()} aria-label="Kirim">{!kirim.isPending && <Send className="h-4 w-4" aria-hidden />}</Button>
               </form>
             </>
           )}
@@ -151,7 +151,7 @@ export default function HalamanChat() {
       </div>
 
       <Modal open={buatBuka} onClose={() => setBuatBuka(false)} size="lg" title="Ruang Baru" description="Anda otomatis menjadi moderator dan bisa menambah anggota kapan saja"
-        footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}>Batal</Button><Button form="form-ruang" type="submit" loading={buat.isPending}>Buat Ruang</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-ruang" type="submit" loading={buat.isPending}>{!buat.isPending && <Plus className="h-4 w-4" aria-hidden />} Buat Ruang</Button></>}>
         <form id="form-ruang" onSubmit={fr.handleSubmit((v) => buat.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nama ruang" error={fr.formState.errors.name?.message}><Input {...fr.register("name", { required: "Wajib diisi" })} placeholder="Kitchen Shift Malam" /></Field>
@@ -172,7 +172,7 @@ export default function HalamanChat() {
       </Modal>
 
       <Modal open={anggotaBuka} onClose={() => setAnggotaBuka(false)} title="Tambah Anggota" description={ruangAktif ? `Ke ruang ${ruangAktif.name}` : undefined}
-        footer={<><Button variant="outline" onClick={() => setAnggotaBuka(false)}>Batal</Button><Button form="form-anggota" type="submit" loading={tambah.isPending}>Tambahkan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAnggotaBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-anggota" type="submit" loading={tambah.isPending}>{!tambah.isPending && <Plus className="h-4 w-4" aria-hidden />} Tambahkan</Button></>}>
         <form id="form-anggota" onSubmit={fa.handleSubmit((v) => tambah.mutate(v))} className="space-y-4" noValidate>
           <Field label="Karyawan" error={fa.formState.errors.employeeId?.message}><Select {...fa.register("employeeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{(direktori.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>{k.name}{k.department ? ` · ${k.department.name}` : ""}</option>)}</Select></Field>
           <Field label="Peran"><Select {...fa.register("role")}><option value="member">Anggota</option><option value="moderator">Moderator — bisa menambah anggota dan menghapus pesan</option></Select></Field>
@@ -180,7 +180,7 @@ export default function HalamanChat() {
       </Modal>
 
       <Modal open={Boolean(hapus)} onClose={() => setHapus(null)} title="Hapus pesan?" description="Isinya disembunyikan dari semua anggota, tapi jejak bahwa ada pesan yang dihapus tetap terlihat."
-        footer={<><Button variant="outline" onClick={() => setHapus(null)}>Batal</Button><Button variant="danger" onClick={() => hapus && hapusPesan.mutate(hapus)} loading={hapusPesan.isPending}>Hapus</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setHapus(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant="danger" onClick={() => hapus && hapusPesan.mutate(hapus)} loading={hapusPesan.isPending}>{!hapusPesan.isPending && <Trash2 className="h-4 w-4" aria-hidden />} Hapus</Button></>}>
         {hapus && <blockquote className="rounded-lg bg-surface-2 px-3 py-2 text-sm"><p className="mb-1 text-xs font-semibold text-muted">{hapus.sender.name} · {formatWaktu(hapus.timestamp)}</p><p className="whitespace-pre-wrap">{hapus.message}</p></blockquote>}
       </Modal>
     </>

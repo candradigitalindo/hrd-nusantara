@@ -86,7 +86,7 @@ export const PanelSaldoCuti = ({ employeeId, employeeName, bolehKelola }: { empl
             icon={CalendarOff}
             title={`Belum ada saldo tahun ${tahun}`}
             description={bolehKelola ? "Tanpa saldo, karyawan ini tidak bisa mengajukan cuti yang memotong jatah (mis. Cuti Tahunan)." : "HR belum menetapkan jatah cuti untuk tahun ini."}
-            action={bolehKelola ? <Button onClick={() => setForm({ open: true, awal: null })}>Tetapkan Saldo</Button> : undefined}
+            action={bolehKelola ? <Button onClick={() => setForm({ open: true, awal: null })}><Plus className="h-4 w-4" aria-hidden /> Tetapkan Saldo</Button> : undefined}
           />
         ) : (
           <ul className="divide-y divide-border border-t border-border">

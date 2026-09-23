@@ -13,6 +13,7 @@ import { notifikasi } from "@/hooks/use-notifikasi";
 import { punyaIzin } from "@/hooks/use-sesi";
 import { LABEL_STATUS, LABEL_LINGKUP } from "@/lib/utils";
 import type { Halaman, Departemen, Jabatan, Karyawan, PenggunaSesi, PeranKustom } from "@/lib/types";
+import { X, Save, UserPlus } from "lucide-react";
 
 const STATUS = ["active", "probation", "contract", "internship", "on_leave", "inactive"] as const;
 
@@ -76,6 +77,19 @@ export const FormKaryawan = ({
   // sistem sesuai lingkupnya; formulir menampilkannya sebagai pilihan aktif.
   const peranAwal = karyawan?.customRoleId ?? peran?.find((r) => r.code === karyawan?.role)?.id ?? "";
   const peranBawaan = peran?.find((r) => r.code === "EMPLOYEE")?.id ?? "";
+
+  // Peran yang boleh ia tugaskan: pagar yang sama dengan server — bukan peran
+  // berlingkup Super Admin / HR Admin, dan izinnya tidak melampaui miliknya
+  // sendiri. Peran yang sedang dipegang karyawan ini tetap ikut ditampilkan,
+  // supaya menyunting data lain tidak memaksa menurunkan perannya.
+  const pemilik = sesi?.role === "SUPER_ADMIN";
+  const izinSaya = React.useMemo(() => new Set(sesi?.permissions ?? []), [sesi]);
+  const peranBisaDipilih = (peran ?? []).filter(
+    (r) =>
+      pemilik ||
+      r.id === peranAwal ||
+      (r.baseRole !== "SUPER_ADMIN" && r.baseRole !== "HR_ADMIN" && r.permissions.every((k) => izinSaya.has(k)))
+  );
 
   const { data: departemen } = useQuery({
     queryKey: ["departemen", "semua"],
@@ -153,9 +167,11 @@ export const FormKaryawan = ({
       footer={
         <>
           <Button variant="outline" onClick={onClose} disabled={simpan.isPending}>
+            <X className="h-4 w-4" aria-hidden />
             Batal
           </Button>
           <Button form="form-karyawan" type="submit" loading={simpan.isPending}>
+            {!simpan.isPending && (sunting ? <Save className="h-4 w-4" aria-hidden /> : <UserPlus className="h-4 w-4" aria-hidden />)}
             {sunting ? "Simpan Perubahan" : "Tambah"}
           </Button>
         </>
@@ -206,7 +222,7 @@ export const FormKaryawan = ({
         <Field label="Peran" error={errors.customRoleId?.message} hint={bolehUbahRole ? "Menentukan hak akses dan lingkup data. Kelola di menu Peran & Hak Akses." : "Hanya HR yang bisa mengubah peran"}>
           <Select {...register("customRoleId")} disabled={!bolehUbahRole} aria-invalid={Boolean(errors.customRoleId)}>
             <option value="">— Pilih peran —</option>
-            {(peran ?? []).map((r) => (
+            {peranBisaDipilih.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name} · {LABEL_LINGKUP[r.baseRole]}
               </option>

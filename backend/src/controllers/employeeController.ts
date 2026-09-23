@@ -56,6 +56,19 @@ const assertCanAssignRole = (actorRole: Role, targetRole: Role): string | null =
   return null;
 };
 
+/** Lingkup data dari yang paling sempit ke paling luas. */
+const PERINGKAT_LINGKUP: Record<Role, number> = { EMPLOYEE: 0, MANAGER: 1, HR_ADMIN: 2, SUPER_ADMIN: 3 };
+
+/**
+ * Akun berlingkup lebih luas tidak boleh disentuh dari bawah: hanya SUPER_ADMIN
+ * yang boleh menyunting, menonaktifkan, atau mengatur ulang sandi akun pemilik
+ * sistem. Tanpa pagar ini izin `karyawan.ubah` saja sudah cukup untuk mengambil
+ * alih akun Super Admin (dengan mengganti sandinya) atau mengunci pemiliknya
+ * keluar (dengan menurunkan perannya, lalu menonaktifkan akunnya).
+ */
+const lingkupLebihTinggi = (aktor: { role: Role }, target: { role: Role }): boolean =>
+  PERINGKAT_LINGKUP[target.role] > PERINGKAT_LINGKUP[aktor.role];
+
 /**
  * Menentukan peran yang akan diberikan: peran kustom yang diminta, atau peran
  * sistem sesuai lingkup data. Lingkup data karyawan (kolom role) selalu
@@ -241,6 +254,12 @@ export const updateEmployee = async (req: Request, res: Response) => {
   const input = req.body as UpdateEmployeeInput;
   const actor = req.user!;
 
+  const target = await prisma.employee.findUnique({ where: { id }, select: { role: true, status: true } });
+  if (!target) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+  if (lingkupLebihTinggi(actor, target)) {
+    return res.status(403).json({ error: 'Tidak bisa mengubah data akun berlingkup lebih tinggi' });
+  }
+
   const ubahPeran = input.role !== undefined || input.customRoleId !== undefined;
   let peranBaru: { role: Role; customRoleId: string | null } | null = null;
   if (ubahPeran) {
@@ -292,10 +311,7 @@ export const updateEmployee = async (req: Request, res: Response) => {
   // Nilai sebelum perubahan, khusus untuk yang menyangkut hak akses dan
   // status kerja. Jejak "role diubah" tanpa nilai lamanya tidak menjawab
   // pertanyaan yang justru ditanyakan saat audit: naik dari apa ke apa.
-  const perluNilaiLama = ubahPeran || input.status !== undefined;
-  const sebelum = perluNilaiLama
-    ? await prisma.employee.findUnique({ where: { id }, select: { role: true, status: true } })
-    : null;
+  const sebelum = ubahPeran || input.status !== undefined ? target : null;
 
   try {
     const employee = await prisma.employee.update({ where: { id }, data, select: employeeSelect });
@@ -352,6 +368,12 @@ export const deactivateEmployee = async (req: Request, res: Response) => {
 
   if (actor.id === id) {
     return res.status(400).json({ error: 'Anda tidak bisa menonaktifkan akun sendiri' });
+  }
+
+  const target = await prisma.employee.findUnique({ where: { id }, select: { role: true } });
+  if (!target) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+  if (lingkupLebihTinggi(actor, target)) {
+    return res.status(403).json({ error: 'Tidak bisa menonaktifkan akun berlingkup lebih tinggi' });
   }
 
   const { status, reason } = req.body as DeactivateEmployeeInput;
@@ -411,9 +433,6 @@ export const getDirectory = async (req: Request, res: Response) => {
 
 // ============ Atur ulang kata sandi ============
 
-/** Lingkup data dari rendah ke tinggi; sandi akun berlingkup lebih tinggi tidak boleh diatur dari bawah. */
-const PERINGKAT_LINGKUP: Record<Role, number> = { EMPLOYEE: 0, MANAGER: 1, HR_ADMIN: 2, SUPER_ADMIN: 3 };
-
 /** Tanpa huruf/angka yang mudah tertukar (0/O, 1/l/I) karena sandi ini dibacakan atau diketik ulang. */
 const ALFABET_SANDI = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
 const buatSandiSementara = () =>
@@ -441,7 +460,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 
   // Pagar eskalasi: HR tidak boleh mengambil alih akun pemilik sistem dengan
   // mengatur ulang sandinya; manajer hanya untuk departemennya sendiri.
-  if (PERINGKAT_LINGKUP[target.role] > PERINGKAT_LINGKUP[actor.role]) {
+  if (lingkupLebihTinggi(actor, target)) {
     return res.status(403).json({ error: 'Tidak bisa mengatur ulang kata sandi akun berlingkup lebih tinggi' });
   }
   if (actor.role === Role.MANAGER && target.departmentId !== actor.departmentId) {

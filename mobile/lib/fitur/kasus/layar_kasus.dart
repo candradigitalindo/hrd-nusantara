@@ -282,11 +282,10 @@ class _LayarAjukanKeluhanState extends ConsumerState<LayarAjukanKeluhan> {
               ),
             ),
             const SizedBox(height: 20),
-            FilledButton(
+            FilledButton.icon(
               onPressed: _mengirim ? null : _kirim,
-              child: _mengirim
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Kirim Keluhan'),
+              icon: _mengirim ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
+              label: const Text('Kirim Keluhan'),
             ),
           ],
         ),

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, LogOut, Moon, Sun, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "./sidebar";
+import { Logo } from "@/components/ui/logo";
 import { useLogout } from "@/hooks/use-sesi";
 import { useTema } from "@/hooks/use-tema";
 import type { PenggunaSesi } from "@/lib/types";
@@ -26,6 +27,7 @@ export const Header = ({ pengguna }: { pengguna: PenggunaSesi | undefined }) => 
         >
           <Menu className="h-5 w-5" aria-hidden />
         </Button>
+        <Logo className="h-7 w-7 shrink-0 lg:hidden" />
         <span className="font-semibold lg:hidden">HRD Nusantara</span>
         <div className="flex-1" />
         <Button variant="ghost" size="icon" onClick={ganti} aria-label={gelap ? "Mode terang" : "Mode gelap"}>

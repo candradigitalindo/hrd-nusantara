@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Banknote, Plus, Calculator, Check, Undo2, ChevronRight, Users } from "lucide-react";
+import { Banknote, Plus, Calculator, Check, Undo2, ChevronRight, Users, X } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -107,7 +107,7 @@ export default function HalamanPayroll() {
 
       {hasilHitung && (
         <Alert tone={hasilHitung.skipped.length ? "warning" : "success"} title={`${hasilHitung.payrollRun.name}: ${hasilHitung.calculated} slip dihitung${hasilHitung.skipped.length ? `, ${hasilHitung.skipped.length} dilewati` : ""}`}
-          action={<Button size="sm" variant="outline" onClick={() => setHasilHitung(null)}>Tutup</Button>}>
+          action={<Button size="sm" variant="outline" onClick={() => setHasilHitung(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
           {hasilHitung.skipped.length > 0 && (
             <ul className="mt-1 space-y-0.5">
               {hasilHitung.skipped.map((s) => <li key={s.employeeId}><span className="font-medium">{s.name}</span> ({s.nik}) — {s.reason}</li>)}
@@ -124,7 +124,7 @@ export default function HalamanPayroll() {
           </Select>
         </div>
         {runs.isLoading ? <SkeletonBaris /> : !runs.data?.data.length ? (
-          <EmptyState icon={Banknote} title="Belum ada batch penggajian" description="Buat batch untuk satu periode, hitung dari data presensi, periksa, lalu setujui." action={bolehBuat && <Button onClick={() => setBuatBuka(true)}>Batch Baru</Button>} />
+          <EmptyState icon={Banknote} title="Belum ada batch penggajian" description="Buat batch untuk satu periode, hitung dari data presensi, periksa, lalu setujui." action={bolehBuat && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Batch Baru</Button>} />
         ) : (
           <>
             <ul className="divide-y divide-border">
@@ -142,7 +142,7 @@ export default function HalamanPayroll() {
                     <Badge tone={nadaStatus(r.status)} dot>{labelStatus(r.status)}</Badge>
                     {bolehUbah && (r.status === "draft" || r.status === "calculated") && (
                       <Button size="sm" variant="outline" onClick={() => hitung.mutate(r)} loading={hitung.isPending && hitung.variables?.id === r.id}>
-                        <Calculator className="h-4 w-4" aria-hidden /> {r.status === "draft" ? "Hitung" : "Hitung Ulang"}
+                        {!(hitung.isPending && hitung.variables?.id === r.id) && <Calculator className="h-4 w-4" aria-hidden />} {r.status === "draft" ? "Hitung" : "Hitung Ulang"}
                       </Button>
                     )}
                     {bolehUbah && r.status === "calculated" && (
@@ -161,7 +161,7 @@ export default function HalamanPayroll() {
       </Card>
 
       <Modal open={buatBuka} onClose={() => setBuatBuka(false)} title="Batch Penggajian Baru" description="Satu batch untuk satu periode. Perhitungan dilakukan terpisah setelah batch dibuat."
-        footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}>Batal</Button><Button form="form-batch" type="submit" loading={buat.isPending}>Buat</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-batch" type="submit" loading={buat.isPending}>{!buat.isPending && <Plus className="h-4 w-4" aria-hidden />} Buat</Button></>}>
         <form id="form-batch" onSubmit={fb.handleSubmit((v) => buat.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Kode" error={fb.formState.errors.code?.message} hint="Huruf, angka, garis bawah, strip">
@@ -195,14 +195,14 @@ export default function HalamanPayroll() {
         )}
       </Modal>
 
-      <Modal open={Boolean(slip)} onClose={() => setSlip(null)} size="lg" title="Rincian Slip" description={slip ? `${slip.employee.name} · ${slip.employee.nik}` : undefined} footer={<Button onClick={() => setSlip(null)}>Tutup</Button>}>
+      <Modal open={Boolean(slip)} onClose={() => setSlip(null)} size="lg" title="Rincian Slip" description={slip ? `${slip.employee.name} · ${slip.employee.nik}` : undefined} footer={<Button onClick={() => setSlip(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
         {slip && <DetailSlip slip={slip} />}
       </Modal>
 
       <Modal open={Boolean(keputusan)} onClose={() => setKeputusan(null)}
         title={keputusan?.approved ? "Setujui batch penggajian?" : "Kembalikan ke draft?"}
         description={keputusan ? `${keputusan.run.name} · ${keputusan.run._count?.payrolls ?? "?"} slip` : undefined}
-        footer={<><Button variant="outline" onClick={() => setKeputusan(null)}>Batal</Button><Button variant={keputusan?.approved ? "primary" : "danger"} loading={putuskan.isPending} onClick={() => keputusan && putuskan.mutate(keputusan)}>{keputusan?.approved ? "Setujui" : "Kembalikan"}</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setKeputusan(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant={keputusan?.approved ? "primary" : "danger"} loading={putuskan.isPending} onClick={() => keputusan && putuskan.mutate(keputusan)}>{!putuskan.isPending && (keputusan?.approved ? <Check className="h-4 w-4" aria-hidden /> : <Undo2 className="h-4 w-4" aria-hidden />)} {keputusan?.approved ? "Setujui" : "Kembalikan"}</Button></>}>
         {keputusan?.approved && <Alert tone="warning" title="Angka akan terkunci" className="mb-4">Setelah disetujui, slip terlihat oleh masing-masing karyawan dan tidak bisa dihitung ulang. Pastikan rinciannya sudah diperiksa.</Alert>}
         <Field label="Catatan" hint="Opsional, tercatat di batch">
           <Textarea rows={2} value={catatan} onChange={(e) => setCatatan(e.target.value)} />

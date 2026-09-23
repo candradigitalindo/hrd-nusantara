@@ -9,6 +9,7 @@ import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { formatTanggal } from "@/lib/utils";
 import type { Karyawan, JenisSertifikasi, Sertifikat } from "@/lib/types";
+import { Save, X } from "lucide-react";
 
 type Nilai = { employeeId: string; certificationTypeId: string; certificationName: string; issuingOrganization: string; issueDate: string; expiryDate: string; certificateUrl: string; note: string };
 
@@ -34,7 +35,7 @@ export const FormSertifikat = ({ onClose, karyawan, jenis, employeeIdAwal }: { o
 
   return (
     <Modal open onClose={onClose} size="lg" title="Catat Sertifikat" description="Pilih jenis resmi agar masa berlaku dihitung otomatis; sertifikat lain boleh dicatat dengan nama dan penerbitnya"
-      footer={<><Button variant="outline" onClick={onClose}>Batal</Button><Button form="form-sertifikat" type="submit" loading={simpan.isPending}>Simpan</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-sertifikat" type="submit" loading={simpan.isPending}>{!simpan.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
       <form id="form-sertifikat" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
         <Field label="Karyawan" error={f.formState.errors.employeeId?.message}><Select {...f.register("employeeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{karyawan.map((k) => <option key={k.id} value={k.id}>{k.name} · {k.nik}</option>)}</Select></Field>
         <Field label="Jenis sertifikasi"><Select {...f.register("certificationTypeId")}><option value="">Di luar daftar resmi</option>{jenis.map((j) => <option key={j.id} value={j.id}>{j.name}{j.isMandatory ? " (wajib)" : ""}</option>)}</Select></Field>

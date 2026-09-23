@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink } from "lucide-react";
+import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink, Check, Play, Save, X, Hourglass, UserPlus } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -126,16 +126,16 @@ export default function HalamanPelatihan() {
                       </CardHeader>
                       <CardContent className="mt-auto flex flex-wrap gap-2">
                         {p ? (
-                          <><Badge tone={nadaStatus(p.status)} dot>{labelStatus(p.status)}</Badge>{(p.status === "registered" || p.status === "waitlisted") && s.status === "scheduled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setBatal(p)}>Batalkan</Button>}</>
+                          <><Badge tone={nadaStatus(p.status)} dot>{labelStatus(p.status)}</Badge>{(p.status === "registered" || p.status === "waitlisted") && s.status === "scheduled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setBatal(p)}><X className="h-4 w-4" aria-hidden /> Batalkan</Button>}</>
                         ) : s.status === "scheduled" && !lewatBatas ? (
-                          <Button size="sm" onClick={() => daftar.mutate(s)} loading={daftar.isPending && daftar.variables?.id === s.id}>{penuh ? "Daftar Tunggu" : "Daftar"}</Button>
+                          <Button size="sm" onClick={() => daftar.mutate(s)} loading={daftar.isPending && daftar.variables?.id === s.id}>{!(daftar.isPending && daftar.variables?.id === s.id) && (penuh ? <Hourglass className="h-4 w-4" aria-hidden /> : <UserPlus className="h-4 w-4" aria-hidden />)} {penuh ? "Daftar Tunggu" : "Daftar"}</Button>
                         ) : null}
                         {bolehUbah && (
                           <>
                             <Button size="sm" variant="outline" onClick={() => { setPeserta(s); setHadir({}); }}><Users className="h-4 w-4" aria-hidden /> Peserta</Button>
-                            {s.status === "scheduled" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "ongoing" })}>Mulai</Button>}
-                            {s.status === "ongoing" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "completed" })}>Selesai</Button>}
-                            {s.status !== "completed" && s.status !== "cancelled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => ubahStatusSesi.mutate({ s, status: "cancelled" })}>Batalkan</Button>}
+                            {s.status === "scheduled" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "ongoing" })}><Play className="h-4 w-4" aria-hidden /> Mulai</Button>}
+                            {s.status === "ongoing" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "completed" })}><Check className="h-4 w-4" aria-hidden /> Selesai</Button>}
+                            {s.status !== "completed" && s.status !== "cancelled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => ubahStatusSesi.mutate({ s, status: "cancelled" })}><X className="h-4 w-4" aria-hidden /> Batalkan</Button>}
                           </>
                         )}
                       </CardContent>
@@ -151,7 +151,7 @@ export default function HalamanPelatihan() {
 
       {tab === "program" && (
         program.isLoading ? <SkeletonBaris /> : !program.data?.length ? (
-          <Card><EmptyState icon={GraduationCap} title="Belum ada program" description="Contoh: Hygiene & Sanitasi, SOP Pelayanan Tamu, Keselamatan Kerja." action={bolehBuat && <Button onClick={() => setFormProgram({ open: true, item: null })}>Buat Program</Button>} /></Card>
+          <Card><EmptyState icon={GraduationCap} title="Belum ada program" description="Contoh: Hygiene & Sanitasi, SOP Pelayanan Tamu, Keselamatan Kerja." action={bolehBuat && <Button onClick={() => setFormProgram({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Buat Program</Button>} /></Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {program.data.map((p) => (
@@ -239,7 +239,7 @@ export default function HalamanPelatihan() {
       <FormSesi open={formSesi} onClose={() => setFormSesi(false)} programs={(program.data ?? []).filter((p) => p.isActive)} />
 
       <Modal open={Boolean(peserta)} onClose={() => setPeserta(null)} size="lg" title={`Peserta: ${peserta?.title ?? ""}`} description={peserta ? `${formatTanggal(peserta.startDateTime, "EEE, d MMM yyyy HH:mm")} · ${labelStatus(peserta.status)}` : undefined}
-        footer={peserta && peserta.status !== "cancelled" && <><Button variant="outline" onClick={() => setPeserta(null)}>Tutup</Button><Button onClick={() => simpanKehadiran.mutate()} loading={simpanKehadiran.isPending} disabled={!pesertaSesi.data?.length}>Simpan Kehadiran</Button></>}>
+        footer={peserta && peserta.status !== "cancelled" && <><Button variant="outline" onClick={() => setPeserta(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button><Button onClick={() => simpanKehadiran.mutate()} loading={simpanKehadiran.isPending} disabled={!pesertaSesi.data?.length}>{!simpanKehadiran.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan Kehadiran</Button></>}>
         {pesertaSesi.isLoading ? <SkeletonBaris /> : !pesertaSesi.data?.length ? <p className="text-sm text-muted">Belum ada yang mendaftar.</p> : (
           <div className="space-y-3">
             {peserta?.status === "scheduled" && <Alert tone="info" title="Kehadiran bisa dicatat setelah sesi dimulai atau selesai" />}
@@ -261,7 +261,7 @@ export default function HalamanPelatihan() {
       </Modal>
 
       <Modal open={Boolean(evaluasi)} onClose={() => setEvaluasi(null)} title="Evaluasi Peserta" description={evaluasi ? `${evaluasi.employee.name} · ${evaluasi.trainingSession.program.name}` : undefined}
-        footer={<><Button variant="outline" onClick={() => setEvaluasi(null)}>Batal</Button><Button form="form-evaluasi" type="submit" loading={nilai.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setEvaluasi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-evaluasi" type="submit" loading={nilai.isPending}>{!nilai.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-evaluasi" onSubmit={fe.handleSubmit((v) => nilai.mutate(v))} className="space-y-4" noValidate>
           <Field label="Nilai (0–100)" hint={peserta?.program.passingScore !== null && peserta?.program.passingScore !== undefined ? `Lulus bila ≥ ${peserta.program.passingScore}` : "Program ini tanpa ambang kelulusan"}><Input type="number" min={0} max={100} step="0.5" {...fe.register("score")} /></Field>
           <Field label="Tautan sertifikat"><Input placeholder="https://…" {...fe.register("certificateUrl")} /></Field>
@@ -269,7 +269,7 @@ export default function HalamanPelatihan() {
         </form>
       </Modal>
 
-      <ConfirmDialog open={Boolean(batal)} onClose={() => setBatal(null)} onConfirm={() => batal && batalkan.mutate(batal)} loading={batalkan.isPending} danger title="Batalkan pendaftaran?" description={`${batal?.trainingSession.title ?? ""} — kursi Anda diberikan ke peserta daftar tunggu.`} confirmLabel="Batalkan" />
+      <ConfirmDialog open={Boolean(batal)} onClose={() => setBatal(null)} onConfirm={() => batal && batalkan.mutate(batal)} loading={batalkan.isPending} danger title="Batalkan pendaftaran?" description={`${batal?.trainingSession.title ?? ""} — kursi Anda diberikan ke peserta daftar tunggu.`} confirmLabel="Batalkan" confirmIcon={X} />
     </>
   );
 }

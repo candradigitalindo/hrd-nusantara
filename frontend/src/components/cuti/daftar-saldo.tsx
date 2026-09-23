@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarOff, Pencil, Plus, Search, Users } from "lucide-react";
+import { CalendarOff, Pencil, Plus, Search, Users, CheckCheck, X } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -151,7 +151,7 @@ export const DaftarSaldoCuti = () => {
             icon={CalendarOff}
             title={adaSaringan ? "Tidak ada yang cocok" : `Belum ada saldo tahun ${tahun}`}
             description={adaSaringan ? "Coba ubah kata kunci atau saringan." : "Tetapkan satu per satu, atau terapkan jatah bawaan ke semua karyawan aktif sekaligus."}
-            action={bolehTetapkan && !adaSaringan && tipeBerkuota.length > 0 ? <Button onClick={() => setMassalBuka(true)}>Terapkan Jatah Bawaan</Button> : undefined}
+            action={bolehTetapkan && !adaSaringan && tipeBerkuota.length > 0 ? <Button onClick={() => setMassalBuka(true)}><CheckCheck className="h-4 w-4" aria-hidden /> Terapkan Jatah Bawaan</Button> : undefined}
           />
         ) : (
           <>
@@ -170,8 +170,9 @@ export const DaftarSaldoCuti = () => {
         description={`Semua karyawan aktif yang belum punya saldo tahun ${tahun} akan diberi jatah bawaan jenis cuti yang dipilih. Yang sudah punya saldo tidak disentuh.`}
         footer={
           <>
-            <Button variant="outline" onClick={() => setMassalBuka(false)} disabled={terapkanMassal.isPending}>Batal</Button>
+            <Button variant="outline" onClick={() => setMassalBuka(false)} disabled={terapkanMassal.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
             <Button onClick={() => tipeUntukMassal && terapkanMassal.mutate(tipeUntukMassal)} loading={terapkanMassal.isPending} disabled={!tipeUntukMassal}>
+              {!terapkanMassal.isPending && <CheckCheck className="h-4 w-4" aria-hidden />}
               Terapkan ke Semua
             </Button>
           </>

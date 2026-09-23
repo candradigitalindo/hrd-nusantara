@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { CalendarRange, ChevronLeft, ChevronRight, Copy, Plus, Trash2 } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, Copy, Plus, Trash2, CalendarDays, Save, X } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { useSesi, punyaIzin, bolehHr } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -246,7 +246,7 @@ export default function HalamanShift() {
             <Button variant="outline" size="icon" onClick={() => setSenin(tambahHari(senin, -7))} aria-label="Minggu sebelumnya">
               <ChevronLeft className="h-4 w-4" aria-hidden />
             </Button>
-            <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => setSenin(seninDari(new Date()))}>Minggu ini</Button>
+            <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => setSenin(seninDari(new Date()))}><CalendarDays className="h-4 w-4" aria-hidden /> Minggu ini</Button>
             <Button variant="outline" size="icon" onClick={() => setSenin(tambahHari(senin, 7))} aria-label="Minggu berikutnya">
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Button>
@@ -266,7 +266,7 @@ export default function HalamanShift() {
 
           {bolehBuat && (
             <Button variant="outline" onClick={() => salinMingguLalu.mutate()} loading={salinMingguLalu.isPending} disabled={perluDept}>
-              <Copy className="h-4 w-4" aria-hidden /> Salin Minggu Lalu
+              {!salinMingguLalu.isPending && <Copy className="h-4 w-4" aria-hidden />} Salin Minggu Lalu
             </Button>
           )}
         </div>
@@ -375,8 +375,8 @@ export default function HalamanShift() {
                 <Trash2 className="h-4 w-4" aria-hidden /> Hapus
               </Button>
             )}
-            <Button variant="outline" onClick={() => setForm({ open: false, shift: null })} disabled={simpan.isPending}>Batal</Button>
-            <Button form="form-shift" type="submit" loading={simpan.isPending} disabled={form.shift ? !bolehUbah : !bolehBuat}>Simpan</Button>
+            <Button variant="outline" onClick={() => setForm({ open: false, shift: null })} disabled={simpan.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
+            <Button form="form-shift" type="submit" loading={simpan.isPending} disabled={form.shift ? !bolehUbah : !bolehBuat}>{!simpan.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button>
           </>
         }
       >
@@ -424,6 +424,7 @@ export default function HalamanShift() {
         title="Hapus shift?"
         description={hapus ? `${hapus.employee.name} · ${formatTanggal(hapus.date)} ${hapus.startTime}–${hapus.endTime}. Bila sudah ada presensi yang terkait, shift ditandai dibatalkan, bukan dihapus.` : ""}
         confirmLabel="Hapus"
+        confirmIcon={Trash2}
       />
 
       {semua.length === 0 && karyawan.length > 0 && !shift.isLoading && (

@@ -21,7 +21,10 @@ class LayarProfil extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Keluar dari aplikasi?'),
         content: const Text('Notifikasi ke ponsel ini dihentikan sampai Anda masuk lagi.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Keluar'))],
+        actions: [
+          TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: const Text('Batal')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.logout), label: const Text('Keluar')),
+        ],
       ),
     );
     if (ya == true) await ref.read(sesiProvider.notifier).keluar();
@@ -184,7 +187,10 @@ class _LayarGantiPasswordState extends ConsumerState<LayarGantiPassword> {
       appBar: AppBar(
         title: Text(widget.wajib ? 'Buat Password Baru' : 'Ganti Password'),
         automaticallyImplyLeading: !widget.wajib,
-        actions: [if (widget.wajib) TextButton(onPressed: () => ref.read(sesiProvider.notifier).keluar(), child: const Text('Keluar'))],
+        actions: [
+          if (widget.wajib)
+            TextButton.icon(onPressed: () => ref.read(sesiProvider.notifier).keluar(), icon: const Icon(Icons.logout), label: const Text('Keluar')),
+        ],
       ),
       body: Form(
         key: _form,
@@ -207,7 +213,11 @@ class _LayarGantiPasswordState extends ConsumerState<LayarGantiPassword> {
             const SizedBox(height: 12),
             TextFormField(controller: _ulang, obscureText: true, decoration: const InputDecoration(labelText: 'Ulangi password baru'), validator: (v) => v != _baru.text ? 'Tidak sama dengan password baru' : null),
             const SizedBox(height: 20),
-            FilledButton(onPressed: _proses ? null : _simpan, child: _proses ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(widget.wajib ? 'Simpan & Lanjutkan' : 'Simpan')),
+            FilledButton.icon(
+              onPressed: _proses ? null : _simpan,
+              icon: _proses ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save_outlined),
+              label: Text(widget.wajib ? 'Simpan & Lanjutkan' : 'Simpan'),
+            ),
           ],
         ),
       ),

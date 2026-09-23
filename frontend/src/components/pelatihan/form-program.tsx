@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import type { Halaman, Jabatan, Departemen, ProgramPelatihan } from "@/lib/types";
+import { X, Save, Plus } from "lucide-react";
 
 type Nilai = { code: string; name: string; description: string; category: string; isMandatory: boolean; targetPositionId: string; targetDepartmentId: string; passingScore: string; validityMonths: string; durationHours: string; isActive: boolean };
 const kosong: Nilai = { code: "", name: "", description: "", category: "", isMandatory: false, targetPositionId: "", targetDepartmentId: "", passingScore: "", validityMonths: "", durationHours: "", isActive: true };
@@ -42,7 +43,7 @@ export const FormProgram = ({ open, onClose, program }: { open: boolean; onClose
 
   return (
     <Modal open={open} onClose={onClose} size="lg" title={sunting ? "Sunting Program" : "Program Pelatihan Baru"}
-      footer={<><Button variant="outline" onClick={onClose}>Batal</Button><Button form="form-program" type="submit" loading={simpan.isPending}>{sunting ? "Simpan" : "Buat"}</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-program" type="submit" loading={simpan.isPending}>{!simpan.isPending && (sunting ? <Save className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />)} {sunting ? "Simpan" : "Buat"}</Button></>}>
       <form id="form-program" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
         {!sunting && <Field label="Kode" error={f.formState.errors.code?.message} hint="Huruf kapital, angka, garis bawah"><Input className="font-mono uppercase" {...f.register("code", { required: "Wajib diisi", pattern: { value: /^[A-Za-z0-9_]{2,40}$/, message: "2–40 karakter: huruf, angka, _" } })} placeholder="HYGIENE_DASAR" /></Field>}
         <Field label="Nama" error={f.formState.errors.name?.message} className={sunting ? "sm:col-span-2" : ""}><Input {...f.register("name", { required: "Wajib diisi" })} placeholder="Hygiene & Sanitasi Dasar" /></Field>

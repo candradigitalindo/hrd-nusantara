@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Plus, Building2, Briefcase, Trash2, Pencil } from "lucide-react";
+import { Plus, Building2, Briefcase, Trash2, Pencil, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -116,7 +116,7 @@ export default function HalamanOrganisasi() {
         departemen.isLoading ? (
           <SkeletonBaris />
         ) : !departemen.data?.length ? (
-          <Card><EmptyState icon={Building2} title="Belum ada departemen" description="Contoh: Kitchen, Front Office, Housekeeping, Sales & Marketing." action={bolehBuat && <Button onClick={() => setFormDept({ open: true, item: null })}>Tambah Departemen</Button>} /></Card>
+          <Card><EmptyState icon={Building2} title="Belum ada departemen" description="Contoh: Kitchen, Front Office, Housekeeping, Sales & Marketing." action={bolehBuat && <Button onClick={() => setFormDept({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Tambah Departemen</Button>} /></Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {departemen.data.map((d) => (
@@ -139,7 +139,7 @@ export default function HalamanOrganisasi() {
       ) : jabatan.isLoading ? (
         <SkeletonBaris />
       ) : !jabatan.data?.length ? (
-        <Card><EmptyState icon={Briefcase} title="Belum ada jabatan" description="Contoh: Chef de Partie, Waiter, Receptionist, Room Attendant." action={bolehBuat && <Button onClick={() => setFormPos({ open: true, item: null })}>Tambah Jabatan</Button>} /></Card>
+        <Card><EmptyState icon={Briefcase} title="Belum ada jabatan" description="Contoh: Chef de Partie, Waiter, Receptionist, Room Attendant." action={bolehBuat && <Button onClick={() => setFormPos({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Tambah Jabatan</Button>} /></Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {jabatan.data.map((j) => (
@@ -161,7 +161,7 @@ export default function HalamanOrganisasi() {
       )}
 
       <Modal open={formDept.open} onClose={() => setFormDept({ open: false, item: null })} title={formDept.item ? "Sunting Departemen" : "Tambah Departemen"}
-        footer={<><Button variant="outline" onClick={() => setFormDept({ open: false, item: null })}>Batal</Button><Button form="form-dept" type="submit" loading={simpanDept.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setFormDept({ open: false, item: null })}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-dept" type="submit" loading={simpanDept.isPending}>{!simpanDept.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-dept" onSubmit={fd.handleSubmit((v) => simpanDept.mutate(v))} className="space-y-4" noValidate>
           <Field label="Nama departemen" error={fd.formState.errors.name?.message}>
             <Input {...fd.register("name", { required: "Nama wajib diisi", minLength: { value: 2, message: "Minimal 2 karakter" } })} placeholder="Kitchen" />
@@ -171,7 +171,7 @@ export default function HalamanOrganisasi() {
       </Modal>
 
       <Modal open={formPos.open} onClose={() => setFormPos({ open: false, item: null })} title={formPos.item ? "Sunting Jabatan" : "Tambah Jabatan"}
-        footer={<><Button variant="outline" onClick={() => setFormPos({ open: false, item: null })}>Batal</Button><Button form="form-pos" type="submit" loading={simpanPos.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setFormPos({ open: false, item: null })}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-pos" type="submit" loading={simpanPos.isPending}>{!simpanPos.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-pos" onSubmit={fp.handleSubmit((v) => simpanPos.mutate(v))} className="space-y-4" noValidate>
           <Field label="Nama jabatan" error={fp.formState.errors.name?.message}>
             <Input {...fp.register("name", { required: "Nama wajib diisi", minLength: { value: 2, message: "Minimal 2 karakter" } })} placeholder="Chef de Partie" />
@@ -195,6 +195,7 @@ export default function HalamanOrganisasi() {
         title={`Hapus ${hapus?.jenis}?`}
         description={`"${hapus?.nama}" akan dihapus. Ini ditolak otomatis bila masih ada karyawan atau data lain yang merujuknya.`}
         confirmLabel="Hapus"
+        confirmIcon={Trash2}
       />
     </>
   );

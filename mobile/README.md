@@ -7,6 +7,19 @@ chat tim, pemeriksaan tautan WhatsApp (pemindaian QR dilakukan di web), dan
 notifikasi push. Memakai API backend yang sama dengan web; menu dan bagian
 beranda mengikuti izin `<halaman>.lihat` peran pengguna, sama dengan sidebar web.
 
+## Ikon aplikasi
+
+Ikon peluncur (Android `mipmap-*` + ikon adaptif, iOS `AppIcon.appiconset`)
+dan favicon web berasal dari satu sumber bentuk: kalender dengan centang —
+ikon Presensi. Semuanya dibuat ulang dengan:
+
+```bash
+node merek/buat-ikon.mjs   # dari akar repo
+```
+
+Hasilnya ikut di-commit, jadi build tidak memerlukan skrip ini. Warna latar
+ikon adaptif ada di `android/app/src/main/res/values/colors.xml`.
+
 ## Menjalankan
 
 ```bash

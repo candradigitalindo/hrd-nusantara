@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { CalendarOff, Check, X, Plus, Ban, Paperclip } from "lucide-react";
+import { CalendarOff, Check, X, Plus, Ban, Paperclip, CalendarPlus, Send } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -217,7 +217,7 @@ export default function HalamanCuti() {
           <EmptyState icon={CalendarOff}
             title={antrean && status === "pending" ? "Tidak ada yang menunggu" : "Tidak ada pengajuan"}
             description={antrean ? "Semua pengajuan sudah diputuskan." : status === "pending" ? "Anda tidak punya pengajuan yang sedang menunggu." : undefined}
-            action={!antrean && <Button onClick={() => setAjukanBuka(true)}>Ajukan Cuti</Button>} />
+            action={!antrean && <Button onClick={() => setAjukanBuka(true)}><CalendarPlus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>} />
         ) : (
           <>
             <ResponsiveTable columns={kolom} rows={daftar.data.data} rowKey={(c) => c.id} />
@@ -228,7 +228,7 @@ export default function HalamanCuti() {
       )}
 
       <Modal open={ajukanBuka} onClose={() => setAjukanBuka(false)} title="Ajukan Cuti" description="Atasan Anda akan menerima pengajuan ini untuk disetujui"
-        footer={<><Button variant="outline" onClick={() => setAjukanBuka(false)}>Batal</Button><Button form="form-cuti" type="submit" loading={ajukan.isPending}>Kirim Pengajuan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setAjukanBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-cuti" type="submit" loading={ajukan.isPending}>{!ajukan.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim Pengajuan</Button></>}>
         <form id="form-cuti" onSubmit={fa.handleSubmit((v) => ajukan.mutate(v))} className="space-y-4" noValidate>
           <Field label="Jenis cuti" error={fa.formState.errors.leaveTypeId?.message}>
             <Select {...fa.register("leaveTypeId", { required: "Pilih jenis cuti" })}>
@@ -267,12 +267,12 @@ export default function HalamanCuti() {
       </Modal>
 
       <ConfirmDialog open={Boolean(batal)} onClose={() => setBatal(null)} onConfirm={() => batal && batalkan.mutate(batal)} loading={batalkan.isPending} danger
-        title="Batalkan pengajuan?" description={`${batal?.leaveType.name ?? ""} ${batal ? formatTanggal(batal.startDate, "d MMM") : ""} – ${batal ? formatTanggal(batal.endDate, "d MMM yyyy") : ""} akan dibatalkan. Anda bisa mengajukan lagi kapan saja.`} confirmLabel="Batalkan Pengajuan" />
+        title="Batalkan pengajuan?" description={`${batal?.leaveType.name ?? ""} ${batal ? formatTanggal(batal.startDate, "d MMM") : ""} – ${batal ? formatTanggal(batal.endDate, "d MMM yyyy") : ""} akan dibatalkan. Anda bisa mengajukan lagi kapan saja.`} confirmLabel="Batalkan Pengajuan" confirmIcon={X} />
 
       <Modal open={Boolean(keputusan)} onClose={() => setKeputusan(null)}
         title={keputusan?.approved ? "Setujui pengajuan cuti?" : "Tolak pengajuan cuti?"}
         description={keputusan ? `${keputusan.cuti.employee.name} · ${keputusan.cuti.leaveType.name} · ${keputusan.cuti.totalDays} hari` : undefined}
-        footer={<><Button variant="outline" onClick={() => setKeputusan(null)}>Batal</Button><Button variant={keputusan?.approved ? "primary" : "danger"} loading={putuskan.isPending} onClick={() => keputusan && putuskan.mutate(keputusan)}>{keputusan?.approved ? "Setujui" : "Tolak"}</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setKeputusan(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant={keputusan?.approved ? "primary" : "danger"} loading={putuskan.isPending} onClick={() => keputusan && putuskan.mutate(keputusan)}>{!putuskan.isPending && (keputusan?.approved ? <Check className="h-4 w-4" aria-hidden /> : <X className="h-4 w-4" aria-hidden />)} {keputusan?.approved ? "Setujui" : "Tolak"}</Button></>}>
         <Field label="Catatan untuk karyawan" hint={keputusan?.approved ? "Opsional" : "Sebutkan alasannya agar karyawan tahu apa yang bisa diperbaiki"}>
           <Textarea value={catatan} onChange={(e) => setCatatan(e.target.value)} rows={3} />
         </Field>

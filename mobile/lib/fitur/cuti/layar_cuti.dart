@@ -17,8 +17,8 @@ class LayarCuti extends ConsumerWidget {
         title: const Text('Batalkan pengajuan?'),
         content: Text('${c.jenisNama} ${formatTanggalSaja(c.mulai)} – ${formatTanggalSaja(c.selesai)} akan dibatalkan${c.status == 'approved' ? ' dan saldo dikembalikan' : ''}.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Tidak')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Batalkan')),
+          TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: const Text('Tidak')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.event_busy), label: const Text('Batalkan')),
         ],
       ),
     );
@@ -119,10 +119,11 @@ class LayarCuti extends ConsumerWidget {
                                 children: [
                                   LencanaStatus(daftar[i].status),
                                   if (daftar[i].bisaDibatalkan)
-                                    TextButton(
+                                    TextButton.icon(
                                       style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, minimumSize: const Size(0, 28)),
                                       onPressed: () => _batalkan(context, ref, daftar[i]),
-                                      child: const Text('Batalkan', style: TextStyle(fontSize: 12)),
+                                      icon: const Icon(Icons.event_busy, size: 15),
+                                      label: const Text('Batalkan', style: TextStyle(fontSize: 12)),
                                     ),
                                 ],
                               ),

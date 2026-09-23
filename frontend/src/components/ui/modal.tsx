@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, Check, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
 
@@ -85,6 +85,7 @@ export const ConfirmDialog = ({
   title,
   description,
   confirmLabel = "Lanjutkan",
+  confirmIcon: IkonKonfirmasi = Check,
   loading,
   danger,
 }: {
@@ -94,6 +95,8 @@ export const ConfirmDialog = ({
   title: string;
   description: string;
   confirmLabel?: string;
+  /** Ikon tombol konfirmasi; isi sesuai tindakannya (Trash2, UserX, …). */
+  confirmIcon?: LucideIcon;
   loading?: boolean;
   danger?: boolean;
 }) => (
@@ -104,9 +107,11 @@ export const ConfirmDialog = ({
     footer={
       <>
         <Button variant="outline" onClick={onClose} disabled={loading}>
+          <X className="h-4 w-4" aria-hidden />
           Batal
         </Button>
         <Button variant={danger ? "danger" : "primary"} onClick={onConfirm} loading={loading}>
+          {!loading && <IkonKonfirmasi className="h-4 w-4" aria-hidden />}
           {confirmLabel}
         </Button>
       </>

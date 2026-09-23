@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Award, Plus, BookOpen, ListChecks, BadgeCheck, ShieldCheck, AlertTriangle, Clock, Ban, ExternalLink, Trash2, FilePlus2 } from "lucide-react";
+import { Award, Plus, BookOpen, ListChecks, BadgeCheck, ShieldCheck, AlertTriangle, Clock, Ban, ExternalLink, Trash2, FilePlus2, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -152,7 +152,7 @@ export default function HalamanKompetensi() {
       )}
 
       {tab === "kamus" && (
-        kompetensi.isLoading ? <SkeletonBaris /> : !kompetensi.data?.length ? <Card><EmptyState icon={BookOpen} title="Kamus kompetensi masih kosong" description="Contoh: Food Safety, Table Service, Housekeeping Standard — masing-masing dengan skala tingkat." action={hr ? <Button onClick={() => setKompetensiBuka(true)}>Tambah Kompetensi</Button> : undefined} /></Card> : (
+        kompetensi.isLoading ? <SkeletonBaris /> : !kompetensi.data?.length ? <Card><EmptyState icon={BookOpen} title="Kamus kompetensi masih kosong" description="Contoh: Food Safety, Table Service, Housekeeping Standard — masing-masing dengan skala tingkat." action={hr ? <Button onClick={() => setKompetensiBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Tambah Kompetensi</Button> : undefined} /></Card> : (
           <div className="space-y-5">
             {kategori.map((kat) => (
               <section key={kat}>
@@ -196,7 +196,7 @@ export default function HalamanKompetensi() {
                     <Field label="Kompetensi" error={fst.formState.errors.competencyId?.message}><Select {...fst.register("competencyId", { required: "Pilih kompetensi" })}><option value="">— Pilih —</option>{(kompetensi.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
                     <Field label="Tingkat minimal"><Select {...fst.register("requiredLevel")}>{Array.from({ length: (kompetensiStandar?.maxLevel ?? 4) + 1 }, (_, n) => <option key={n} value={n}>{n} · {labelTingkat(n, kompetensiStandar?.levelLabels)}</option>)}</Select></Field>
                     <Field label="Keterangan"><Input {...fst.register("description")} placeholder="Wajib sebelum lepas probation" /></Field>
-                    <Button type="submit" className="w-full" loading={simpanStandar.isPending}>Simpan Syarat</Button>
+                    <Button type="submit" className="w-full" loading={simpanStandar.isPending}>{!simpanStandar.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan Syarat</Button>
                   </form>
                 </CardContent>
               </Card>
@@ -234,7 +234,7 @@ export default function HalamanKompetensi() {
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       {s.certificateUrl && <a href={s.certificateUrl} target="_blank" rel="noopener noreferrer" aria-label="Buka berkas sertifikat" className="grid h-9 w-9 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-foreground"><ExternalLink className="h-4 w-4" aria-hidden /></a>}
-                      {bolehHapus && !s.revokedAt && <Button size="sm" variant="ghost" className="text-danger" onClick={() => { setCabut(s); setAlasanCabut(""); }}>Cabut</Button>}
+                      {bolehHapus && !s.revokedAt && <Button size="sm" variant="ghost" className="text-danger" onClick={() => { setCabut(s); setAlasanCabut(""); }}><Ban className="h-4 w-4" aria-hidden /> Cabut</Button>}
                     </div>
                   </li>
                 ))}
@@ -243,7 +243,7 @@ export default function HalamanKompetensi() {
           </Card>
           <Card>
             <CardHeader><CardTitle>Jenis sertifikasi resmi</CardTitle><CardDescription>Wajib untuk jabatan tertentu dan masa berlakunya; yang tertaut ke program pelatihan terbit otomatis saat peserta lulus</CardDescription></CardHeader>
-            {jenis.isLoading ? <SkeletonBaris jumlah={2} /> : !jenis.data?.length ? <EmptyState icon={BadgeCheck} title="Belum ada jenis" description="Contoh: Food Handler Certificate (24 bulan), First Aid (36 bulan)." action={hr ? <Button onClick={() => setJenisBuka(true)}>Buat Jenis</Button> : undefined} /> : (
+            {jenis.isLoading ? <SkeletonBaris jumlah={2} /> : !jenis.data?.length ? <EmptyState icon={BadgeCheck} title="Belum ada jenis" description="Contoh: Food Handler Certificate (24 bulan), First Aid (36 bulan)." action={hr ? <Button onClick={() => setJenisBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Buat Jenis</Button> : undefined} /> : (
               <ul className="divide-y divide-border">
                 {jenis.data.map((j) => (
                   <li key={j.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4">
@@ -258,7 +258,7 @@ export default function HalamanKompetensi() {
       )}
 
       <Modal open={kompetensiBuka} onClose={() => setKompetensiBuka(false)} size="lg" title="Kompetensi Baru" description="Skala tingkat dipakai untuk membandingkan syarat jabatan dengan kemampuan karyawan"
-        footer={<><Button variant="outline" onClick={() => setKompetensiBuka(false)}>Batal</Button><Button form="form-kompetensi" type="submit" loading={buatKompetensi.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setKompetensiBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-kompetensi" type="submit" loading={buatKompetensi.isPending}>{!buatKompetensi.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-kompetensi" onSubmit={fk.handleSubmit((v) => buatKompetensi.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Kode" error={fk.formState.errors.code?.message}><Input className="font-mono uppercase" {...fk.register("code", { required: "Wajib diisi", pattern: { value: /^[A-Za-z0-9_]{2,40}$/, message: "Huruf, angka, garis bawah (2–40)" } })} placeholder="FOOD_SAFETY" /></Field>
@@ -275,7 +275,7 @@ export default function HalamanKompetensi() {
       </Modal>
 
       <Modal open={jenisBuka} onClose={() => setJenisBuka(false)} size="lg" title="Jenis Sertifikasi Baru" description="Sertifikat resmi yang masa berlakunya dipantau, misalnya Food Handler atau First Aid"
-        footer={<><Button variant="outline" onClick={() => setJenisBuka(false)}>Batal</Button><Button form="form-jenis" type="submit" loading={buatJenis.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setJenisBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-jenis" type="submit" loading={buatJenis.isPending}>{!buatJenis.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-jenis" onSubmit={fj.handleSubmit((v) => buatJenis.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Kode" error={fj.formState.errors.code?.message}><Input className="font-mono uppercase" {...fj.register("code", { required: "Wajib diisi", pattern: { value: /^[A-Za-z0-9_]{2,40}$/, message: "Huruf, angka, garis bawah (2–40)" } })} placeholder="FOOD_HANDLER" /></Field>
           <Field label="Nama" error={fj.formState.errors.name?.message}><Input {...fj.register("name", { required: "Wajib diisi" })} placeholder="Food Handler Certificate" /></Field>
@@ -291,13 +291,13 @@ export default function HalamanKompetensi() {
       {sertifikatBuka && <FormSertifikat onClose={() => setSertifikatBuka(false)} karyawan={karyawan.data ?? []} jenis={jenis.data ?? []} employeeIdAwal={fKaryawan || undefined} />}
 
       <Modal open={Boolean(cabut)} onClose={() => setCabut(null)} title="Cabut Sertifikat" description={cabut ? `${cabut.certificationName} · ${cabut.employee.name}` : undefined}
-        footer={<><Button variant="outline" onClick={() => setCabut(null)}>Batal</Button><Button variant="danger" onClick={() => cabutSertifikat.mutate()} loading={cabutSertifikat.isPending} disabled={alasanCabut.trim().length < 3}>Cabut</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setCabut(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant="danger" onClick={() => cabutSertifikat.mutate()} loading={cabutSertifikat.isPending} disabled={alasanCabut.trim().length < 3}>{!cabutSertifikat.isPending && <Ban className="h-4 w-4" aria-hidden />} Cabut</Button></>}>
         <Field label="Alasan pencabutan"><Textarea rows={3} value={alasanCabut} onChange={(e) => setAlasanCabut(e.target.value)} placeholder="Sertifikat terbukti tidak sah / dikembalikan oleh penerbit" /></Field>
         <p className="mt-2 text-xs text-muted">Pencabutan tidak bisa dibatalkan. Sertifikat tetap tercatat dengan status dicabut.</p>
       </Modal>
 
       <Modal open={Boolean(hapusStandar)} onClose={() => setHapusStandar(null)} title="Hapus syarat kompetensi?" description={hapusStandar ? `${hapusStandar.competency.name} tidak lagi disyaratkan untuk ${namaJabatan(jabatanStandar)}.` : undefined}
-        footer={<><Button variant="outline" onClick={() => setHapusStandar(null)}>Batal</Button><Button variant="danger" onClick={() => hapusStandar && buangStandar.mutate(hapusStandar)} loading={buangStandar.isPending}>Hapus</Button></>} />
+        footer={<><Button variant="outline" onClick={() => setHapusStandar(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant="danger" onClick={() => hapusStandar && buangStandar.mutate(hapusStandar)} loading={buangStandar.isPending}>{!buangStandar.isPending && <Trash2 className="h-4 w-4" aria-hidden />} Hapus</Button></>} />
     </>
   );
 }

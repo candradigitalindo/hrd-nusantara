@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
-import { ClipboardList, Plus, Trash2, BarChart3, CheckCircle2 } from "lucide-react";
+import { ClipboardList, Plus, Trash2, BarChart3, CheckCircle2, Clock, Megaphone, Send, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -132,12 +132,12 @@ export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean
                 {s.hasSubmitted ? (
                   <span className="inline-flex items-center gap-1 text-sm text-success"><CheckCircle2 className="h-4 w-4" aria-hidden /> Sudah diisi</span>
                 ) : aktif(s) ? (
-                  <Button size="sm" onClick={() => { setIsi(s); setJawaban({}); setGalat({}); }}>Isi Survei</Button>
+                  <Button size="sm" onClick={() => { setIsi(s); setJawaban({}); setGalat({}); }}><ClipboardList className="h-4 w-4" aria-hidden /> Isi Survei</Button>
                 ) : null}
                 {hr && (
                   <>
-                    {s.status === "draft" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "published" })}>Tayangkan</Button>}
-                    {s.status === "published" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "closed" })}>Tutup</Button>}
+                    {s.status === "draft" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "published" })}><Megaphone className="h-4 w-4" aria-hidden /> Tayangkan</Button>}
+                    {s.status === "published" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "closed" })}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}
                     {s.participationCount > 0 && <Button size="sm" variant="ghost" onClick={() => setHasil(s)}><BarChart3 className="h-4 w-4" aria-hidden /> Hasil</Button>}
                   </>
                 )}
@@ -148,7 +148,7 @@ export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean
       )}
 
       <Modal open={Boolean(isi)} onClose={() => setIsi(null)} size="lg" title={isi?.title ?? ""} description={isi?.description ?? undefined}
-        footer={<><Button variant="outline" onClick={() => setIsi(null)}>Nanti</Button><Button onClick={() => kirim.mutate()} loading={kirim.isPending}>Kirim Jawaban</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setIsi(null)}><Clock className="h-4 w-4" aria-hidden /> Nanti</Button><Button onClick={() => kirim.mutate()} loading={kirim.isPending}>{!kirim.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim Jawaban</Button></>}>
         {isi && (
           <div className="space-y-5">
             {isi.isAnonymous && <Alert tone="info" title="Survei anonim">Jawaban tidak dikaitkan dengan nama Anda; yang tercatat hanya bahwa Anda sudah berpartisipasi.</Alert>}
@@ -158,7 +158,7 @@ export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean
       </Modal>
 
       <Modal open={buatBuka} onClose={() => setBuatBuka(false)} size="lg" title="Survei Baru"
-        footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}>Batal</Button><Button form="form-survei" type="submit" loading={buat.isPending}>Buat</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-survei" type="submit" loading={buat.isPending}>{!buat.isPending && <Plus className="h-4 w-4" aria-hidden />} Buat</Button></>}>
         <form id="form-survei" onSubmit={f.handleSubmit((v) => buat.mutate(v))} className="space-y-5" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Judul" error={f.formState.errors.title?.message} className="sm:col-span-2"><Input {...f.register("title", { required: "Wajib diisi" })} placeholder="Kepuasan Karyawan Q4 2026" /></Field>
@@ -190,7 +190,7 @@ export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean
         </form>
       </Modal>
 
-      <Modal open={Boolean(hasil)} onClose={() => setHasil(null)} size="lg" title={`Hasil: ${hasil?.title ?? ""}`} footer={<Button onClick={() => setHasil(null)}>Tutup</Button>}>
+      <Modal open={Boolean(hasil)} onClose={() => setHasil(null)} size="lg" title={`Hasil: ${hasil?.title ?? ""}`} footer={<Button onClick={() => setHasil(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
         {hasilSurvei.isLoading || !hasilSurvei.data ? <SkeletonBaris /> : (
           <div className="space-y-5">
             <div className="grid grid-cols-3 gap-3 text-center">

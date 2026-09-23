@@ -105,7 +105,10 @@ class _LayarRuangState extends ConsumerState<LayarRuang> {
       builder: (ctx) => AlertDialog(
         title: const Text('Hapus pesan?'),
         content: const Text('Isinya disembunyikan dari semua anggota; jejak bahwa ada pesan yang dihapus tetap terlihat.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus'))],
+        actions: [
+          TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: const Text('Batal')),
+          FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.delete_outline), label: const Text('Hapus')),
+        ],
       ),
     );
     if (ya != true) return;

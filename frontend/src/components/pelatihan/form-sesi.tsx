@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import type { ProgramPelatihan, SesiPelatihan } from "@/lib/types";
+import { CalendarPlus, X } from "lucide-react";
 
 type Nilai = { programId: string; title: string; description: string; trainer: string; startDateTime: string; endDateTime: string; location: string; maxParticipants: string; registrationDeadline: string; cost: string };
 
@@ -32,7 +33,7 @@ export const FormSesi = ({ open, onClose, programs }: { open: boolean; onClose: 
 
   return (
     <Modal open={open} onClose={onClose} size="lg" title="Jadwalkan Sesi Pelatihan"
-      footer={<><Button variant="outline" onClick={onClose}>Batal</Button><Button form="form-sesi" type="submit" loading={simpan.isPending}>Jadwalkan</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-sesi" type="submit" loading={simpan.isPending}>{!simpan.isPending && <CalendarPlus className="h-4 w-4" aria-hidden />} Jadwalkan</Button></>}>
       <form id="form-sesi" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
         <Field label="Program" error={f.formState.errors.programId?.message} className="sm:col-span-2"><Select {...f.register("programId", { required: "Pilih program" })}><option value="">— Pilih —</option>{programs.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isMandatory ? " (wajib)" : ""}</option>)}</Select></Field>
         <Field label="Judul sesi" error={f.formState.errors.title?.message}><Input {...f.register("title", { required: "Wajib diisi" })} placeholder="Hygiene Dasar — Batch Oktober" /></Field>

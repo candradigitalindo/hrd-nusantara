@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Award, CheckCircle2, AlertTriangle, HelpCircle, ClipboardCheck } from "lucide-react";
+import { Award, CheckCircle2, AlertTriangle, HelpCircle, ClipboardCheck, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -42,7 +42,7 @@ const FormNilai = ({ employeeId, awal, kompetensi, onClose }: { employeeId: stri
   });
   return (
     <Modal open onClose={onClose} title="Nilai Kompetensi" description="Tingkat yang dinilai menggantikan penilaian sebelumnya untuk kompetensi yang sama"
-      footer={<><Button variant="outline" onClick={onClose}>Batal</Button><Button form="form-nilai" type="submit" loading={simpan.isPending}>Simpan</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-nilai" type="submit" loading={simpan.isPending}>{!simpan.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
       <form id="form-nilai" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-4" noValidate>
         <Field label="Kompetensi" error={f.formState.errors.competencyId?.message}><Select {...f.register("competencyId", { required: "Pilih kompetensi" })}><option value="">— Pilih —</option>{kompetensi.map((k) => <option key={k.id} value={k.id}>{k.name}{k.category ? ` · ${k.category}` : ""}</option>)}</Select></Field>
         <Field label={`Tingkat saat ini${terpilih ? ` (0–${terpilih.maxLevel})` : ""}`}><Select {...f.register("currentLevel")}>{Array.from({ length: (terpilih?.maxLevel ?? 4) + 1 }, (_, n) => <option key={n} value={n}>{n} · {labelTingkat(n, terpilih?.levelLabels)}</option>)}</Select></Field>
@@ -97,7 +97,7 @@ export const PanelKesenjangan = ({ employeeId, bolehNilai }: { employeeId: strin
                     </div>
                     <BarTingkat max={max} current={g.currentLevel} required={g.requiredLevel} meets={g.meets} />
                   </div>
-                  {bolehNilai && <Button size="sm" variant="ghost" onClick={() => setNilai({ awal: g })}>Nilai</Button>}
+                  {bolehNilai && <Button size="sm" variant="ghost" onClick={() => setNilai({ awal: g })}><ClipboardCheck className="h-4 w-4" aria-hidden /> Nilai</Button>}
                 </li>
               );
             })}

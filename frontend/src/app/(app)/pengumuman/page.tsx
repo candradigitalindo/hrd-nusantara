@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Megaphone, Plus, Pencil, Users, CheckCheck, AlertTriangle, Archive } from "lucide-react";
+import { Megaphone, Plus, Pencil, Users, CheckCheck, AlertTriangle, Archive, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -137,12 +137,12 @@ export default function HalamanPengumuman() {
       <Modal open={Boolean(detail)} onClose={() => setDetail(null)} size="lg" title={detail?.title ?? ""} description={detail ? `${detail.author?.name ?? "HR"} · ${detail.publishedAt ? formatTanggal(detail.publishedAt, "d MMMM yyyy HH:mm") : labelStatus(detail.status)}` : undefined}
         footer={detail && (
           <div className="flex flex-wrap gap-2">
-            {bolehUbah && detail.status === "draft" && <Button onClick={() => { ubahStatus.mutate({ p: detail, status: "published" }); setDetail(null); }}>Tayangkan</Button>}
+            {bolehUbah && detail.status === "draft" && <Button onClick={() => { ubahStatus.mutate({ p: detail, status: "published" }); setDetail(null); }}><Megaphone className="h-4 w-4" aria-hidden /> Tayangkan</Button>}
             {bolehUbah && detail.status === "published" && <Button variant="outline" onClick={() => { ubahStatus.mutate({ p: detail, status: "archived" }); setDetail(null); }}><Archive className="h-4 w-4" aria-hidden /> Arsipkan</Button>}
             {bolehUbah && <Button variant="outline" onClick={() => { setForm({ open: true, item: detail }); setDetail(null); }}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>}
             {bolehUbah && <Button variant="ghost" onClick={() => { setPembaca(detail); setDetail(null); }}><Users className="h-4 w-4" aria-hidden /> {detail.readCount} pembaca</Button>}
-            {detail.requiresAcknowledgment && detail.status === "published" && (detail.acknowledgedAt ? <span className="inline-flex items-center gap-1 self-center text-sm text-success"><CheckCheck className="h-4 w-4" aria-hidden /> Dikonfirmasi {formatTanggal(detail.acknowledgedAt, "d MMM HH:mm")}</span> : <Button onClick={() => tandaiBaca.mutate({ id: detail.id, acknowledge: true })} loading={tandaiBaca.isPending}><CheckCheck className="h-4 w-4" aria-hidden /> Saya sudah membaca</Button>)}
-            {!hr && !detail.requiresAcknowledgment && <Button onClick={() => setDetail(null)}>Tutup</Button>}
+            {detail.requiresAcknowledgment && detail.status === "published" && (detail.acknowledgedAt ? <span className="inline-flex items-center gap-1 self-center text-sm text-success"><CheckCheck className="h-4 w-4" aria-hidden /> Dikonfirmasi {formatTanggal(detail.acknowledgedAt, "d MMM HH:mm")}</span> : <Button onClick={() => tandaiBaca.mutate({ id: detail.id, acknowledge: true })} loading={tandaiBaca.isPending}>{!tandaiBaca.isPending && <CheckCheck className="h-4 w-4" aria-hidden />} Saya sudah membaca</Button>)}
+            {!hr && !detail.requiresAcknowledgment && <Button onClick={() => setDetail(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}
           </div>
         )}>
         {detail && (
@@ -154,7 +154,7 @@ export default function HalamanPengumuman() {
       </Modal>
 
       <Modal open={form.open} onClose={() => setForm({ open: false, item: null })} size="lg" title={form.item ? "Sunting Pengumuman" : "Pengumuman Baru"}
-        footer={<><Button variant="outline" onClick={() => setForm({ open: false, item: null })}>Batal</Button><Button form="form-pengumuman" type="submit" loading={simpan.isPending}>{form.item ? "Simpan" : "Buat Draft"}</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setForm({ open: false, item: null })}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-pengumuman" type="submit" loading={simpan.isPending}>{!simpan.isPending && (form.item ? <Save className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />)} {form.item ? "Simpan" : "Buat Draft"}</Button></>}>
         <form id="form-pengumuman" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-4" noValidate>
           <Field label="Judul" error={f.formState.errors.title?.message}><Input {...f.register("title", { required: "Wajib diisi" })} /></Field>
           <Field label="Isi" error={f.formState.errors.content?.message}><Textarea rows={8} {...f.register("content", { required: "Wajib diisi" })} /></Field>
@@ -167,7 +167,7 @@ export default function HalamanPengumuman() {
         </form>
       </Modal>
 
-      <Modal open={Boolean(pembaca)} onClose={() => setPembaca(null)} title="Laporan pembaca" description={pembaca?.title} footer={<Button onClick={() => setPembaca(null)}>Tutup</Button>}>
+      <Modal open={Boolean(pembaca)} onClose={() => setPembaca(null)} title="Laporan pembaca" description={pembaca?.title} footer={<Button onClick={() => setPembaca(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
         {laporan.isLoading || !laporan.data ? <SkeletonBaris jumlah={3} /> : (
           <div className="space-y-4 text-sm">
             <div className="grid grid-cols-3 gap-3 text-center">

@@ -144,7 +144,7 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
               Text('Matikan atau hapus aplikasi lokasi palsu, nonaktifkan "lokasi tiruan" di opsi pengembang, lalu coba lagi. Percobaan ini tercatat.', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
             ],
           ),
-          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Mengerti'))],
+          actions: [FilledButton.icon(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.check), label: const Text('Mengerti'))],
         ),
       );
 

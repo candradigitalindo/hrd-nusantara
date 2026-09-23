@@ -10,6 +10,7 @@ import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { LABEL_EMPLOYMENT } from "@/lib/utils";
 import type { Halaman, Jabatan, Lowongan } from "@/lib/types";
+import { X, Save, Plus } from "lucide-react";
 
 type Nilai = {
   title: string; description: string; requirements: string; positionId: string; openings: string;
@@ -55,7 +56,7 @@ export const FormLowongan = ({ open, onClose, lowongan }: { open: boolean; onClo
 
   return (
     <Modal open={open} onClose={onClose} size="lg" title={sunting ? "Sunting Lowongan" : "Lowongan Baru"}
-      footer={<><Button variant="outline" onClick={onClose}>Batal</Button><Button form="form-lowongan" type="submit" loading={simpan.isPending}>{sunting ? "Simpan" : "Buat"}</Button></>}>
+      footer={<><Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-lowongan" type="submit" loading={simpan.isPending}>{!simpan.isPending && (sunting ? <Save className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />)} {sunting ? "Simpan" : "Buat"}</Button></>}>
       <form id="form-lowongan" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
         <Field label="Judul" error={f.formState.errors.title?.message} className="sm:col-span-2"><Input {...f.register("title", { required: "Wajib diisi" })} placeholder="Waiter Outlet Kemang" /></Field>
         <Field label="Jabatan" error={f.formState.errors.positionId?.message}>

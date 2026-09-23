@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { format, subMonths, startOfMonth } from "date-fns";
-import { Briefcase, Plus, Pencil, Users, CalendarClock, MessageSquareText } from "lucide-react";
+import { Briefcase, Plus, Pencil, Users, CalendarClock, MessageSquareText, Save, X, FileText, Megaphone, Lock, UserCheck, type LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -28,6 +28,8 @@ type Tab = "lowongan" | "pelamar" | "wawancara" | "corong";
 type FormUmpan = { status: "completed" | "cancelled" | "no_show"; result: "pass" | "fail" | "hold" | ""; score: string; notes: string };
 
 const TRANSISI: Record<StatusLowongan, StatusLowongan[]> = { draft: ["open", "cancelled"], open: ["closed", "filled", "cancelled"], closed: ["open"], filled: [], cancelled: [] };
+/** Ikon tombol transisi status, mengikuti arti status tujuannya. */
+const IKON_TRANSISI: Record<StatusLowongan, LucideIcon> = { draft: FileText, open: Megaphone, closed: Lock, filled: UserCheck, cancelled: X };
 
 /** Corong bisa datang sebagai array {stage, ...angka} atau record; keduanya dinormalkan. */
 const normalkanCorong = (f: CorongRekrutmen["funnel"]) =>
@@ -90,7 +92,7 @@ export default function HalamanRekrutmen() {
 
       {tab === "lowongan" && (
         lowongan.isLoading ? <SkeletonBaris /> : !lowongan.data?.data.length ? (
-          <Card><EmptyState icon={Briefcase} title="Belum ada lowongan" description="Buat lowongan, lalu tayangkan agar pelamar bisa dicatat." action={bolehBuat && <Button onClick={() => setFormBuka({ open: true, item: null })}>Buat Lowongan</Button>} /></Card>
+          <Card><EmptyState icon={Briefcase} title="Belum ada lowongan" description="Buat lowongan, lalu tayangkan agar pelamar bisa dicatat." action={bolehBuat && <Button onClick={() => setFormBuka({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Buat Lowongan</Button>} /></Card>
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -112,7 +114,14 @@ export default function HalamanRekrutmen() {
                     {hr && (
                       <div className="flex flex-wrap gap-2">
                         {bolehUbah && <Button size="sm" variant="ghost" onClick={() => setFormBuka({ open: true, item: l })}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>}
-                        {bolehUbah && TRANSISI[l.status].map((s) => <Button key={s} size="sm" variant={s === "open" ? "primary" : "outline"} onClick={() => ubahStatus.mutate({ l, status: s })}>{s === "open" ? "Tayangkan" : labelStatus(s)}</Button>)}
+                        {bolehUbah && TRANSISI[l.status].map((s) => {
+                          const Ikon = IKON_TRANSISI[s];
+                          return (
+                            <Button key={s} size="sm" variant={s === "open" ? "primary" : "outline"} onClick={() => ubahStatus.mutate({ l, status: s })}>
+                              <Ikon className="h-4 w-4" aria-hidden /> {s === "open" ? "Tayangkan" : labelStatus(s)}
+                            </Button>
+                          );
+                        })}
                         {(l._count?.candidates ?? 0) > 0 && <Button size="sm" variant="ghost" onClick={() => setTab("pelamar")}><Users className="h-4 w-4" aria-hidden /> Pelamar</Button>}
                       </div>
                     )}
@@ -180,7 +189,7 @@ export default function HalamanRekrutmen() {
       <FormLowongan open={formBuka.open} onClose={() => setFormBuka({ open: false, item: null })} lowongan={formBuka.item} />
 
       <Modal open={Boolean(umpan)} onClose={() => setUmpan(null)} title="Umpan Balik Wawancara" description={umpan ? `${umpan.candidate.name} · ${umpan.stage} putaran ${umpan.round}` : undefined}
-        footer={<><Button variant="outline" onClick={() => setUmpan(null)}>Batal</Button><Button form="form-umpan" type="submit" loading={kirimUmpan.isPending}>Simpan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setUmpan(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-umpan" type="submit" loading={kirimUmpan.isPending}>{!kirimUmpan.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
         <form id="form-umpan" onSubmit={fu.handleSubmit((v) => kirimUmpan.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Status"><Select {...fu.register("status")}><option value="completed">Selesai</option><option value="no_show">Kandidat tidak hadir</option><option value="cancelled">Dibatalkan</option></Select></Field>

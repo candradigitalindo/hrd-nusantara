@@ -272,6 +272,44 @@ describe('PATCH /api/employees/:id/deactivate', () => {
   });
 });
 
+describe('Perlindungan akun berlingkup lebih tinggi', () => {
+  it('HR tidak bisa menyunting, menurunkan peran, mengganti sandi, atau menonaktifkan akun Super Admin', async () => {
+    const pemilik = await makeEmployee({ email: 'owner@resto.id', nik: 'OWN-1', role: Role.SUPER_ADMIN });
+
+    expect((await request(app).put(`/api/employees/${pemilik.id}`).set(auth(token)).send({ name: 'Bukan Pemilik' })).status).toBe(403);
+    expect((await request(app).put(`/api/employees/${pemilik.id}`).set(auth(token)).send({ role: 'EMPLOYEE' })).status).toBe(403);
+    // Jalur pengambilalihan paling langsung: mengganti sandi lewat PUT.
+    expect((await request(app).put(`/api/employees/${pemilik.id}`).set(auth(token)).send({ password: 'AmbilAlih123' })).status).toBe(403);
+    expect((await request(app).patch(`/api/employees/${pemilik.id}/deactivate`).set(auth(token)).send({ status: 'resign' })).status).toBe(403);
+
+    // Barisnya benar-benar tidak tersentuh, termasuk hash sandinya.
+    const sesudah = await prisma.employee.findUniqueOrThrow({ where: { id: pemilik.id } });
+    expect(sesudah).toMatchObject({ name: pemilik.name, role: Role.SUPER_ADMIN, status: 'active', password: pemilik.password });
+  });
+
+  it('yang setara atau lebih rendah tetap bisa dikelola', async () => {
+    const budi = await makeEmployee({ email: 'budi@resto.id', nik: 'K-1' });
+    const hrLain = await makeEmployee({ email: 'hr2@resto.id', nik: 'HR-2', role: Role.HR_ADMIN });
+    await makeEmployee({ email: 'owner@resto.id', nik: 'OWN-1', role: Role.SUPER_ADMIN });
+
+    expect((await request(app).put(`/api/employees/${budi.id}`).set(auth(token)).send({ name: 'Budi Baru' })).status).toBe(200);
+    expect((await request(app).patch(`/api/employees/${budi.id}/deactivate`).set(auth(token)).send({ status: 'resign' })).status).toBe(200);
+    expect((await request(app).put(`/api/employees/${hrLain.id}`).set(auth(token)).send({ name: 'HR Dua' })).status).toBe(200);
+
+    // Pemilik sistem tetap bisa menonaktifkan HR.
+    const hr = await prisma.employee.findUniqueOrThrow({ where: { email: 'hr@resto.id' } });
+    const tokenPemilik = await login(app, 'owner@resto.id');
+    expect((await request(app).patch(`/api/employees/${hr.id}/deactivate`).set(auth(tokenPemilik)).send({ status: 'resign' })).status).toBe(200);
+  });
+
+  it('karyawan yang tidak ada tetap 404, bukan 403', async () => {
+    expect((await request(app).put('/api/employees/01ARZ3NDEKTSV4RRFFQ69G5FAV').set(auth(token)).send({ name: 'Hantu' })).status).toBe(404);
+    expect(
+      (await request(app).patch('/api/employees/01ARZ3NDEKTSV4RRFFQ69G5FAV/deactivate').set(auth(token)).send({ status: 'resign' })).status
+    ).toBe(404);
+  });
+});
+
 describe('GET /api/employees/directory', () => {
   it('bisa diakses karyawan biasa, tanpa data pribadi, tanpa yang sudah keluar', async () => {
     await makeEmployee({ email: 'budi@resto.id', nik: 'EMP-1', name: 'Budi Cook' });

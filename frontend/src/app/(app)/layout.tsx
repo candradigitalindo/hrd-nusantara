@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, ArrowRight } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { menuUntukJalur, menuUntuk, bolehBukaMenu, type MenuNav } from "@/components/layout/nav-config";
 import { Card } from "@/components/ui/card";
@@ -34,7 +34,7 @@ const AksesDibatasi = ({ item, pengguna }: { item: MenuNav; pengguna: PenggunaSe
         icon={Lock}
         title="Menu ini tidak termasuk peran Anda"
         description={`"${item.label}" tidak tersedia untuk peran ${pengguna.customRole?.name ?? LABEL_ROLE[pengguna.role]}. Hubungi HR bila Anda memerlukannya.`}
-        action={tujuan ? <Link href={tujuan.href}><Button variant="outline">Ke {tujuan.label}</Button></Link> : undefined}
+        action={tujuan ? <Link href={tujuan.href}><Button variant="outline">Ke {tujuan.label} <ArrowRight className="h-4 w-4" aria-hidden /></Button></Link> : undefined}
       />
     </Card>
   );

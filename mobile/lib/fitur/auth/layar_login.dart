@@ -67,7 +67,7 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
                         height: 64,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(color: skema.primary, borderRadius: BorderRadius.circular(18)),
-                        child: const Icon(Icons.badge_rounded, color: Colors.white, size: 34),
+                        child: const Icon(Icons.event_available_rounded, color: Colors.white, size: 34),
                       ),
                       const SizedBox(height: 20),
                       Text(namaAplikasi, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
@@ -115,11 +115,11 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
                           ),
                         ),
                       const SizedBox(height: 20),
-                      FilledButton(
+                      FilledButton.icon(
                         onPressed: _memproses ? null : _masuk,
-                        child: _memproses
-                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Text('Masuk'),
+                        // Saat memproses, pemuat menggantikan ikon supaya label tetap terbaca.
+                        icon: _memproses ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.login),
+                        label: const Text('Masuk'),
                       ),
                       const SizedBox(height: 16),
                       Text('Lupa password? Hubungi HR untuk mengatur ulang.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: skema.onSurfaceVariant)),
