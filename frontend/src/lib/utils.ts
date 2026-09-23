@@ -54,6 +54,8 @@ export const LABEL_STATUS: Record<string, string> = {
   closed: "Ditutup",
   filled: "Terisi",
   scheduled: "Terjadwal",
+  confirmed: "Terjadwal",
+  tentative: "Sementara",
   completed: "Selesai",
   no_show: "Tidak Hadir",
   published: "Tayang",

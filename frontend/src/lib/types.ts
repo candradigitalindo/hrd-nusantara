@@ -837,6 +837,23 @@ export interface DaftarSertifikat extends Halaman<Sertifikat> {
 // ===== Direktori, laporan, chat =====
 
 /** Direktori ringkas untuk semua peran: nama dan unit saja, tanpa data pribadi. */
+/** Jadwal shift seorang karyawan pada satu tanggal. */
+export interface Shift {
+  id: string;
+  employeeId: string;
+  /** Tanggal ISO (tengah malam UTC) — bandingkan dengan `tanggalISO`, jangan digeser ke zona lokal. */
+  date: string;
+  startTime: string;
+  endTime: string;
+  breakDuration: number;
+  status: "confirmed" | "tentative" | "cancelled";
+  notes: string | null;
+  /** Waktu absolut dari server; shift malam berakhir keesokan harinya. */
+  startsAt: string;
+  endsAt: string;
+  employee: { id: string; nik: string; name: string; departmentId: string | null };
+}
+
 export interface KaryawanDirektori {
   id: string;
   nik: string;

@@ -1,4 +1,5 @@
 import {
+  CalendarRange,
   LayoutDashboard,
   Users,
   Building2,
@@ -76,6 +77,7 @@ export const KELOMPOK: KelompokMenu[] = [
     icon: CalendarCheck,
     item: [
       { href: "/presensi", label: "Presensi", icon: CalendarCheck, izin: ["presensi.lihat", "presensi_tim.lihat"], utama: true },
+      { href: "/shift", label: "Jadwal Shift", icon: CalendarRange, izin: ["shift.lihat", "shift.buat", "shift.ubah", "shift.hapus"] },
       { href: "/cuti", label: "Cuti & Izin", icon: CalendarOff, izin: ["cuti.lihat", "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat", "pengaturan_cuti.buat", "pengaturan_cuti.ubah"], utama: true },
     ],
   },
