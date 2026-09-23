@@ -10,16 +10,8 @@ import { Card } from "@/components/ui/card";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatTanggal } from "@/lib/utils";
+import { formatTanggal, LABEL_STATUS_TES } from "@/lib/utils";
 import type { TesSaya } from "@/lib/types";
-
-const LABEL_STATUS_TES: Record<string, string> = {
-  assigned: "Belum dikerjakan",
-  in_progress: "Sedang dikerjakan",
-  submitted: "Menunggu penilaian",
-  graded: "Selesai dinilai",
-  expired: "Kedaluwarsa",
-};
 
 /** Daftar tes yang ditugaskan kepada pengguna yang sedang login. */
 export const TesSayaPanel = () => {

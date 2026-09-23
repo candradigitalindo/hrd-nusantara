@@ -193,6 +193,37 @@ describe('Melamar dari portal', () => {
     expect(utuh).not.toContain('CV cocok');
   });
 
+  it('berkas pelamar sampai ke meja HR: surat lamaran terbaca dan CV bisa diunduh', async () => {
+    const { lowonganId, token } = await siapkan();
+    const cv = `data:application/pdf;base64,${Buffer.from('%PDF-1.4\n% CV Siti Aminah, dua tahun di kafe.\n%%EOF\n').toString('base64')}`;
+    expectStatus(
+      await request(app)
+        .post('/api/karier/lamar')
+        .set(auth(token))
+        .send({ jobPostingId: lowonganId, coverLetter: 'Saya terbiasa shift malam.', cv, cvFileName: 'cv-siti.pdf' }),
+      201
+    );
+
+    const daftar = await request(app).get('/api/candidates').set(auth(hr));
+    expectStatus(daftar, 200);
+    const pelamar = daftar.body.data[0];
+    // Tiga hal yang membuat penyaringan mungkin: tulisan pelamar sendiri,
+    // penanda bahwa ia melamar lewat portal, dan CV-nya.
+    expect(pelamar).toMatchObject({ coverLetter: 'Saya terbiasa shift malam.', dariPortal: true, cvFileName: 'cv-siti.pdf' });
+
+    const unduh = await request(app).get(`/api/candidates/${pelamar.id}/cv`).set(auth(hr));
+    expectStatus(unduh, 200);
+    expect(unduh.headers['content-type']).toContain('application/pdf');
+
+    // Pelamar yang dicatat HR sendiri tidak ikut ditandai portal.
+    const manual = await request(app)
+      .post('/api/candidates')
+      .set(auth(hr))
+      .send({ jobPostingId: lowonganId, name: 'Budi Walk-in', email: 'budi@pelamar.id', source: 'walk-in' });
+    expectStatus(manual, 201);
+    expect(manual.body).toMatchObject({ dariPortal: false, cvFileName: null, coverLetter: null });
+  });
+
   it('lamaran orang lain tidak bisa dibuka', async () => {
     const { lowonganId, token } = await siapkan();
     expectStatus(await request(app).post('/api/karier/lamar').set(auth(token)).send({ jobPostingId: lowonganId }), 201);

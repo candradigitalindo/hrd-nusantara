@@ -218,6 +218,9 @@ const candidateSelect = {
   applicationDate: true,
   cvUrl: true,
   coverLetterUrl: true,
+  // Surat lamaran yang ditulis pelamar sendiri di portal karier. Tanpa ini
+  // penyaringan berjalan tanpa satu-satunya hal yang ia tulis sendiri.
+  coverLetter: true,
   source: true,
   expectedSalary: true,
   notes: true,
@@ -248,13 +251,22 @@ const candidateSelect = {
     },
     orderBy: { scheduledDateTime: 'asc' as const },
   },
+  accountId: true,
+  // Hanya nama berkasnya, bukan lokasi penyimpanannya: HR mengunduh melalui
+  // /candidates/:id/cv yang memeriksa izin dan mencatat jejak audit.
+  account: { select: { cvFileName: true } },
 } satisfies Prisma.CandidateSelect;
 
 type CandidateRow = Prisma.CandidateGetPayload<{ select: typeof candidateSelect }>;
 
-const candidateDTO = (row: CandidateRow) => ({
+const candidateDTO = ({ account, ...row }: CandidateRow) => ({
   ...row,
   expectedSalary: num(row.expectedSalary),
+  // Pelamar yang datang lewat portal karier — CV-nya berupa berkas tersimpan
+  // dan tahapnya ikut terbaca di dasbor pelamar, berbeda dari pelamar yang
+  // dicatat HR secara manual.
+  dariPortal: row.accountId !== null,
+  cvFileName: account?.cvFileName ?? null,
 });
 
 export const createCandidate = async (req: Request, res: Response) => {

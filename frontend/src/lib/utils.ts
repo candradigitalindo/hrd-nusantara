@@ -108,6 +108,15 @@ export const LABEL_SP: Record<string, string> = {
 export const labelStatus = (kode: string | null | undefined) =>
   kode ? (LABEL_STATUS[kode] ?? kode) : "—";
 
+/** Status penugasan CBT — dipakai di daftar tes peserta maupun berkas pelamar. */
+export const LABEL_STATUS_TES: Record<string, string> = {
+  assigned: "Belum dikerjakan",
+  in_progress: "Sedang dikerjakan",
+  submitted: "Menunggu penilaian",
+  graded: "Selesai dinilai",
+  expired: "Kedaluwarsa",
+};
+
 export const LABEL_ROLE: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
   HR_ADMIN: "HR Admin",

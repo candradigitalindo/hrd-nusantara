@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { InputRupiah } from "@/components/ui/input-rupiah";
-import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink, ClipboardPen, Save, UserPlus, X } from "lucide-react";
+import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink, ClipboardPen, Save, UserPlus, X, Download, MonitorCheck, Globe } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -18,8 +18,8 @@ import { Pagination } from "@/components/ui/pagination";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
-import { formatTanggal, formatRupiah, formatRelatif, LABEL_TAHAP, LABEL_HASIL_WAWANCARA, labelStatus, LABEL_STATUS } from "@/lib/utils";
-import type { Halaman, Kandidat, Lowongan, Karyawan, Departemen, Jabatan, HasilPsikotes, TahapKandidat } from "@/lib/types";
+import { formatTanggal, formatRupiah, formatRelatif, LABEL_TAHAP, LABEL_HASIL_WAWANCARA, LABEL_STATUS_TES, labelStatus, LABEL_STATUS } from "@/lib/utils";
+import type { Halaman, Kandidat, Lowongan, Karyawan, Departemen, Jabatan, HasilPsikotes, PenugasanCbt, TahapKandidat } from "@/lib/types";
 
 const TAHAP: TahapKandidat[] = ["applied", "screening", "interview", "offer", "hired", "rejected", "withdrawn"];
 
@@ -28,6 +28,19 @@ type FormTahap = { stage: TahapKandidat; note: string; rejectionReason: string }
 type FormWawancara = { interviewerId: string; stage: string; round: string; scheduledDateTime: string; durationMinutes: string; location: string; notes: string };
 type FormPsikotes = { testName: string; score: string; maxScore: string; testDate: string; interpretation: string };
 type FormHire = { nik: string; joinDate: string; departmentId: string; positionId: string; employeeStatus: string; note: string };
+
+/**
+ * CV pelamar portal adalah berkas tersimpan, diunduh lewat BFF supaya token
+ * sesi ikut terpasang — menunjuk langsung ke /api/candidates/:id/cv hanya
+ * menghasilkan 401 karena peramban tidak membawa header Authorization.
+ * cvUrl yang diisi HR sendiri biasanya tautan luar (Drive, e-mail), dipakai
+ * apa adanya.
+ */
+const tautanCv = (k: Kandidat): { href: string; berkas: boolean } | null => {
+  if (k.cvFileName) return { href: `/api/backend/candidates/${k.id}/cv`, berkas: true };
+  if (k.cvUrl && /^https?:\/\//i.test(k.cvUrl)) return { href: k.cvUrl, berkas: false };
+  return null;
+};
 
 const isoLokal = (d: Date) => {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -39,6 +52,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   const { data: saya } = useSesi();
   const bolehBuat = punyaIzin(saya, "rekrutmen.buat");
   const bolehUbah = punyaIzin(saya, "rekrutmen.ubah");
+  const bolehLihatTes = punyaIzin(saya, "cbt_hasil.lihat") || punyaIzin(saya, "cbt.buat") || punyaIzin(saya, "cbt.ubah");
   const [cari, setCari] = React.useState("");
   const [cariTunda, setCariTunda] = React.useState("");
   const [tahap, setTahap] = React.useState("");
@@ -61,6 +75,9 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   const departemen = useQuery({ queryKey: ["departemen", "semua"], queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data, enabled: aksi === "hire" });
   const jabatan = useQuery({ queryKey: ["jabatan", "semua"], queryFn: async () => (await api.get<Halaman<Jabatan>>("/positions?limit=100")).data.data, enabled: aksi === "hire" });
   const psikotes = useQuery({ queryKey: ["psikotes", detail?.id], queryFn: async () => (await api.get<Halaman<HasilPsikotes>>(`/psychometric-tests?candidateId=${detail!.id}&limit=50`)).data.data, enabled: Boolean(detail) });
+  // Tes CBT ditugaskan dari halaman CBT, tapi keputusan atas pelamar diambil di
+  // sini: skornya harus terbaca tanpa pindah halaman.
+  const tesCbt = useQuery({ queryKey: ["cbt-pelamar", detail?.id], queryFn: async () => (await api.get<Halaman<PenugasanCbt>>(`/cbt/penugasan?candidateId=${detail!.id}&limit=20`)).data.data, enabled: Boolean(detail) && bolehLihatTes });
 
   const segarkan = async () => {
     await qc.invalidateQueries({ queryKey: ["kandidat"] });
@@ -152,11 +169,33 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone={nadaStatus(detail.status)} dot className="text-sm">{LABEL_TAHAP[detail.status]}</Badge>
               {detail.expectedSalary && <Badge tone="neutral">Ekspektasi {formatRupiah(detail.expectedSalary)}</Badge>}
-              {detail.cvUrl && <a href={detail.cvUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline"><FileText className="h-4 w-4" aria-hidden /> CV <ExternalLink className="h-3 w-3" aria-hidden /></a>}
+              {detail.dariPortal && <Badge tone="info"><Globe className="h-3.5 w-3.5" aria-hidden /> Melamar lewat portal</Badge>}
+              {(() => {
+                const cv = tautanCv(detail);
+                if (!cv) return <span className="text-muted">CV belum ada</span>;
+                return (
+                  <a href={cv.href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                    {cv.berkas ? <Download className="h-4 w-4" aria-hidden /> : <FileText className="h-4 w-4" aria-hidden />}
+                    {cv.berkas ? (detail.cvFileName ?? "Unduh CV") : "CV"}
+                    {!cv.berkas && <ExternalLink className="h-3 w-3" aria-hidden />}
+                  </a>
+                );
+              })()}
             </div>
             {detail.rejectionReason && <Alert tone="danger" title="Alasan penolakan">{detail.rejectionReason}</Alert>}
             {detail.hiredEmployeeId && <Alert tone="success" title="Sudah menjadi karyawan" action={<a href={`/karyawan/${detail.hiredEmployeeId}`} className="text-sm font-medium underline">Buka data karyawan</a>} />}
-            {detail.notes && <p className="text-muted">{detail.notes}</p>}
+            {detail.coverLetter && (
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Surat lamaran</h3>
+                <p className="whitespace-pre-line rounded-xl border border-border bg-surface-2 p-3">{detail.coverLetter}</p>
+              </section>
+            )}
+            {detail.notes && (
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Catatan internal</h3>
+                <p className="whitespace-pre-line text-muted">{detail.notes}</p>
+              </section>
+            )}
 
             <section>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Wawancara</h3>
@@ -185,6 +224,35 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
                 </ul>
               )}
             </section>
+
+            {bolehLihatTes && (
+              <section>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Tes CBT</h3>
+                {!tesCbt.data?.length ? (
+                  <p className="text-muted">Belum ditugaskan. Tugaskan dari halaman <a href="/cbt" className="text-primary hover:underline">CBT</a>.</p>
+                ) : (
+                  <ul className="divide-y divide-border rounded-xl border border-border">
+                    {tesCbt.data.map((t) => (
+                      <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <div>
+                          <p className="font-medium">{t.test.title}</p>
+                          <p className="text-xs text-muted">{t.availableUntil ? `Berlaku sampai ${formatTanggal(t.availableUntil, "d MMM yyyy HH:mm")}` : `Ditugaskan ${formatTanggal(t.createdAt, "d MMM yyyy")}`}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {t.attempt?.percent != null && <span className="tabular-nums text-muted">{t.attempt.percent}%</span>}
+                          {t.attempt?.passed != null ? (
+                            <Badge tone={t.attempt.passed ? "success" : "danger"} dot>{t.attempt.passed ? "Lulus" : "Tidak lulus"}</Badge>
+                          ) : (
+                            <Badge tone={nadaStatus(t.status)} dot>{LABEL_STATUS_TES[t.status] ?? t.status}</Badge>
+                          )}
+                          {t.attempt && <a href={`/cbt/hasil/${t.attempt.id}`} className="text-primary hover:underline" aria-label={`Rincian hasil ${t.test.title}`}><MonitorCheck className="h-4 w-4" aria-hidden /></a>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
 
             <section>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Riwayat tahap</h3>

@@ -461,6 +461,8 @@ export interface Kandidat {
   applicationDate: string;
   cvUrl: string | null;
   coverLetterUrl: string | null;
+  /** Surat lamaran yang ditulis pelamar sendiri di portal karier. */
+  coverLetter: string | null;
   source: string | null;
   expectedSalary: number | null;
   notes: string | null;
@@ -470,6 +472,10 @@ export interface Kandidat {
   appliedPosition: { id: string; title: string; status: string };
   stageHistory: RiwayatTahap[];
   interviews: WawancaraRingkas[];
+  /** Melamar sendiri lewat portal karier, bukan dicatat HR. */
+  dariPortal: boolean;
+  /** Nama berkas CV tersimpan; diunduh lewat /api/backend/candidates/:id/cv. */
+  cvFileName: string | null;
 }
 
 export interface Wawancara {
