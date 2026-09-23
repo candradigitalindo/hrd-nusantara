@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { notifikasi } from "./use-notifikasi";
 import type { PenggunaSesi } from "@/lib/types";
 
 /** Pengguna yang sedang login, dari /auth/me. */
@@ -17,7 +18,16 @@ export const useLogout = () => {
   const router = useRouter();
   const qc = useQueryClient();
   return async () => {
-    await fetch("/api/session", { method: "DELETE" });
+    // Harus lewat /api/backend/: di produksi nginx mengirim /api/* lainnya ke
+    // backend Express yang tidak punya rute ini.
+    const jawaban = await fetch("/api/backend/keluar", { method: "DELETE" });
+    // Tanpa pemeriksaan ini, kegagalan menghapus cookie berakhir sebagai
+    // "tombol tidak bereaksi": halaman login memantulkan balik ke dashboard
+    // karena sesinya masih ada.
+    if (!jawaban.ok) {
+      notifikasi.galat(new Error(`Server menolak permintaan keluar (HTTP ${jawaban.status}).`), "Gagal keluar");
+      return;
+    }
     qc.clear();
     router.replace("/login");
   };
