@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { menuUntukJalur, menuUntuk, bolehBukaMenu, type MenuNav } from "@/components/layout/nav-config";
@@ -43,8 +43,15 @@ const AksesDibatasi = ({ item, pengguna }: { item: MenuNav; pengguna: PenggunaSe
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { data: pengguna } = useSesi();
   const pathname = usePathname();
+  const router = useRouter();
   const item = menuUntukJalur(pathname);
   const ditolak = pengguna !== undefined && item !== undefined && !bolehBukaMenu(item, pengguna);
+  // Sandi yang diatur HR bersifat sementara: sebelum diganti, hanya halaman
+  // ganti sandi yang boleh dibuka.
+  const wajibGantiSandi = pengguna?.mustChangePassword === true && pathname !== "/ganti-sandi";
+  React.useEffect(() => {
+    if (wajibGantiSandi) router.replace("/ganti-sandi");
+  }, [wajibGantiSandi, router]);
 
   return (
     <div className="flex min-h-dvh">
@@ -57,7 +64,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <Header pengguna={pengguna} />
         <main className="flex-1 px-4 py-5 pb-24 sm:px-6 lg:pb-8">
-          <div className="mx-auto w-full max-w-7xl space-y-5">{ditolak ? <AksesDibatasi item={item} pengguna={pengguna} /> : children}</div>
+          <div className="mx-auto w-full max-w-7xl space-y-5">{ditolak ? <AksesDibatasi item={item} pengguna={pengguna} /> : wajibGantiSandi ? null : children}</div>
         </main>
         <MobileNav pengguna={pengguna} />
       </div>

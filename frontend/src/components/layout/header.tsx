@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Menu, LogOut, Moon, Sun } from "lucide-react";
+import Link from "next/link";
+import { Menu, LogOut, Moon, Sun, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sidebar } from "./sidebar";
 import { useLogout } from "@/hooks/use-sesi";
@@ -30,6 +31,9 @@ export const Header = ({ pengguna }: { pengguna: PenggunaSesi | undefined }) => 
         <Button variant="ghost" size="icon" onClick={ganti} aria-label={gelap ? "Mode terang" : "Mode gelap"}>
           {gelap ? <Sun className="h-5 w-5" aria-hidden /> : <Moon className="h-5 w-5" aria-hidden />}
         </Button>
+        <Link href="/ganti-sandi" aria-label="Ganti kata sandi" title="Ganti kata sandi" className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 hover:text-foreground">
+          <KeyRound className="h-5 w-5" aria-hidden />
+        </Link>
         <Button variant="ghost" size="sm" onClick={logout} aria-label="Keluar">
           <LogOut className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline">Keluar</span>

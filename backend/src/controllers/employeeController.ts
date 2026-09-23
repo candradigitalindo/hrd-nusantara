@@ -1,8 +1,9 @@
 // src/controllers/employeeController.ts
-import type { DirectoryQuery } from '../schemas/employeeSchema';
+import type { DirectoryQuery, ResetPasswordInput } from '../schemas/employeeSchema';
 import { Request, Response } from 'express';
 import { normalizePhoneNumber } from '../utils/whatsappRules';
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'crypto';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
@@ -213,6 +214,8 @@ export const createEmployee = async (req: Request, res: Response) => {
         password: input.password
           ? await bcrypt.hash(input.password, env.BCRYPT_ROUNDS)
           : null,
+        // Sandi awal dari HR bersifat sementara: karyawan menggantinya sendiri.
+        mustChangePassword: Boolean(input.password),
         ...(input.departmentId && { department: { connect: { id: input.departmentId } } }),
         ...(input.positionId && { position: { connect: { id: input.positionId } } }),
       },
@@ -265,7 +268,10 @@ export const updateEmployee = async (req: Request, res: Response) => {
   if (input.dateOfBirth !== undefined) data.dateOfBirth = input.dateOfBirth;
   if (input.joinDate !== undefined) data.joinDate = input.joinDate;
   if (input.status !== undefined) data.status = input.status;
-  if (input.password !== undefined) data.password = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
+  if (input.password !== undefined) {
+    data.password = await bcrypt.hash(input.password, env.BCRYPT_ROUNDS);
+    data.mustChangePassword = true;
+  }
   if (peranBaru) {
     data.role = peranBaru.role;
     data.customRole = peranBaru.customRoleId ? { connect: { id: peranBaru.customRoleId } } : { disconnect: true };
@@ -401,4 +407,65 @@ export const getDirectory = async (req: Request, res: Response) => {
   });
 
   res.json({ data });
+};
+
+// ============ Atur ulang kata sandi ============
+
+/** Lingkup data dari rendah ke tinggi; sandi akun berlingkup lebih tinggi tidak boleh diatur dari bawah. */
+const PERINGKAT_LINGKUP: Record<Role, number> = { EMPLOYEE: 0, MANAGER: 1, HR_ADMIN: 2, SUPER_ADMIN: 3 };
+
+/** Tanpa huruf/angka yang mudah tertukar (0/O, 1/l/I) karena sandi ini dibacakan atau diketik ulang. */
+const ALFABET_SANDI = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+const buatSandiSementara = () =>
+  Array.from({ length: 10 }, () => ALFABET_SANDI[randomInt(ALFABET_SANDI.length)]).join('');
+
+/**
+ * HR mengatur ulang kata sandi karyawan yang lupa. Sandi sementara dibuat
+ * server dan dikembalikan SEKALI di respons ini — tidak disimpan di mana pun
+ * selain sebagai hash — lalu karyawan wajib menggantinya saat login berikutnya.
+ */
+export const resetPassword = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const input = req.body as ResetPasswordInput;
+  const actor = req.user!;
+
+  if (actor.id === id) {
+    return res.status(400).json({ error: 'Untuk akun sendiri gunakan menu ganti kata sandi' });
+  }
+
+  const target = await prisma.employee.findUnique({
+    where: { id },
+    select: { id: true, email: true, name: true, role: true, departmentId: true },
+  });
+  if (!target) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+
+  // Pagar eskalasi: HR tidak boleh mengambil alih akun pemilik sistem dengan
+  // mengatur ulang sandinya; manajer hanya untuk departemennya sendiri.
+  if (PERINGKAT_LINGKUP[target.role] > PERINGKAT_LINGKUP[actor.role]) {
+    return res.status(403).json({ error: 'Tidak bisa mengatur ulang kata sandi akun berlingkup lebih tinggi' });
+  }
+  if (actor.role === Role.MANAGER && target.departmentId !== actor.departmentId) {
+    return res.status(403).json({ error: 'Manajer hanya bisa mengatur ulang kata sandi karyawan di departemennya' });
+  }
+
+  const sementara = input.password ? null : buatSandiSementara();
+  const sandi = input.password ?? sementara!;
+  await prisma.employee.update({
+    where: { id },
+    data: { password: await bcrypt.hash(sandi, env.BCRYPT_ROUNDS), mustChangePassword: true },
+  });
+
+  res.locals.audit = {
+    action: 'employee.reset_sandi',
+    entity: 'Employee',
+    entityId: id,
+    summary: `Mengatur ulang kata sandi ${target.email}`,
+    metadata: { sandiSementara: sementara !== null },
+  };
+
+  res.json({
+    message: `Kata sandi ${target.name} diatur ulang; wajib diganti saat login berikutnya`,
+    mustChangePassword: true,
+    ...(sementara ? { temporaryPassword: sementara } : {}),
+  });
 };

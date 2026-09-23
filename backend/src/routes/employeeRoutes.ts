@@ -7,6 +7,7 @@ import {
   createEmployee,
   updateEmployee,
   deactivateEmployee,
+  resetPassword,
 } from '../controllers/employeeController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -17,6 +18,7 @@ import {
   employeeIdParamSchema,
   deactivateEmployeeSchema,
   directoryQuerySchema,
+  resetPasswordSchema,
 } from '../schemas/employeeSchema';
 
 const router = express.Router();
@@ -52,6 +54,16 @@ router.put(
   validate(employeeIdParamSchema, 'params'),
   validate(updateEmployeeSchema),
   asyncHandler(updateEmployee)
+);
+
+// Atur ulang kata sandi: hak yang sama dengan menyunting karyawan. Sandi
+// sementara hanya ada di respons ini; audit mencatat kejadiannya, bukan sandinya.
+router.post(
+  '/:id/reset-password',
+  requirePermission('karyawan.ubah'),
+  validate(employeeIdParamSchema, 'params'),
+  validate(resetPasswordSchema),
+  asyncHandler(resetPassword)
 );
 
 // Bukan DELETE: data kepegawaian diarsipkan, bukan dihapus.

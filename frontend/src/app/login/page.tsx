@@ -34,10 +34,11 @@ function FormLogin() {
 
   const masuk = async (nilai: Nilai) => {
     try {
-      const { data } = await api.post<{ user: { name: string } }>("/auth/login", nilai);
+      const { data } = await api.post<{ user: { name: string; mustChangePassword?: boolean } }>("/auth/login", nilai);
       notifikasi.sukses(`Selamat datang, ${data.user.name}`);
       const kembali = params.get("kembali");
-      router.replace(kembali && kembali.startsWith("/") ? kembali : "/");
+      // Sandi dari HR bersifat sementara: halaman lain terkunci sampai diganti.
+      router.replace(data.user.mustChangePassword ? "/ganti-sandi" : kembali && kembali.startsWith("/") ? kembali : "/");
       router.refresh();
     } catch (error) {
       notifikasi.galat(error, "Login gagal");

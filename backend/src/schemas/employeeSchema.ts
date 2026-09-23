@@ -93,6 +93,14 @@ export const deactivateEmployeeSchema = z
   })
   .strict();
 
+/** Atur ulang kata sandi oleh HR. Tanpa `password`, server membuat sandi sementara. */
+export const resetPasswordSchema = z
+  .object({
+    password: z.string().min(8, 'Password minimal 8 karakter').max(128).optional(),
+  })
+  .strict();
+
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 export type ListEmployeeQuery = z.infer<typeof listEmployeeQuerySchema>;

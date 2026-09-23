@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Mail, Phone, MapPin, Calendar, Building2, Briefcase } from "lucide-react";
+import { ArrowLeft, Mail, Phone, MapPin, Calendar, Building2, Briefcase, KeyRound } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert } from "@/components/ui/alert";
 import { PanelDokumen } from "@/components/karyawan/dokumen-karyawan";
+import { DialogResetSandi } from "@/components/karyawan/dialog-reset-sandi";
 import { PanelGaji } from "@/components/karyawan/panel-gaji";
 import { PanelSaldoCuti } from "@/components/cuti/panel-saldo";
 import { formatTanggal, labelStatus, LABEL_ROLE, inisial } from "@/lib/utils";
@@ -33,6 +34,7 @@ export default function HalamanDetailKaryawan() {
   const { id } = useParams<{ id: string }>();
   const { data: saya } = useSesi();
   const hr = punyaIzin(saya, "karyawan.ubah");
+  const [resetSandi, setResetSandi] = React.useState(false);
   const gaji = punyaIzin(saya, "payroll.lihat") || bolehKelola(saya, "payroll");
   const lihatSaldo = punyaIzin(saya, "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat") || bolehKelola(saya, "pengaturan_cuti");
   const kelolaSaldo = punyaIzin(saya, "pengaturan_cuti.buat", "pengaturan_cuti.ubah");
@@ -57,8 +59,18 @@ export default function HalamanDetailKaryawan() {
           <PageHeader
             title={k.name}
             description={`${k.nik} · ${k.customRole?.name ?? LABEL_ROLE[k.role]}`}
-            actions={<Badge tone={nadaStatus(k.status)} dot className="text-sm px-3 py-1">{labelStatus(k.status)}</Badge>}
+            actions={
+              <div className="flex flex-wrap items-center gap-2">
+                {hr && k.id !== saya?.id && (
+                  <Button variant="outline" size="sm" onClick={() => setResetSandi(true)}>
+                    <KeyRound className="h-4 w-4" aria-hidden /> Atur ulang sandi
+                  </Button>
+                )}
+                <Badge tone={nadaStatus(k.status)} dot className="text-sm px-3 py-1">{labelStatus(k.status)}</Badge>
+              </div>
+            }
           />
+          <DialogResetSandi karyawan={k} open={resetSandi} onClose={() => setResetSandi(false)} />
 
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-1">

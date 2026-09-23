@@ -15,7 +15,7 @@ import 'fitur/kinerja/layar_kinerja.dart';
 import 'fitur/pelatihan/layar_pelatihan.dart';
 import 'fitur/pengumuman/layar_pengumuman.dart';
 import 'fitur/presensi/layar_presensi.dart';
-import 'fitur/profil/layar_profil.dart';
+import 'fitur/profil/layar_profil.dart' show LayarGantiPassword, LayarProfil;
 import 'fitur/survei/layar_survei.dart';
 import 'fitur/whatsapp/layar_whatsapp.dart';
 
@@ -37,15 +37,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       final sesi = ref.read(sesiProvider);
       final diLogin = state.matchedLocation == '/login';
       final diMuat = state.matchedLocation == '/memuat';
+      final diGantiSandi = state.matchedLocation == '/ganti-sandi';
       return switch (sesi) {
         SesiMemuat() => diMuat ? null : '/memuat',
         SesiKeluar() => diLogin ? null : '/login',
-        SesiMasuk() => (diLogin || diMuat) ? '/' : null,
+        // Sandi dari HR bersifat sementara: layar lain terkunci sampai diganti.
+        SesiMasuk(pengguna: final p) when p.wajibGantiSandi => diGantiSandi ? null : '/ganti-sandi',
+        SesiMasuk() => (diLogin || diMuat || diGantiSandi) ? '/' : null,
       };
     },
     routes: [
       GoRoute(path: '/memuat', builder: (_, _) => const Scaffold(body: Center(child: CircularProgressIndicator()))),
       GoRoute(path: '/login', builder: (_, _) => const LayarLogin()),
+      GoRoute(path: '/ganti-sandi', builder: (_, _) => const LayarGantiPassword(wajib: true)),
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => Cangkang(navigationShell: shell),
         branches: [

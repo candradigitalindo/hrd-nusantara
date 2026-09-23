@@ -130,8 +130,12 @@ String labelPeran(String kode) => switch (kode) {
       _ => 'Karyawan',
     };
 
+/// Ganti kata sandi sendiri. Dengan [wajib] (sandi dari HR): tidak bisa
+/// ditinggalkan, dan setelah berhasil profil disegarkan supaya router
+/// melepaskan kuncinya.
 class LayarGantiPassword extends ConsumerStatefulWidget {
-  const LayarGantiPassword({super.key});
+  const LayarGantiPassword({super.key, this.wajib = false});
+  final bool wajib;
   @override
   ConsumerState<LayarGantiPassword> createState() => _LayarGantiPasswordState();
 }
@@ -158,7 +162,12 @@ class _LayarGantiPasswordState extends ConsumerState<LayarGantiPassword> {
       await ref.read(klienApiProvider).post('/auth/change-password', {'currentPassword': _lama.text, 'newPassword': _baru.text});
       if (!mounted) return;
       tampilkanPesan(context, 'Password diganti', rincian: 'Gunakan password baru saat masuk berikutnya.');
-      Navigator.of(context).pop();
+      if (widget.wajib) {
+        // Server sudah mengosongkan penanda; profil segar membuka kunci router.
+        await ref.read(sesiProvider.notifier).segarkanProfil();
+      } else {
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) tampilkanGalat(context, e, 'Password belum diganti');
     } finally {
@@ -168,22 +177,40 @@ class _LayarGantiPasswordState extends ConsumerState<LayarGantiPassword> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Ganti Password')),
+    final skema = Theme.of(context).colorScheme;
+    return PopScope(
+      canPop: !widget.wajib,
+      child: Scaffold(
+      appBar: AppBar(
+        title: Text(widget.wajib ? 'Buat Password Baru' : 'Ganti Password'),
+        automaticallyImplyLeading: !widget.wajib,
+        actions: [if (widget.wajib) TextButton(onPressed: () => ref.read(sesiProvider.notifier).keluar(), child: const Text('Keluar'))],
+      ),
       body: Form(
         key: _form,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextFormField(controller: _lama, obscureText: true, decoration: const InputDecoration(labelText: 'Password saat ini'), validator: (v) => (v == null || v.isEmpty) ? 'Wajib diisi' : null),
+            if (widget.wajib)
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: skema.secondaryContainer, borderRadius: BorderRadius.circular(12)),
+                child: Text(
+                  'HR mengatur ulang kata sandi Anda. Password yang Anda terima bersifat sementara — buat password baru yang hanya Anda ketahui sebelum melanjutkan.',
+                  style: TextStyle(fontSize: 12.5, color: skema.onSecondaryContainer, height: 1.4),
+                ),
+              ),
+            TextFormField(controller: _lama, obscureText: true, decoration: InputDecoration(labelText: widget.wajib ? 'Password sementara dari HR' : 'Password saat ini'), validator: (v) => (v == null || v.isEmpty) ? 'Wajib diisi' : null),
             const SizedBox(height: 12),
             TextFormField(controller: _baru, obscureText: true, decoration: const InputDecoration(labelText: 'Password baru', helperText: 'Minimal 8 karakter'), validator: (v) => (v == null || v.length < 8) ? 'Minimal 8 karakter' : v == _lama.text ? 'Harus berbeda dari password lama' : null),
             const SizedBox(height: 12),
             TextFormField(controller: _ulang, obscureText: true, decoration: const InputDecoration(labelText: 'Ulangi password baru'), validator: (v) => v != _baru.text ? 'Tidak sama dengan password baru' : null),
             const SizedBox(height: 20),
-            FilledButton(onPressed: _proses ? null : _simpan, child: _proses ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Simpan')),
+            FilledButton(onPressed: _proses ? null : _simpan, child: _proses ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : Text(widget.wajib ? 'Simpan & Lanjutkan' : 'Simpan')),
           ],
         ),
+      ),
       ),
     );
   }

@@ -12,6 +12,8 @@ export interface PenggunaSesi {
   positionId: string | null;
   /** Peran dinamis yang dipegang; null = memakai peran sistem sesuai role. */
   customRole: Ref | null;
+  /** Sandi baru diatur HR: wajib diganti sebelum memakai aplikasi. */
+  mustChangePassword: boolean;
   /** Izin efektif — hanya untuk menyembunyikan menu; penegakan tetap di server. */
   permissions: string[];
 }

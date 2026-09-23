@@ -13,6 +13,7 @@ class Pengguna {
     this.alamat,
     this.namaPeran,
     this.izin = const [],
+    this.wajibGantiSandi = false,
   });
 
   final String id;
@@ -33,6 +34,9 @@ class Pengguna {
   /// penegakannya tetap di server.
   final List<String> izin;
 
+  /// HR baru mengatur (ulang) sandinya: harus diganti sebelum memakai aplikasi.
+  final bool wajibGantiSandi;
+
   /// Lingkup data (kolom role): seberapa luas data yang terlihat.
   bool get hr => peran == 'SUPER_ADMIN' || peran == 'HR_ADMIN';
   bool get manajemen => hr || peran == 'MANAGER';
@@ -52,6 +56,7 @@ class Pengguna {
         alamat: j['address'] as String?,
         namaPeran: (j['customRole'] as Map?)?['name'] as String?,
         izin: ((j['permissions'] as List?) ?? const []).map((e) => e.toString()).toList(),
+        wajibGantiSandi: j['mustChangePassword'] == true,
       );
 
   Map<String, dynamic> keJson() => {
@@ -67,5 +72,6 @@ class Pengguna {
         'address': alamat,
         'customRole': namaPeran == null ? null : {'name': namaPeran},
         'permissions': izin,
+        'mustChangePassword': wajibGantiSandi,
       };
 }

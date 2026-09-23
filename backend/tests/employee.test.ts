@@ -333,3 +333,76 @@ describe('Nomor HP sebagai username login', () => {
     expect(ubah.body.phoneNumber).toBe('6285600001111');
   });
 });
+
+describe('POST /api/employees/:id/reset-password', () => {
+  it('HR membuat sandi sementara; karyawan wajib menggantinya, lalu penandanya hilang', async () => {
+    const budi = await makeEmployee({ email: 'budi@resto.id', nik: 'K-1' });
+
+    const res = await request(app).post(`/api/employees/${budi.id}/reset-password`).set(auth(token)).send({});
+    expect(res.status).toBe(200);
+    expect(res.body.temporaryPassword).toMatch(/^[A-HJ-NP-Za-km-z2-9]{10}$/);
+    expect(res.body.mustChangePassword).toBe(true);
+
+    // Sandi lama mati, sandi sementara hidup, dan login membawa penanda wajib ganti.
+    const lama = await request(app).post('/api/auth/login').send({ username: 'budi@resto.id', password: 'RahasiaUji123' });
+    expect(lama.status).toBe(401);
+    const masuk = await request(app).post('/api/auth/login').send({ username: 'budi@resto.id', password: res.body.temporaryPassword });
+    expect(masuk.status).toBe(200);
+    expect(masuk.body.user.mustChangePassword).toBe(true);
+    const saya = await request(app).get('/api/auth/me').set(auth(masuk.body.token));
+    expect(saya.body.mustChangePassword).toBe(true);
+
+    const ganti = await request(app)
+      .post('/api/auth/change-password')
+      .set(auth(masuk.body.token))
+      .send({ currentPassword: res.body.temporaryPassword, newPassword: 'SandiBaru2026' });
+    expect(ganti.status).toBe(200);
+    const sesudah = await request(app).get('/api/auth/me').set(auth(masuk.body.token));
+    expect(sesudah.body.mustChangePassword).toBe(false);
+
+    // Jejak audit mencatat kejadiannya tanpa sandinya.
+    const jejak = await prisma.auditLog.findFirst({ where: { action: 'employee.reset_sandi', entityId: budi.id } });
+    expect(jejak).not.toBeNull();
+    expect(JSON.stringify(jejak)).not.toContain(res.body.temporaryPassword);
+  });
+
+  it('HR boleh menentukan sandinya sendiri; respons tidak memuat sandi', async () => {
+    const siti = await makeEmployee({ email: 'siti@resto.id', nik: 'K-2' });
+    const res = await request(app).post(`/api/employees/${siti.id}/reset-password`).set(auth(token)).send({ password: 'DitentukanHR1' });
+    expect(res.status).toBe(200);
+    expect(res.body.temporaryPassword).toBeUndefined();
+    const masuk = await request(app).post('/api/auth/login').send({ username: 'siti@resto.id', password: 'DitentukanHR1' });
+    expect(masuk.status).toBe(200);
+    expect(masuk.body.user.mustChangePassword).toBe(true);
+    const pendek = await request(app).post(`/api/employees/${siti.id}/reset-password`).set(auth(token)).send({ password: 'pendek' });
+    expect(pendek.status).toBe(400);
+  });
+
+  it('bukan untuk diri sendiri, akun berlingkup lebih tinggi, atau tanpa izin karyawan.ubah', async () => {
+    const hr = await prisma.employee.findUniqueOrThrow({ where: { email: 'hr@resto.id' } });
+    const pemilik = await makeEmployee({ email: 'owner@resto.id', nik: 'OWN-1', role: Role.SUPER_ADMIN });
+    const budi = await makeEmployee({ email: 'budi@resto.id', nik: 'K-1' });
+
+    expect((await request(app).post(`/api/employees/${hr.id}/reset-password`).set(auth(token)).send({})).status).toBe(400);
+    expect((await request(app).post(`/api/employees/${pemilik.id}/reset-password`).set(auth(token)).send({})).status).toBe(403);
+    expect((await request(app).post('/api/employees/01ARZ3NDEKTSV4RRFFQ69G5FAV/reset-password').set(auth(token)).send({})).status).toBe(404);
+
+    const tokenBudi = await login(app, 'budi@resto.id');
+    expect((await request(app).post(`/api/employees/${hr.id}/reset-password`).set(auth(tokenBudi)).send({})).status).toBe(403);
+
+    // Pemilik sistem tetap bisa mengatur ulang sandi HR.
+    const tokenPemilik = await login(app, 'owner@resto.id');
+    expect((await request(app).post(`/api/employees/${hr.id}/reset-password`).set(auth(tokenPemilik)).send({})).status).toBe(200);
+  });
+
+  it('sandi awal saat membuat karyawan juga bersifat sementara', async () => {
+    const res = await request(app)
+      .post('/api/employees')
+      .set(auth(token))
+      .send({ nik: 'K-9', name: 'Rina', email: 'rina@resto.id', phoneNumber: '081299990009', password: 'SandiAwal123', joinDate: '2026-09-01' });
+    expect(res.status).toBe(201);
+    const masuk = await request(app).post('/api/auth/login').send({ username: 'rina@resto.id', password: 'SandiAwal123' });
+    expect(masuk.status).toBe(200);
+    expect(masuk.body.user.mustChangePassword).toBe(true);
+  });
+});

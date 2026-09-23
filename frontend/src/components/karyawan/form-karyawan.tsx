@@ -222,14 +222,16 @@ export const FormKaryawan = ({
         <Field label="Alamat" className="sm:col-span-2">
           <Textarea {...register("address")} rows={2} />
         </Field>
-        <Field
-          label={sunting ? "Kata sandi baru (opsional)" : "Kata sandi awal (opsional)"}
-          error={errors.password?.message}
-          hint="Minimal 8 karakter. Kosongkan bila belum perlu akun login."
-          className="sm:col-span-2"
-        >
-          <Input type="password" autoComplete="new-password" {...register("password")} />
-        </Field>
+        {!sunting && (
+          <Field
+            label="Kata sandi awal (opsional)"
+            error={errors.password?.message}
+            hint="Minimal 8 karakter; karyawan wajib menggantinya saat login pertama. Kosongkan bila belum perlu akun login. Untuk yang lupa sandi, pakai tombol Atur ulang sandi di daftar."
+            className="sm:col-span-2"
+          >
+            <Input type="password" autoComplete="new-password" {...register("password")} />
+          </Field>
+        )}
       </form>
     </Modal>
   );

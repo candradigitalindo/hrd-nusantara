@@ -73,6 +73,9 @@ model Employee {
   workPatternId String?
   status        String       @default("active") // active, probation, contract, internship, on_leave, inactive, resign, terminated
   password      String? // hash bcrypt; null = akun belum pernah diaktifkan
+  /// Kata sandinya baru diatur HR (awal atau diatur ulang): wajib diganti
+  /// sendiri saat login berikutnya, supaya HR tidak memegang sandi karyawan.
+  mustChangePassword Boolean @default(false)
   /// Lingkup data. Disinkronkan dari customRole.baseRole saat peran diberikan;
   /// controller memakainya untuk membatasi data (departemen sendiri, dsb.).
   role          Role         @default(EMPLOYEE)

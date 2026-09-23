@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Plus, Search, UserX, Users, Pencil } from "lucide-react";
+import { Plus, Search, UserX, Users, Pencil, KeyRound } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -18,6 +18,7 @@ import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { FormKaryawan } from "@/components/karyawan/form-karyawan";
+import { DialogResetSandi } from "@/components/karyawan/dialog-reset-sandi";
 import { formatTanggal, labelStatus, LABEL_ROLE, LABEL_STATUS, inisial } from "@/lib/utils";
 import type { Halaman, Karyawan, Departemen } from "@/lib/types";
 
@@ -37,6 +38,7 @@ export default function HalamanKaryawan() {
   const [page, setPage] = React.useState(1);
   const [form, setForm] = React.useState<{ open: boolean; karyawan: Karyawan | null }>({ open: false, karyawan: null });
   const [nonaktif, setNonaktif] = React.useState<Karyawan | null>(null);
+  const [resetSandi, setResetSandi] = React.useState<Karyawan | null>(null);
 
   // Pencarian ditunda 300ms supaya tiap ketukan tidak jadi satu permintaan.
   React.useEffect(() => {
@@ -118,6 +120,11 @@ export default function HalamanKaryawan() {
                     <span className="hidden sm:inline">Sunting</span>
                   </Button>
                 )}
+                {bolehUbah && k.id !== saya?.id && (
+                  <Button variant="ghost" size="sm" onClick={() => setResetSandi(k)} aria-label={`Atur ulang sandi ${k.name}`} title="Atur ulang kata sandi">
+                    <KeyRound className="h-4 w-4" aria-hidden />
+                  </Button>
+                )}
                 {bolehHapus && k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
                   <Button variant="ghost" size="sm" className="text-danger" onClick={() => setNonaktif(k)} aria-label={`Nonaktifkan ${k.name}`}>
                     <UserX className="h-4 w-4" aria-hidden />
@@ -194,6 +201,7 @@ export default function HalamanKaryawan() {
       </Card>
 
       <FormKaryawan open={form.open} onClose={() => setForm({ open: false, karyawan: null })} karyawan={form.karyawan} sesi={saya} />
+      <DialogResetSandi karyawan={resetSandi} open={Boolean(resetSandi)} onClose={() => setResetSandi(null)} />
 
       <ConfirmDialog
         open={Boolean(nonaktif)}

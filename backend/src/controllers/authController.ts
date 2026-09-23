@@ -29,6 +29,7 @@ const publicUserFields = {
   positionId: true,
   customRoleId: true,
   customRole: { select: { id: true, name: true, permissions: true } },
+  mustChangePassword: true,
 } as const;
 
 /**
@@ -108,6 +109,7 @@ export const login = async (req: Request, res: Response) => {
     user: {
       id: employee.id,
       nik: employee.nik,
+      mustChangePassword: employee.mustChangePassword,
       name: employee.name,
       email: employee.email,
       role: employee.role,
@@ -167,7 +169,8 @@ export const changePassword = async (req: Request, res: Response) => {
 
   await prisma.employee.update({
     where: { id: employee.id },
-    data: { password: await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS) },
+    // Sandi dari HR sudah diganti sendiri: kunci "wajib ganti" dilepas.
+    data: { password: await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS), mustChangePassword: false },
   });
 
   res.json({ message: 'Password berhasil diubah' });
