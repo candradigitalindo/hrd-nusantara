@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Varian = "primary" | "secondary" | "ghost" | "danger" | "outline";
@@ -50,3 +50,45 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     </button>
   );
 });
+
+/**
+ * Tombol aksi pada baris daftar atau kartu: ikon saja, berlatar supaya
+ * terbaca sebagai tombol tanpa label teks yang memakan lebar kolom. Labelnya
+ * tetap wajib — dipakai pembaca layar sekaligus muncul sebagai tooltip.
+ */
+export const TombolAksi = ({
+  icon: Ikon,
+  label,
+  tone = "netral",
+  className,
+  ...props
+}: Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+  icon: LucideIcon;
+  label: string;
+  tone?: "netral" | "bahaya";
+}) => (
+  <button
+    type="button"
+    title={label}
+    aria-label={label}
+    className={cn(
+      "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+      "disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]",
+      tone === "bahaya"
+        ? "bg-danger-soft text-danger hover:bg-danger hover:text-white"
+        : "bg-surface-2 text-muted hover:bg-primary-soft hover:text-primary",
+      className
+    )}
+    {...props}
+  >
+    <Ikon className="h-4 w-4" aria-hidden />
+  </button>
+);
+
+/** Penanda non-interaktif dengan bentuk yang sama, untuk baris yang aksinya tidak tersedia. */
+export const PenandaAksi = ({ icon: Ikon, label }: { icon: LucideIcon; label: string }) => (
+  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted" title={label}>
+    <Ikon className="h-4 w-4" aria-hidden />
+    <span className="sr-only">{label}</span>
+  </span>
+);

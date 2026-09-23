@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/alert";
@@ -54,7 +54,7 @@ export const FormTemplate = ({ open, onClose }: { open: boolean; onClose: () => 
               <Field label="Kriteria" error={f.formState.errors.criteria?.[i]?.name?.message}><Input {...f.register(`criteria.${i}.name`, { required: "Wajib diisi" })} placeholder="Kecepatan pelayanan" /></Field>
               <Field label="Bobot %"><Input type="number" min={0.01} max={100} step="0.01" {...f.register(`criteria.${i}.weight`)} /></Field>
               <Field label="Skala"><Input type="number" min={1} max={100} {...f.register(`criteria.${i}.maxScore`)} /></Field>
-              <Button type="button" size="icon" variant="ghost" className="text-danger" onClick={() => daftar.remove(i)} aria-label="Hapus kriteria" disabled={daftar.fields.length <= 1}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+              <TombolAksi icon={Trash2} label="Hapus kriteria" tone="bahaya" onClick={() => daftar.remove(i)} disabled={daftar.fields.length <= 1} />
             </div>
           ))}
         </div>

@@ -151,7 +151,7 @@ export const DaftarSaldoCuti = () => {
             icon={CalendarOff}
             title={adaSaringan ? "Tidak ada yang cocok" : `Belum ada saldo tahun ${tahun}`}
             description={adaSaringan ? "Coba ubah kata kunci atau saringan." : "Tetapkan satu per satu, atau terapkan jatah bawaan ke semua karyawan aktif sekaligus."}
-            action={bolehTetapkan && !adaSaringan && tipeBerkuota.length > 0 ? <Button onClick={() => setMassalBuka(true)}><CheckCheck className="h-4 w-4" aria-hidden /> Terapkan Jatah Bawaan</Button> : undefined}
+            action={bolehTetapkan && !adaSaringan && tipeBerkuota.length > 0 ? <Button onClick={() => setMassalBuka(true)}><Users className="h-4 w-4" aria-hidden /> Terapkan Jatah Bawaan</Button> : undefined}
           />
         ) : (
           <>

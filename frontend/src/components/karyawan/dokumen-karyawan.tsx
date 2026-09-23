@@ -7,7 +7,7 @@ import { FileText, Upload, Download, Trash2, AlertTriangle, Clock, X } from "luc
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Input, Select, Field, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
@@ -146,9 +146,7 @@ export const PanelDokumen = ({ employeeId, bolehUnggah, bolehHapus }: { employee
                     <Download className="h-4 w-4" aria-hidden />
                   </a>
                   {bolehHapus && (
-                    <Button variant="ghost" size="icon" className="h-9 w-9 text-danger" onClick={() => setHapus(d)} aria-label={`Hapus ${d.title}`}>
-                      <Trash2 className="h-4 w-4" aria-hidden />
-                    </Button>
+                    <TombolAksi icon={Trash2} label={`Hapus ${d.title}`} tone="bahaya" onClick={() => setHapus(d)} />
                   )}
                 </div>
               </li>

@@ -3,12 +3,12 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Plus, Search, UserX, Users, Pencil, KeyRound, UserPlus } from "lucide-react";
+import { Plus, Search, UserX, Users, Pencil, KeyRound, UserPlus, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelolaAkun } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi, PenandaAksi } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
@@ -115,28 +115,19 @@ export default function HalamanKaryawan() {
             cell: (k: Karyawan) => (
               // Akun berlingkup lebih tinggi (mis. Super Admin) tidak diberi
               // tombol apa pun: server menolaknya, jadi jangan ditawarkan.
-              <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+              <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                 {!bolehKelolaAkun(saya, k) ? (
-                  <span className="pr-2 text-xs text-muted" title="Hanya Super Admin yang bisa mengelola akun ini">
-                    Terlindungi
-                  </span>
+                  <PenandaAksi icon={Lock} label="Terlindungi: hanya Super Admin yang bisa mengelola akun ini" />
                 ) : (
                   <>
                     {bolehUbah && (
-                      <Button variant="ghost" size="sm" onClick={() => setForm({ open: true, karyawan: k })} aria-label={`Sunting ${k.name}`}>
-                        <Pencil className="h-4 w-4" aria-hidden />
-                        <span className="hidden sm:inline">Sunting</span>
-                      </Button>
+                      <TombolAksi icon={Pencil} label={`Sunting ${k.name}`} onClick={() => setForm({ open: true, karyawan: k })} />
                     )}
                     {bolehUbah && k.id !== saya?.id && (
-                      <Button variant="ghost" size="sm" onClick={() => setResetSandi(k)} aria-label={`Atur ulang sandi ${k.name}`} title="Atur ulang kata sandi">
-                        <KeyRound className="h-4 w-4" aria-hidden />
-                      </Button>
+                      <TombolAksi icon={KeyRound} label={`Atur ulang kata sandi ${k.name}`} onClick={() => setResetSandi(k)} />
                     )}
-                    {bolehHapus && k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
-                      <Button variant="ghost" size="sm" className="text-danger" onClick={() => setNonaktif(k)} aria-label={`Nonaktifkan ${k.name}`}>
-                        <UserX className="h-4 w-4" aria-hidden />
-                      </Button>
+                    {bolehHapus && k.id !== saya?.id && k.status !== "inactive" && k.status !== "resign" && k.status !== "terminated" && (
+                      <TombolAksi icon={UserX} label={`Nonaktifkan ${k.name}`} tone="bahaya" onClick={() => setNonaktif(k)} />
                     )}
                   </>
                 )}

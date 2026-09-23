@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { Target, Plus, ClipboardList, UserPlus, MessageSquareHeart, BarChart3, Lock, MessageSquarePlus, Send, Unlock, UserCheck, X } from "lucide-react";
+import { Target, Plus, ClipboardList, UserPlus, MessageSquareHeart, BarChart3, Lock, Send, Unlock, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -124,7 +124,7 @@ export default function HalamanKinerja() {
         <Card>
           {hr && <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanUntuk} onChange={(e) => setUmpanUntuk(e.target.value)} aria-label="Penerima"><option value="">Umpan balik untuk saya</option>{(karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>}
           {umpan.isLoading ? <SkeletonBaris /> : !umpan.data?.length ? (
-            <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}><MessageSquarePlus className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button>} />
+            <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button>} />
           ) : (
             <ul className="divide-y divide-border">
               {umpan.data.map((u) => (
@@ -208,7 +208,7 @@ export default function HalamanKinerja() {
       </Modal>
 
       <Modal open={tugasBuka} onClose={() => setTugasBuka(false)} title="Tugaskan Penilai" description="Satu penugasan = satu penilai untuk satu karyawan. Ulangi untuk atasan, rekan, dan bawahan (360°)."
-        footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending}>{!tugaskan.isPending && <UserCheck className="h-4 w-4" aria-hidden />} Tugaskan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending}>{!tugaskan.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Tugaskan</Button></>}>
         <form id="form-tugas" onSubmit={ft.handleSubmit((v) => tugaskan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Siklus" error={ft.formState.errors.cycleId?.message} className="sm:col-span-2"><Select {...ft.register("cycleId", { required: "Pilih siklus" })}><option value="">— Pilih —</option>{(siklus.data ?? []).filter((s) => s.status !== "closed").map((s) => <option key={s.id} value={s.id}>{s.name} ({labelStatus(s.status)})</option>)}</Select></Field>
           <Field label="Yang dinilai" error={ft.formState.errors.revieweeId?.message}><Select {...ft.register("revieweeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>

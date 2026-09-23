@@ -9,7 +9,7 @@ import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Input, InputSaran, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
@@ -183,7 +183,7 @@ export default function HalamanKompetensi() {
                     {standar.data.map((s) => (
                       <li key={s.id} className="flex items-center gap-3 p-4">
                         <div className="min-w-0 flex-1"><p className="font-medium">{s.competency.name} <span className="font-mono text-xs font-normal text-muted">{s.competency.code}</span></p><p className="text-xs text-muted">minimal tingkat {s.requiredLevel} dari {s.competency.maxLevel}{s.description ? ` · ${s.description}` : ""}</p></div>
-                        {bolehHapus && <Button size="icon" variant="ghost" className="text-danger" aria-label="Hapus syarat" onClick={() => setHapusStandar(s)}><Trash2 className="h-4 w-4" aria-hidden /></Button>}
+                        {bolehHapus && <TombolAksi icon={Trash2} label="Hapus syarat" tone="bahaya" onClick={() => setHapusStandar(s)} />}
                       </li>
                     ))}
                   </ul>

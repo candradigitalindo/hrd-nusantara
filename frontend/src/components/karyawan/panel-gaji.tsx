@@ -3,12 +3,12 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Wallet, Plus, Trash2, History, Save, X, Unlink } from "lucide-react";
+import { Wallet, Plus, History, Save, X, Unlink } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
@@ -119,7 +119,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
                     <p className="text-xs text-muted">sejak {formatTanggal(k.effectiveFrom)}</p>
                   </div>
                   <span className="tabular-nums">{k.amount !== null ? formatRupiah(k.amount) : k.percentage !== null ? `${k.percentage}%` : "bawaan"}</span>
-                  {bolehLepas && <Button size="icon" variant="ghost" className="h-8 w-8 text-danger" onClick={() => setHapus(k)} aria-label={`Lepas ${k.component.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>}
+                  {bolehLepas && <TombolAksi icon={Unlink} label={`Lepas ${k.component.name}`} tone="bahaya" onClick={() => setHapus(k)} />}
                 </li>
               ))}
             </ul>

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { CalendarOff, Check, X, Plus, Ban, Paperclip, CalendarPlus, Send } from "lucide-react";
+import { CalendarOff, Check, X, Ban, Paperclip, CalendarPlus, Send } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -174,7 +174,7 @@ export default function HalamanCuti() {
       <PageHeader
         title="Cuti & Izin"
         description={kelolaSaldo ? "Jatah cuti tiap karyawan per tahun; tanpa saldo, cuti yang memotong jatah tidak bisa diajukan" : antrean ? "Pengajuan cuti yang perlu diputuskan" : `Saldo dan pengajuan cuti Anda tahun ${tahun}`}
-        actions={!kelolaSaldo && <Button onClick={() => setAjukanBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>}
+        actions={!kelolaSaldo && <Button onClick={() => setAjukanBuka(true)}><CalendarPlus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>}
       />
 
       {(manajemen || kelola) && (
@@ -267,7 +267,7 @@ export default function HalamanCuti() {
       </Modal>
 
       <ConfirmDialog open={Boolean(batal)} onClose={() => setBatal(null)} onConfirm={() => batal && batalkan.mutate(batal)} loading={batalkan.isPending} danger
-        title="Batalkan pengajuan?" description={`${batal?.leaveType.name ?? ""} ${batal ? formatTanggal(batal.startDate, "d MMM") : ""} – ${batal ? formatTanggal(batal.endDate, "d MMM yyyy") : ""} akan dibatalkan. Anda bisa mengajukan lagi kapan saja.`} confirmLabel="Batalkan Pengajuan" confirmIcon={X} />
+        title="Batalkan pengajuan?" description={`${batal?.leaveType.name ?? ""} ${batal ? formatTanggal(batal.startDate, "d MMM") : ""} – ${batal ? formatTanggal(batal.endDate, "d MMM yyyy") : ""} akan dibatalkan. Anda bisa mengajukan lagi kapan saja.`} confirmLabel="Batalkan Pengajuan" confirmIcon={Ban} />
 
       <Modal open={Boolean(keputusan)} onClose={() => setKeputusan(null)}
         title={keputusan?.approved ? "Setujui pengajuan cuti?" : "Tolak pengajuan cuti?"}

@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarOff, Pencil, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -39,9 +39,7 @@ export const BarisSaldo = ({ saldo, onUbah }: { saldo: SaldoCuti; onUbah?: () =>
         </p>
       </div>
       {onUbah && (
-        <Button variant="ghost" size="icon" onClick={onUbah} aria-label={`Ubah saldo ${saldo.leaveType.name}`}>
-          <Pencil className="h-4 w-4" aria-hidden />
-        </Button>
+        <TombolAksi icon={Pencil} label={`Ubah saldo ${saldo.leaveType.name}`} onClick={onUbah} />
       )}
     </li>
   );

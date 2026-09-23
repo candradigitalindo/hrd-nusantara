@@ -3,11 +3,11 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
-import { ClipboardList, Plus, Trash2, BarChart3, CheckCircle2, Clock, Megaphone, Send, X } from "lucide-react";
+import { ClipboardList, Plus, Trash2, BarChart3, CheckCircle2, Clock, Megaphone, Send, X, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
@@ -137,7 +137,7 @@ export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean
                 {hr && (
                   <>
                     {s.status === "draft" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "published" })}><Megaphone className="h-4 w-4" aria-hidden /> Tayangkan</Button>}
-                    {s.status === "published" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "closed" })}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}
+                    {s.status === "published" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ s, status: "closed" })}><Lock className="h-4 w-4" aria-hidden /> Tutup</Button>}
                     {s.participationCount > 0 && <Button size="sm" variant="ghost" onClick={() => setHasil(s)}><BarChart3 className="h-4 w-4" aria-hidden /> Hasil</Button>}
                   </>
                 )}
@@ -178,7 +178,7 @@ export const PanelSurvei = ({ hr, bolehBuat }: { hr: boolean; bolehBuat: boolean
                     <Field label="Kode"><Input className="font-mono uppercase" {...f.register(`questions.${i}.code`, { required: true })} /></Field>
                     <Field label="Pertanyaan" error={f.formState.errors.questions?.[i]?.text?.message}><Input {...f.register(`questions.${i}.text`, { required: "Wajib diisi" })} placeholder="Seberapa puas Anda dengan jadwal shift?" /></Field>
                     <Field label="Jenis"><Select {...f.register(`questions.${i}.type`)}><option value="scale">Skala</option><option value="choice">Pilihan</option><option value="text">Teks bebas</option></Select></Field>
-                    <Button type="button" size="icon" variant="ghost" className="text-danger" onClick={() => daftar.remove(i)} aria-label="Hapus pertanyaan" disabled={daftar.fields.length <= 1}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                    <TombolAksi icon={Trash2} label="Hapus pertanyaan" tone="bahaya" onClick={() => daftar.remove(i)} disabled={daftar.fields.length <= 1} />
                   </div>
                   {jenis === "scale" && <div className="grid grid-cols-2 gap-3 sm:w-64"><Field label="Skala dari"><Input type="number" min={0} max={10} {...f.register(`questions.${i}.minScale`)} /></Field><Field label="sampai"><Input type="number" min={1} max={10} {...f.register(`questions.${i}.maxScale`)} /></Field></div>}
                   {jenis === "choice" && <Field label="Pilihan (satu per baris, minimal 2)"><Textarea rows={3} {...f.register(`questions.${i}.options`)} placeholder={"Sangat puas\nCukup\nKurang"} /></Field>}

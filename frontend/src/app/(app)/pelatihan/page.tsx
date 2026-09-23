@@ -3,13 +3,13 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink, Check, Play, Save, X, Hourglass, UserPlus } from "lucide-react";
+import { GraduationCap, Plus, CalendarPlus, Pencil, Users, ClipboardCheck, Award, ShieldCheck, ExternalLink, Check, Play, Save, X, Hourglass, UserPlus, Ban } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi } from "@/components/ui/button";
 import { Input, Select, Textarea, Field } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
@@ -126,7 +126,7 @@ export default function HalamanPelatihan() {
                       </CardHeader>
                       <CardContent className="mt-auto flex flex-wrap gap-2">
                         {p ? (
-                          <><Badge tone={nadaStatus(p.status)} dot>{labelStatus(p.status)}</Badge>{(p.status === "registered" || p.status === "waitlisted") && s.status === "scheduled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setBatal(p)}><X className="h-4 w-4" aria-hidden /> Batalkan</Button>}</>
+                          <><Badge tone={nadaStatus(p.status)} dot>{labelStatus(p.status)}</Badge>{(p.status === "registered" || p.status === "waitlisted") && s.status === "scheduled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setBatal(p)}><Ban className="h-4 w-4" aria-hidden /> Batalkan</Button>}</>
                         ) : s.status === "scheduled" && !lewatBatas ? (
                           <Button size="sm" onClick={() => daftar.mutate(s)} loading={daftar.isPending && daftar.variables?.id === s.id}>{!(daftar.isPending && daftar.variables?.id === s.id) && (penuh ? <Hourglass className="h-4 w-4" aria-hidden /> : <UserPlus className="h-4 w-4" aria-hidden />)} {penuh ? "Daftar Tunggu" : "Daftar"}</Button>
                         ) : null}
@@ -135,7 +135,7 @@ export default function HalamanPelatihan() {
                             <Button size="sm" variant="outline" onClick={() => { setPeserta(s); setHadir({}); }}><Users className="h-4 w-4" aria-hidden /> Peserta</Button>
                             {s.status === "scheduled" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "ongoing" })}><Play className="h-4 w-4" aria-hidden /> Mulai</Button>}
                             {s.status === "ongoing" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "completed" })}><Check className="h-4 w-4" aria-hidden /> Selesai</Button>}
-                            {s.status !== "completed" && s.status !== "cancelled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => ubahStatusSesi.mutate({ s, status: "cancelled" })}><X className="h-4 w-4" aria-hidden /> Batalkan</Button>}
+                            {s.status !== "completed" && s.status !== "cancelled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => ubahStatusSesi.mutate({ s, status: "cancelled" })}><Ban className="h-4 w-4" aria-hidden /> Batalkan</Button>}
                           </>
                         )}
                       </CardContent>
@@ -168,7 +168,7 @@ export default function HalamanPelatihan() {
                       {!p.isActive && <Badge tone="danger">Nonaktif</Badge>}
                     </div>
                   </div>
-                  {bolehUbah && <Button variant="ghost" size="icon" onClick={() => setFormProgram({ open: true, item: p })} aria-label={`Sunting ${p.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>}
+                  {bolehUbah && <TombolAksi icon={Pencil} label={`Sunting ${p.name}`} onClick={() => setFormProgram({ open: true, item: p })} />}
                 </CardHeader>
               </Card>
             ))}
@@ -269,7 +269,7 @@ export default function HalamanPelatihan() {
         </form>
       </Modal>
 
-      <ConfirmDialog open={Boolean(batal)} onClose={() => setBatal(null)} onConfirm={() => batal && batalkan.mutate(batal)} loading={batalkan.isPending} danger title="Batalkan pendaftaran?" description={`${batal?.trainingSession.title ?? ""} — kursi Anda diberikan ke peserta daftar tunggu.`} confirmLabel="Batalkan" confirmIcon={X} />
+      <ConfirmDialog open={Boolean(batal)} onClose={() => setBatal(null)} onConfirm={() => batal && batalkan.mutate(batal)} loading={batalkan.isPending} danger title="Batalkan pendaftaran?" description={`${batal?.trainingSession.title ?? ""} — kursi Anda diberikan ke peserta daftar tunggu.`} confirmLabel="Batalkan" confirmIcon={Ban} />
     </>
   );
 }

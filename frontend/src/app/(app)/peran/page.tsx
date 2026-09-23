@@ -9,7 +9,7 @@ import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { LABEL_LINGKUP, cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
-import { Button } from "@/components/ui/button";
+import { Button, TombolAksi, PenandaAksi } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input, Select, Field, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -236,17 +236,12 @@ export default function HalamanPeran() {
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {kunci ? (
-                      <span
-                        className="grid h-9 w-9 place-items-center text-muted"
-                        title={semuaIzin ? "Peran Super Admin terkunci" : "Hanya Super Admin yang bisa mengelola peran ini"}
-                      >
-                        <Lock className="h-4 w-4" aria-hidden /><span className="sr-only">Terkunci</span>
-                      </span>
+                      <PenandaAksi icon={Lock} label={semuaIzin ? "Peran Super Admin terkunci" : "Terkunci: hanya Super Admin yang bisa mengelola peran ini"} />
                     ) : bolehUbah ? (
-                      <Button variant="ghost" size="icon" onClick={() => setForm({ open: true, item: r })} aria-label={`Sunting ${r.name}`}><Pencil className="h-4 w-4" aria-hidden /></Button>
+                      <TombolAksi icon={Pencil} label={`Sunting ${r.name}`} onClick={() => setForm({ open: true, item: r })} />
                     ) : null}
                     {!r.isSystem && bolehHapus && !kunci && (
-                      <Button variant="ghost" size="icon" className="text-danger" onClick={() => setHapus(r)} aria-label={`Hapus ${r.name}`}><Trash2 className="h-4 w-4" aria-hidden /></Button>
+                      <TombolAksi icon={Trash2} label={`Hapus ${r.name}`} tone="bahaya" onClick={() => setHapus(r)} />
                     )}
                   </div>
                 </CardHeader>
