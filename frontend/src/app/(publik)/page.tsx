@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  AlertTriangle,
   ArrowRight,
   Building2,
   CalendarCheck,
   ClipboardList,
   FileText,
   GraduationCap,
-  HeartHandshake,
   IdCard,
   MessageSquareWarning,
   ScrollText,
@@ -22,7 +20,7 @@ import { ALAMAT_SITUS, NAMA_PERUSAHAAN, ambilLowongan } from "@/lib/karier-serve
 
 const JUDUL = "Karier & Lowongan Kerja — Restoran dan Hotel";
 const RINGKASAN =
-  "Lowongan kerja terbaru di jaringan restoran dan hotel kami: waiter, kitchen, housekeeping, sampai posisi manajemen. Lamar gratis lewat portal karier dan pantau sendiri status seleksi Anda.";
+  "Lowongan kerja terbaru di jaringan restoran dan hotel kami: waiter, kitchen, housekeeping, sampai posisi manajemen. Lamar lewat portal karier dan pantau sendiri status seleksi Anda.";
 
 export const metadata: Metadata = {
   title: JUDUL,
@@ -102,11 +100,6 @@ const SIAPKAN = [
 ];
 
 const TANYA_JAWAB = [
-  {
-    tanya: "Apakah melamar di sini dipungut biaya?",
-    jawab:
-      "Tidak, dan tidak akan pernah. Seluruh proses rekrutmen kami gratis: tidak ada biaya pendaftaran, tes, seragam, maupun penempatan. Bila ada yang mengatasnamakan kami dan meminta uang, itu penipuan — laporkan ke hrd@nbp.co.id.",
-  },
   {
     tanya: "Bagaimana cara mengetahui status lamaran saya?",
     jawab:
@@ -189,8 +182,8 @@ export default async function Beranda() {
               Bangun karier Anda di dapur, restoran, dan hotel kami
             </h1>
             <p className="mt-4 text-base leading-relaxed text-muted sm:text-lg">
-              Kami mencari orang yang senang melayani tamu dan mau tumbuh bersama. Lamar gratis, lalu pantau sendiri
-              setiap tahap seleksinya dari satu portal.
+              Kami mencari orang yang senang melayani tamu dan mau tumbuh bersama. Lamar lewat portal karier, lalu
+              pantau sendiri setiap tahap seleksinya.
             </p>
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
@@ -206,10 +199,6 @@ export default async function Beranda() {
                 Buat akun pelamar
               </Link>
             </div>
-            <p className="mt-4 flex items-center gap-2 text-sm text-muted">
-              <HeartHandshake className="h-4 w-4 shrink-0" aria-hidden />
-              Gratis, tanpa biaya apa pun, dari melamar sampai diterima.
-            </p>
           </div>
         </div>
       </section>
@@ -317,25 +306,6 @@ export default async function Beranda() {
               </li>
             ))}
           </ul>
-        </div>
-      </section>
-
-      {/* Peringatan penipuan */}
-      <section className="mx-auto max-w-6xl px-4 pt-14 sm:pt-20">
-        <div className="flex flex-col gap-4 rounded-2xl border border-warning/40 bg-warning-soft p-6 sm:flex-row sm:items-start">
-          <AlertTriangle className="h-6 w-6 shrink-0 text-warning" aria-hidden />
-          <div>
-            <h2 className="font-semibold text-warning">Rekrutmen kami tidak pernah memungut biaya</h2>
-            <p className="mt-1.5 text-sm leading-relaxed">
-              Tidak ada biaya pendaftaran, tes, seragam, transportasi, maupun “uang jaminan”. Kami juga tidak pernah
-              meminta transfer ke rekening pribadi atau meminta dokumen asli disimpan pihak lain. Bila menemukan hal
-              seperti itu atas nama kami, hentikan dan laporkan ke{" "}
-              <a href="mailto:hrd@nbp.co.id" className="font-medium underline">
-                hrd@nbp.co.id
-              </a>
-              .
-            </p>
-          </div>
         </div>
       </section>
 

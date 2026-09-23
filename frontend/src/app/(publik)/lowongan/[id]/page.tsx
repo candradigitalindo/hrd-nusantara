@@ -118,7 +118,7 @@ export default async function HalamanRincianLowongan({ params }: Props) {
 
       <div className="mt-10 rounded-2xl border border-border bg-primary-soft p-6 text-center">
         <p className="font-semibold">Tertarik dengan posisi ini?</p>
-        <p className="mt-1 text-sm text-muted">Lamar lewat portal pelamar — gratis, dan statusnya bisa Anda pantau sendiri.</p>
+        <p className="mt-1 text-sm text-muted">Lamar lewat portal pelamar, dan pantau sendiri status seleksinya.</p>
         <div className="mt-5 flex flex-wrap justify-center gap-3">
           <Link
             href={`/karier/daftar?lowongan=${l.id}`}

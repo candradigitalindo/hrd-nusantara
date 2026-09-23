@@ -96,7 +96,7 @@ export default function HalamanDaftarPelamar() {
       <div className="text-center">
         <Logo className="mx-auto h-12 w-12" />
         <h1 className="mt-4 text-2xl font-bold tracking-tight">Buat akun pelamar</h1>
-        <p className="mt-1 text-sm text-muted">Gratis. Satu akun untuk semua lowongan yang Anda lamar.</p>
+        <p className="mt-1 text-sm text-muted">Satu akun untuk semua lowongan yang Anda lamar.</p>
       </div>
       <div className="mt-6 rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-6">
         <React.Suspense>

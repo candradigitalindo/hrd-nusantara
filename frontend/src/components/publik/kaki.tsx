@@ -48,7 +48,7 @@ export const KakiPublik = ({ nama }: { nama: string }) => (
 
     <div className="border-t border-border">
       <p className="mx-auto max-w-6xl px-4 py-4 text-center text-xs text-muted">
-        © {new Date().getFullYear()} {nama}. Seluruh lowongan yang tayang di situs ini gratis — kami tidak pernah memungut biaya apa pun dari pelamar.
+        © {new Date().getFullYear()} {nama}. Seluruh hak cipta dilindungi.
       </p>
     </div>
   </footer>
