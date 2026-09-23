@@ -67,29 +67,29 @@ model Employee {
 
   /// voluntary (mengundurkan diri) atau involuntary (diberhentikan).
   /// Dipisah karena keduanya menuntut tindakan manajemen yang berbeda.
-  exitType      String?
+  exitType           String?
   /// Pola hari kerja. Kalau kosong, mengikuti departemen, lalu pola bawaan.
-  workPattern   WorkPattern? @relation(fields: [workPatternId], references: [id])
-  workPatternId String?
-  status        String       @default("active") // active, probation, contract, internship, on_leave, inactive, resign, terminated
-  password      String? // hash bcrypt; null = akun belum pernah diaktifkan
+  workPattern        WorkPattern? @relation(fields: [workPatternId], references: [id])
+  workPatternId      String?
+  status             String       @default("active") // active, probation, contract, internship, on_leave, inactive, resign, terminated
+  password           String? // hash bcrypt; null = akun belum pernah diaktifkan
   /// Kata sandinya baru diatur HR (awal atau diatur ulang): wajib diganti
   /// sendiri saat login berikutnya, supaya HR tidak memegang sandi karyawan.
-  mustChangePassword Boolean @default(false)
+  mustChangePassword Boolean      @default(false)
   /// Lingkup data. Disinkronkan dari customRole.baseRole saat peran diberikan;
   /// controller memakainya untuk membatasi data (departemen sendiri, dsb.).
-  role          Role         @default(EMPLOYEE)
+  role               Role         @default(EMPLOYEE)
   /// Peran dinamis yang menentukan izin. Kosong = memakai peran sistem
   /// sesuai kolom role.
-  customRole    CustomRole?  @relation(fields: [customRoleId], references: [id])
-  customRoleId  String?
-  lastLoginAt   DateTime?
-  department    Department?  @relation(fields: [departmentId], references: [id])
-  departmentId  String?
-  position      Position?    @relation(fields: [positionId], references: [id])
-  positionId    String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  customRole         CustomRole?  @relation(fields: [customRoleId], references: [id])
+  customRoleId       String?
+  lastLoginAt        DateTime?
+  department         Department?  @relation(fields: [departmentId], references: [id])
+  departmentId       String?
+  position           Position?    @relation(fields: [positionId], references: [id])
+  positionId         String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   // Relasi ke entitas lain
   attendances                  Attendance[]                    @relation("EmployeeAttendance")
@@ -140,6 +140,11 @@ model Employee {
   deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
   documents             EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
   mobileReleases        MobileRelease[]                 @relation("MobileReleaseUploader")
+  cbtQuestions          CbtQuestion[]                   @relation("CbtQuestionAuthor")
+  cbtTests              CbtTest[]                       @relation("CbtTestAuthor")
+  cbtAssignments        CbtAssignment[]                 @relation("CbtPeserta")
+  cbtAssignedBy         CbtAssignment[]                 @relation("CbtAssigner")
+  cbtGradedAttempts     CbtAttempt[]                    @relation("CbtGrader")
 
   @@index([departmentId])
   @@index([positionId])
@@ -693,6 +698,7 @@ model Candidate {
   interviews              Interview[]
   psychometricTestResults PsychometricTestResult[]
   stageHistory            CandidateStageHistory[]
+  cbtAssignments          CbtAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1880,4 +1886,278 @@ model MobileRelease {
   createdAt DateTime @default(now())
 
   @@index([isActive, versionCode])
+}
+
+// ===================== CBT (Computer-Based Test) =====================
+//
+// Ujian daring untuk dua jenis peserta: karyawan (uji kemampuan, pemetaan
+// kompetensi) dan pelamar (seleksi). Modul psikotes yang sudah ada hanya
+// MENCATAT hasil tes di luar sistem; di sini soalnya dikerjakan di dalam
+// sistem, dinilai otomatis untuk soal objektif, dan dinilai manusia untuk
+// esai.
+
+/// Satu butir soal di bank soal.
+///
+/// Soal dipisahkan dari paket tes supaya butir yang sama bisa dipakai di
+/// banyak paket tanpa disalin — menyalin berarti perbaikan kunci jawaban
+/// harus diulang di tiap salinan, dan cepat atau lambat ada yang terlewat.
+model CbtQuestion {
+  id String @id
+
+  /// Kategori yang diukur, mis. "Numerik", "Bahasa Inggris", "Higiene Dapur".
+  /// Dipakai menyusun soal acak berimbang dan merinci nilai per kategori.
+  category String
+
+  /// mudah | sedang | sulit
+  difficulty String @default("sedang")
+
+  /// pilihan_ganda | banyak_jawaban | benar_salah | isian | esai
+  type String
+
+  text String
+
+  /// Gambar pendukung (grafik, foto alat), path relatif di UPLOAD_DIR.
+  imagePath String?
+
+  /// Pilihan jawaban tipe objektif: [{ "kode": "a", "teks": "…" }].
+  options Json?
+
+  /// Kunci jawaban: daftar kode pilihan yang benar, atau daftar teks yang
+  /// diterima untuk isian (pembandingan tidak peka huruf besar/kecil).
+  /// Kosong untuk esai — esai tidak punya kunci, hanya rubrik.
+  answerKey String[] @default([])
+
+  /// Panduan penilai untuk soal esai.
+  rubric String?
+
+  /// Bobot nilai butir ini.
+  points Float @default(1)
+
+  /// Pembahasan, hanya ditampilkan bila paketnya mengizinkan peserta
+  /// melihat hasil.
+  explanation String?
+
+  isActive Boolean @default(true)
+
+  createdBy   Employee @relation("CbtQuestionAuthor", fields: [createdById], references: [id])
+  createdById String
+
+  tests   CbtTestQuestion[]
+  answers CbtAnswer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category, isActive])
+  @@index([type, isActive])
+}
+
+/// Paket tes: kumpulan butir soal beserta aturan pengerjaannya.
+model CbtTest {
+  id          String  @id
+  code        String  @unique
+  title       String
+  description String?
+
+  /// karyawan | pelamar | keduanya — menentukan siapa yang boleh ditugaskan.
+  audience String @default("keduanya")
+
+  durationMinutes Int
+
+  /// Ambang lulus dalam persen (0-100). null = tidak ada kelulusan, hanya nilai.
+  passingScore Float?
+
+  shuffleQuestions Boolean @default(true)
+  shuffleOptions   Boolean @default(true)
+
+  /// Peserta boleh melihat nilainya sendiri setelah selesai. Untuk seleksi
+  /// pelamar biasanya dimatikan.
+  showResultToTaker Boolean @default(false)
+
+  /// Pengawasan: catat saat peserta berpindah tab / meninggalkan layar ujian.
+  recordProctorEvents Boolean @default(true)
+
+  /// Pengawasan: ambil foto wajah berkala lewat kamera peserta. Fotonya
+  /// disimpan terenkripsi dan hanya bisa dibuka lewat endpoint bukti.
+  proctorPhotos           Boolean @default(false)
+  proctorPhotoIntervalSec Int     @default(180)
+
+  /// draft | published | archived. Hanya paket published yang bisa ditugaskan.
+  status String @default("draft")
+
+  createdBy   Employee @relation("CbtTestAuthor", fields: [createdById], references: [id])
+  createdById String
+
+  questions   CbtTestQuestion[]
+  assignments CbtAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, audience])
+}
+
+/// Butir soal di dalam sebuah paket, beserta urutan dan bobot khususnya.
+model CbtTestQuestion {
+  id String @id
+
+  test   CbtTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  testId String
+
+  question   CbtQuestion @relation(fields: [questionId], references: [id])
+  questionId String
+
+  sortOrder Int @default(0)
+
+  /// Bobot khusus di paket ini; null berarti memakai bobot bawaan soal.
+  points Float?
+
+  @@unique([testId, questionId])
+  @@index([testId, sortOrder])
+}
+
+/// Penugasan satu paket tes kepada satu peserta.
+///
+/// Persis satu dari employeeId / candidateId terisi — dijaga CHECK di basis
+/// data, bukan hanya di aplikasi: penugasan tanpa peserta atau bercabang dua
+/// akan merusak seluruh perhitungan hasil.
+model CbtAssignment {
+  id String @id
+
+  test   CbtTest @relation(fields: [testId], references: [id])
+  testId String
+
+  employee   Employee? @relation("CbtPeserta", fields: [employeeId], references: [id])
+  employeeId String?
+
+  candidate   Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  candidateId String?
+
+  /// Sidik SHA-256 dari token tautan untuk pelamar yang belum punya akun.
+  /// Tokennya sendiri hanya pernah ada satu kali di respons pembuatannya —
+  /// tautan ujian adalah kunci masuk, diperlakukan seperti kata sandi.
+  accessTokenHash String? @unique
+
+  /// Jendela waktu pengerjaan. Di luar jendela ini tes tidak bisa dimulai.
+  availableFrom  DateTime?
+  availableUntil DateTime?
+
+  /// assigned | in_progress | submitted | graded | expired
+  status String @default("assigned")
+
+  note String?
+
+  assignedBy   Employee @relation("CbtAssigner", fields: [assignedById], references: [id])
+  assignedById String
+
+  attempt CbtAttempt?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([testId, status])
+  @@index([employeeId, status])
+  @@index([candidateId])
+}
+
+/// Satu kali pengerjaan. Satu penugasan = satu pengerjaan; ujian ulang
+/// diberikan dengan penugasan baru, supaya percobaan lama tetap utuh.
+model CbtAttempt {
+  id String @id
+
+  assignment   CbtAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentId String        @unique
+
+  startedAt   DateTime  @default(now())
+  /// Batas waktu dihitung server saat tes dimulai. Hitung mundur di layar
+  /// peserta hanya tampilan; yang mengikat adalah nilai ini.
+  deadlineAt  DateTime
+  submittedAt DateTime?
+
+  /// Dikirim sistem karena waktu habis, bukan oleh peserta.
+  autoSubmitted Boolean @default(false)
+
+  /// Urutan soal hasil pengacakan, disimpan supaya pengerjaan yang terputus
+  /// bisa dilanjutkan dengan urutan yang sama persis.
+  questionOrder String[] @default([])
+
+  scoreObjective Float?
+  scoreEssay     Float?
+  scoreTotal     Float?
+  maxScore       Float    @default(0)
+  percent        Float?
+  passed         Boolean?
+
+  gradedBy   Employee? @relation("CbtGrader", fields: [gradedById], references: [id])
+  gradedById String?
+  gradedAt   DateTime?
+
+  answers CbtAnswer[]
+  events  CbtProctorEvent[]
+  photos  CbtProctorPhoto[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([submittedAt])
+}
+
+model CbtAnswer {
+  id String @id
+
+  attempt   CbtAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attemptId String
+
+  question   CbtQuestion @relation(fields: [questionId], references: [id])
+  questionId String
+
+  /// Kode pilihan yang dipilih peserta (bisa lebih dari satu).
+  chosen String[] @default([])
+
+  /// Jawaban isian singkat atau esai.
+  text String?
+
+  /// null selama soal esai belum dinilai.
+  isCorrect Boolean?
+  points    Float?
+
+  graderNote String?
+
+  answeredAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+}
+
+/// Kejadian yang mencurigakan selama ujian: pindah tab, layar disembunyikan,
+/// salin/tempel. Bukan vonis, tapi catatan untuk penguji.
+model CbtProctorEvent {
+  id String @id
+
+  attempt   CbtAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attemptId String
+
+  /// keluar_layar | kembali | salin | tempel | layar_penuh_keluar
+  type   String
+  detail String?
+
+  at DateTime @default(now())
+
+  @@index([attemptId, at])
+}
+
+/// Foto wajah peserta selama ujian. Berkasnya disimpan TERENKRIPSI di
+/// UPLOAD_DIR (AES-256-GCM, sama dengan embedding wajah) dan hanya bisa
+/// dibuka lewat endpoint bukti oleh pemegang izin cbt.
+model CbtProctorPhoto {
+  id String @id
+
+  attempt   CbtAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  attemptId String
+
+  storagePath String
+  takenAt     DateTime @default(now())
+
+  @@index([attemptId, takenAt])
 }

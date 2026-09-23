@@ -7,7 +7,7 @@
 import { Role } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { generateULID } from '../../utils/generateULID';
-import { DEFAULT_PERMISSIONS, KUNCI_IZIN, adaIzinLama, migrasiIzin } from '../../utils/permissions';
+import { DEFAULT_PERMISSIONS, IZIN_BARU_UNTUK_SEMUA, KUNCI_IZIN, adaIzinLama, migrasiIzin } from '../../utils/permissions';
 
 export const PERAN_SISTEM: readonly { code: Role; name: string; description: string }[] = [
   { code: Role.SUPER_ADMIN, name: 'Super Admin', description: 'Pemilik sistem. Semua hak akses, tidak bisa dibatasi.' },
@@ -23,6 +23,7 @@ export const PERAN_SISTEM: readonly { code: Role; name: string; description: str
  */
 export const pastikanPeranSistem = async (): Promise<void> => {
   await migrasiIzinPeranLama();
+  await tambahIzinBaru();
   for (const peran of PERAN_SISTEM) {
     const ada = await prisma.customRole.findUnique({ where: { code: peran.code }, select: { id: true } });
     if (ada) continue;
@@ -59,5 +60,33 @@ export const migrasiIzinPeranLama = async (): Promise<number> => {
     diubah += 1;
   }
   if (diubah > 0) console.log(`[peran] ${diubah} peran dimigrasi ke kunci izin matriks`);
+  return diubah;
+};
+
+/**
+ * Menambahkan kunci layanan mandiri yang baru diperkenalkan ke SEMUA peran
+ * yang sudah tersimpan, sekali saja (idempoten).
+ *
+ * Aman hanya karena kuncinya belum pernah ada: kunci yang tidak pernah ada
+ * tidak mungkin pernah dicabut admin, jadi menambahkannya bukan mengembalikan
+ * sesuatu yang sengaja dihapus. Tanpa langkah ini, menu baru tidak muncul
+ * untuk siapa pun sampai setiap peran disunting satu per satu — termasuk di
+ * basis data yang sudah berjalan lama.
+ */
+export const tambahIzinBaru = async (): Promise<number> => {
+  const semua = await prisma.customRole.findMany({ select: { id: true, permissions: true } });
+  let diubah = 0;
+  for (const peran of semua) {
+    const kurang = IZIN_BARU_UNTUK_SEMUA.filter((k) => !peran.permissions.includes(k));
+    if (kurang.length === 0) continue;
+    const gabungan = new Set([...peran.permissions, ...kurang]);
+    await prisma.customRole.update({
+      where: { id: peran.id },
+      // Diurutkan mengikuti katalog supaya isinya stabil saat dibandingkan.
+      data: { permissions: KUNCI_IZIN.filter((k) => gabungan.has(k)) },
+    });
+    diubah += 1;
+  }
+  if (diubah > 0) console.log(`[peran] ${diubah} peran menerima izin menu baru: ${IZIN_BARU_UNTUK_SEMUA.join(', ')}`);
   return diubah;
 };

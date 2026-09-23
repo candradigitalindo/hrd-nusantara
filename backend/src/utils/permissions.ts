@@ -162,6 +162,23 @@ export const MATRIKS_IZIN: readonly DefinisiHalaman[] = [
     },
   },
   {
+    halaman: 'cbt', label: 'Tes CBT', kelompok: 'Pengembangan',
+    aksi: {
+      lihat: 'Lihat dan mengerjakan tes yang ditugaskan kepada saya',
+      buat: 'Buat paket tes dan menugaskannya ke karyawan atau pelamar',
+      ubah: 'Ubah paket tes, tayangkan / arsipkan, batalkan penugasan',
+      hapus: 'Hapus paket tes yang belum pernah dikerjakan',
+    },
+  },
+  {
+    halaman: 'cbt_soal', label: 'Bank soal', kelompok: 'Pengembangan', induk: 'cbt',
+    aksi: { lihat: 'Lihat bank soal beserta kunci jawabannya', buat: 'Tambah soal', ubah: 'Ubah soal', hapus: 'Hapus atau nonaktifkan soal' },
+  },
+  {
+    halaman: 'cbt_hasil', label: 'Hasil & penilaian tes', kelompok: 'Pengembangan', induk: 'cbt',
+    aksi: { lihat: 'Lihat hasil semua peserta, jawabannya, dan bukti pengawasan', ubah: 'Menilai jawaban esai' },
+  },
+  {
     halaman: 'kinerja', label: 'Kinerja', kelompok: 'Pengembangan',
     aksi: {
       lihat: 'Isi penilaian yang ditugaskan, baca hasil sendiri, beri umpan balik',
@@ -258,6 +275,7 @@ export const IZIN_MENU: readonly string[] = [
   'pelatihan.lihat',
   'kinerja.lihat',
   'kompetensi.lihat',
+  'cbt.lihat',
   'kasus.lihat',
   'unduh.lihat',
 ];
@@ -307,6 +325,17 @@ export const PETA_IZIN_LAMA: Readonly<Record<string, readonly string[]>> = {
   'halaman.unduh': ['unduh.lihat'],
   'peran.kelola': ['peran.lihat', 'peran.buat', 'peran.ubah', 'peran.hapus'],
 };
+
+/**
+ * Kunci yang baru diperkenalkan dan harus dimiliki semua peran, termasuk yang
+ * sudah tersimpan sebelum kunci itu ada.
+ *
+ * Hanya untuk kunci layanan mandiri yang BELUM PERNAH ada: karena tidak
+ * mungkin pernah dicabut admin, menambahkannya bukan mengembalikan izin yang
+ * sengaja dihapus. Tanpa ini, menu baru tidak akan muncul untuk siapa pun
+ * sampai tiap peran disunting satu per satu.
+ */
+export const IZIN_BARU_UNTUK_SEMUA: readonly string[] = ['cbt.lihat'];
 
 /** Apakah daftar izin ini masih memuat kunci generasi sebelumnya. */
 export const adaIzinLama = (izin: readonly string[]): boolean => izin.some((k) => !izinDikenal(k) && k in PETA_IZIN_LAMA);

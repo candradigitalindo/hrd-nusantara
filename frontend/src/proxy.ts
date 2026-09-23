@@ -20,6 +20,10 @@ export function proxy(req: NextRequest) {
   // mengunduh APK sebelum punya sesi di ponselnya.
   if (pathname.startsWith("/unduh")) return NextResponse.next();
 
+  // Ujian pelamar dibuka dari tautan bertoken: pelamar memang belum punya
+  // akun, jadi halaman ini tidak boleh dipantulkan ke /login.
+  if (pathname.startsWith("/tes/")) return NextResponse.next();
+
   if (!adaSesi) {
     const ke = new URL("/login", req.url);
     if (pathname !== "/") ke.searchParams.set("kembali", pathname);

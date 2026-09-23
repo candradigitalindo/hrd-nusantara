@@ -994,3 +994,211 @@ export interface RilisMobile {
   /** Hanya pada /mobile/releases/latest. */
   downloadPath?: string;
 }
+
+// ===================== CBT =====================
+
+export type TipeSoalCbt = "pilihan_ganda" | "banyak_jawaban" | "benar_salah" | "isian" | "esai";
+export type TingkatSoalCbt = "mudah" | "sedang" | "sulit";
+export type AudiensCbt = "karyawan" | "pelamar" | "keduanya";
+export type StatusPaketCbt = "draft" | "published" | "archived";
+export type StatusPenugasanCbt = "assigned" | "in_progress" | "submitted" | "graded" | "expired";
+
+export interface PilihanSoal {
+  kode: string;
+  teks: string;
+}
+
+export interface SoalCbt {
+  id: string;
+  category: string;
+  difficulty: TingkatSoalCbt;
+  type: TipeSoalCbt;
+  text: string;
+  imagePath: string | null;
+  options: PilihanSoal[] | null;
+  answerKey: string[];
+  rubric: string | null;
+  points: number;
+  explanation: string | null;
+  isActive: boolean;
+  createdAt: string;
+  createdBy: Ref;
+  _count: { tests: number; answers: number };
+}
+
+export interface PaketCbt {
+  id: string;
+  code: string;
+  title: string;
+  description: string | null;
+  audience: AudiensCbt;
+  durationMinutes: number;
+  passingScore: number | null;
+  shuffleQuestions: boolean;
+  shuffleOptions: boolean;
+  showResultToTaker: boolean;
+  recordProctorEvents: boolean;
+  proctorPhotos: boolean;
+  proctorPhotoIntervalSec: number;
+  status: StatusPaketCbt;
+  createdAt: string;
+  createdBy: Ref;
+  _count: { questions: number; assignments: number };
+}
+
+export interface PaketCbtRinci extends PaketCbt {
+  questions: { sortOrder: number; points: number | null; question: SoalCbt }[];
+  totalPoin: number;
+}
+
+export interface PenugasanCbt {
+  id: string;
+  testId: string;
+  status: StatusPenugasanCbt;
+  note: string | null;
+  availableFrom: string | null;
+  availableUntil: string | null;
+  createdAt: string;
+  test: { id: string; code: string; title: string; durationMinutes: number; passingScore: number | null };
+  employee: { id: string; name: string; nik: string } | null;
+  candidate: { id: string; name: string; email: string } | null;
+  assignedBy: Ref;
+  attempt: {
+    id: string;
+    startedAt: string;
+    submittedAt: string | null;
+    autoSubmitted: boolean;
+    scoreTotal: number | null;
+    maxScore: number;
+    percent: number | null;
+    passed: boolean | null;
+    gradedAt: string | null;
+    _count: { events: number; photos: number };
+  } | null;
+}
+
+/** Tes yang ditugaskan kepada saya, dari /cbt/saya. */
+export interface TesSaya {
+  id: string;
+  status: StatusPenugasanCbt;
+  note: string | null;
+  availableFrom: string | null;
+  availableUntil: string | null;
+  createdAt: string;
+  test: {
+    id: string;
+    title: string;
+    description: string | null;
+    durationMinutes: number;
+    passingScore: number | null;
+    showResultToTaker: boolean;
+    proctorPhotos: boolean;
+    _count: { questions: number };
+  };
+  attempt: {
+    id: string;
+    startedAt: string;
+    deadlineAt: string;
+    submittedAt: string | null;
+    percent: number | null;
+    passed: boolean | null;
+    gradedAt: string | null;
+  } | null;
+}
+
+/** Paket pengerjaan: soal tanpa kunci jawaban. */
+export interface RuangUjian {
+  assignmentId: string;
+  attemptId: string;
+  test: {
+    id: string;
+    title: string;
+    description: string | null;
+    durationMinutes: number;
+    recordProctorEvents: boolean;
+    proctorPhotos: boolean;
+    proctorPhotoIntervalSec: number;
+  };
+  peserta: { nama: string; jenis: "karyawan" | "pelamar" };
+  deadlineAt: string;
+  sisaDetik: number;
+  questions: {
+    id: string;
+    type: TipeSoalCbt;
+    category: string;
+    text: string;
+    imagePath: string | null;
+    points: number;
+    options: PilihanSoal[];
+  }[];
+  answers: { questionId: string; chosen: string[]; text: string | null }[];
+  submittedAt: string | null;
+}
+
+export interface NilaiCbt {
+  objektif: number;
+  esai: number;
+  total: number;
+  maksimal: number;
+  persen: number;
+  lulus: boolean | null;
+  menungguPenilaian: boolean;
+}
+
+export interface HasilKirimCbt {
+  status: StatusPenugasanCbt;
+  menungguPenilaian: boolean;
+  nilai: NilaiCbt | null;
+}
+
+export interface ButirHasilCbt {
+  questionId: string;
+  type: TipeSoalCbt;
+  category: string;
+  text: string;
+  imagePath: string | null;
+  options: PilihanSoal[];
+  answerKey: string[];
+  rubric: string | null;
+  explanation: string | null;
+  maxPoints: number;
+  otomatis: boolean;
+  chosen: string[];
+  answerText: string | null;
+  isCorrect: boolean | null;
+  points: number | null;
+  graderNote: string | null;
+}
+
+export interface HasilCbtRinci {
+  attempt: {
+    id: string;
+    startedAt: string;
+    deadlineAt: string;
+    submittedAt: string | null;
+    autoSubmitted: boolean;
+    scoreObjective: number | null;
+    scoreEssay: number | null;
+    scoreTotal: number | null;
+    maxScore: number;
+    percent: number | null;
+    passed: boolean | null;
+    gradedAt: string | null;
+    assignment: PenugasanCbt;
+    events: { id: string; type: string; detail: string | null; at: string }[];
+    photos: { id: string; takenAt: string }[];
+    gradedBy: Ref | null;
+  };
+  butir: ButirHasilCbt[];
+  perKategori: { kategori: string; maksimal: number; diperoleh: number; persen: number }[];
+}
+
+/** Informasi tes untuk pelamar sebelum mulai, dari tautan bertoken. */
+export interface InfoTesPublik {
+  peserta: string;
+  status: StatusPenugasanCbt;
+  test: { title: string; description: string | null; durationMinutes: number; jumlahSoal: number; proctorPhotos: boolean };
+  availableFrom: string | null;
+  availableUntil: string | null;
+  sudahDikirim: boolean;
+}

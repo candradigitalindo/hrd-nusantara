@@ -11,7 +11,7 @@
 // (hari libur, saldo) supaya bisa dipulihkan dan tidak pernah terjadi dua
 // kali.
 import { Prisma } from '@prisma/client';
-import { prisma } from '../lib/prisma';
+import { prisma, type PrismaTransactionClient } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
 import { resolveWorkPattern } from './workPattern';
 
@@ -29,7 +29,12 @@ const liburDiHariLibur = async (employeeId: string) => {
   return pola.type === 'fixed' && pola.observesPublicHolidays;
 };
 
-const potong = async (tx: Prisma.TransactionClient | typeof prisma, holidayId: string, leaveBalanceId: string) => {
+// Satu tipe, bukan union `Prisma.TransactionClient | typeof prisma`: union
+// itu memaksa TypeScript membandingkan dua graf tipe Prisma yang sangat besar
+// dan meledak ("Excessive stack depth") begitu jumlah model bertambah.
+// PrismaTransactionClient sudah mencakup keduanya — client utuh memenuhi
+// bentuknya, dan `tx` di dalam $transaction memang bertipe itu.
+const potong = async (tx: PrismaTransactionClient, holidayId: string, leaveBalanceId: string) => {
   // Unik (holidayId, leaveBalanceId): percobaan kedua ditolak database, bukan
   // diam-diam memotong dua kali.
   try {

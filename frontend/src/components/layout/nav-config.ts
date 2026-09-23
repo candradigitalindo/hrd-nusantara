@@ -23,6 +23,7 @@ import {
   Briefcase,
   KeyRound,
   type LucideIcon,
+  MonitorCheck,
 } from "lucide-react";
 import type { PenggunaSesi } from "@/lib/types";
 
@@ -97,6 +98,7 @@ export const KELOMPOK: KelompokMenu[] = [
     item: [
       { href: "/pelatihan", label: "Pelatihan", icon: GraduationCap, izin: ["pelatihan.lihat", "pelatihan.buat", "pelatihan.ubah"] },
       { href: "/kinerja", label: "Kinerja", icon: Target, izin: ["kinerja.lihat", "kinerja.buat", "kinerja.ubah"] },
+      { href: "/cbt", label: "Tes CBT", icon: MonitorCheck, izin: ["cbt.lihat", "cbt.buat", "cbt.ubah", "cbt_soal.lihat", "cbt_hasil.lihat"] },
       { href: "/kompetensi", label: "Kompetensi", icon: Award, izin: ["kompetensi.lihat", "kompetensi.buat", "kompetensi.ubah", "kompetensi.hapus"] },
     ],
   },

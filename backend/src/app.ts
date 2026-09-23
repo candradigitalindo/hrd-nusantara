@@ -32,6 +32,8 @@ import psychometricRoutes from './routes/psychometricRoutes';
 import reportRoutes from './routes/reportRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 import mobileReleaseRoutes from './routes/mobileReleaseRoutes';
+import cbtRoutes from './routes/cbtRoutes';
+import cbtPublicRoutes from './routes/cbtPublicRoutes';
 import roleRoutes from './routes/roleRoutes';
 
 export const createApp = () => {
@@ -80,7 +82,9 @@ export const createApp = () => {
       legacyHeaders: false,
       // Test menembak banyak request berturut-turut; rate limit akan
       // membuatnya gagal karena alasan yang tidak sedang diuji.
-      skip: () => env.NODE_ENV === 'test',
+      // Pengerjaan CBT dikecualikan: batasnya dihitung per peserta di
+      // cbtRoutes, karena satu ruangan ujian tampak sebagai satu IP.
+      skip: (req) => env.NODE_ENV === 'test' || req.path.startsWith('/cbt/saya/') || req.path.startsWith('/cbt/publik/'),
       message: { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
     })
   );
@@ -104,6 +108,10 @@ export const createApp = () => {
   app.use('/api/webhook', webhookRoutes);
   // Unduh APK juga publik (lihat komentar di mobileReleaseRoutes).
   app.use('/api/mobile', mobileReleaseRoutes);
+
+  // Tautan ujian pelamar: tanpa akun, jadi harus di atas router yang memasang
+  // authenticateToken di '/api'.
+  app.use('/api/cbt/publik', cbtPublicRoutes);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/employees', employeeRoutes);
@@ -132,6 +140,7 @@ export const createApp = () => {
   app.use('/api', whatsappRoutes);
   app.use('/api', deviceRoutes);
   app.use('/api', auditRoutes);
+  app.use('/api', cbtRoutes);
   app.use('/api', roleRoutes);
   app.use('/api', reportRoutes);
 
