@@ -1,15 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button } from "@/components/ui/button";
-import { Input, Select, Textarea, Field } from "@/components/ui/input";
+import { Input, Select, Field } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import type { Halaman, Jabatan, Departemen, ProgramPelatihan } from "@/lib/types";
 import { X, Save, Plus } from "lucide-react";
+import { EditorTeks } from "@/components/ui/editor-teks";
 
 type Nilai = { code: string; name: string; description: string; category: string; isMandatory: boolean; targetPositionId: string; targetDepartmentId: string; passingScore: string; validityMonths: string; durationHours: string; isActive: boolean };
 const kosong: Nilai = { code: "", name: "", description: "", category: "", isMandatory: false, targetPositionId: "", targetDepartmentId: "", passingScore: "", validityMonths: "", durationHours: "", isActive: true };
@@ -23,7 +24,7 @@ export const FormProgram = ({ open, onClose, program }: { open: boolean; onClose
 
   React.useEffect(() => {
     if (!open) return;
-    f.reset(program ? { code: program.code, name: program.name, description: program.description ?? "", category: program.category ?? "", isMandatory: program.isMandatory, targetPositionId: program.targetPositionId ?? "", targetDepartmentId: program.targetDepartmentId ?? "", passingScore: program.passingScore?.toString() ?? "", validityMonths: program.validityMonths?.toString() ?? "", durationHours: program.durationHours?.toString() ?? "", isActive: program.isActive } : kosong);
+    f.reset(program ? { code: program.code, name: program.name, description: program.descriptionHtml ?? program.description ?? "", category: program.category ?? "", isMandatory: program.isMandatory, targetPositionId: program.targetPositionId ?? "", targetDepartmentId: program.targetDepartmentId ?? "", passingScore: program.passingScore?.toString() ?? "", validityMonths: program.validityMonths?.toString() ?? "", durationHours: program.durationHours?.toString() ?? "", isActive: program.isActive } : kosong);
   }, [open, program, f]);
 
   const simpan = useMutation({
@@ -31,7 +32,7 @@ export const FormProgram = ({ open, onClose, program }: { open: boolean; onClose
       const body = {
         name: v.name, isMandatory: v.isMandatory,
         ...(sunting ? { isActive: v.isActive } : { code: v.code.toUpperCase() }),
-        ...(v.description ? { description: v.description } : {}), ...(v.category ? { category: v.category } : {}),
+        ...(v.description ? { descriptionHtml: v.description } : {}), ...(v.category ? { category: v.category } : {}),
         targetPositionId: v.targetPositionId || null, targetDepartmentId: v.targetDepartmentId || null,
         passingScore: v.passingScore ? Number(v.passingScore) : null, validityMonths: v.validityMonths ? Number(v.validityMonths) : null, durationHours: v.durationHours ? Number(v.durationHours) : null,
       };
@@ -53,7 +54,9 @@ export const FormProgram = ({ open, onClose, program }: { open: boolean; onClose
         <Field label="Masa berlaku (bulan)" hint="Kosongkan bila tidak kedaluwarsa"><Input type="number" min={1} {...f.register("validityMonths")} /></Field>
         <Field label="Sasaran jabatan"><Select {...f.register("targetPositionId")}><option value="">Semua jabatan</option>{(jabatan.data ?? []).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</Select></Field>
         <Field label="Sasaran departemen"><Select {...f.register("targetDepartmentId")}><option value="">Semua departemen</option>{(departemen.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>
-        <Field label="Deskripsi" className="sm:col-span-2"><Textarea rows={3} {...f.register("description")} /></Field>
+        <Field label="Deskripsi" className="sm:col-span-2">
+          <Controller control={f.control} name="description" render={({ field }) => <EditorTeks {...field} placeholder="Apa yang dipelajari dan untuk siapa…" minTinggi="8rem" />} />
+        </Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...f.register("isMandatory")} className="h-4 w-4 accent-[var(--primary)]" /> Wajib — masuk laporan kepatuhan</label>
         {sunting && <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...f.register("isActive")} className="h-4 w-4 accent-[var(--primary)]" /> Aktif</label>}
       </form>

@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
+import { pasanganTeks } from '../utils/richText';
 import {
   decideRegistrationStatus,
   evaluateTraining,
@@ -55,10 +56,13 @@ export const createProgram = async (req: Request, res: Response) => {
   }
 
   try {
+    const isi = pasanganTeks(input.descriptionHtml, input.description);
     const program = await prisma.trainingProgram.create({
       data: {
         id: generateULID(),
         ...input,
+        description: isi?.teks ?? input.description,
+        descriptionHtml: isi?.html ?? null,
         passingScore: dec(input.passingScore),
         durationHours: dec(input.durationHours),
       },
@@ -112,6 +116,11 @@ export const updateProgram = async (req: Request, res: Response) => {
 
   const { targetPositionId, targetDepartmentId, ...sisa } = input;
   const data: Prisma.TrainingProgramUpdateInput = { ...sisa };
+  const isi = pasanganTeks(input.descriptionHtml, input.description);
+  if (isi) {
+    data.description = isi.teks;
+    data.descriptionHtml = isi.html;
+  }
   if (input.passingScore !== undefined) data.passingScore = dec(input.passingScore);
   if (input.durationHours !== undefined) data.durationHours = dec(input.durationHours);
   // null berarti lepaskan sasaran; string berarti pindahkan.

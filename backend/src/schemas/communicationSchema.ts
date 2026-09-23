@@ -12,7 +12,12 @@ export const ROOM_TYPES = ['general', 'department', 'team'] as const;
 export const createAnnouncementSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
-    content: z.string().trim().min(1).max(20_000),
+    /// Wajib ada isinya, tapi boleh datang sebagai teks polos ATAU sebagai
+    /// contentHtml dari editor berformat — controller menolak bila keduanya kosong.
+    content: z.string().trim().min(1).max(20_000).optional(),
+    /// HTML dari editor berformat; server membersihkannya lalu menurunkan
+    /// `content` dari situ, jadi keduanya tidak pernah bercerita berbeda.
+    contentHtml: z.string().max(200_000).nullable().optional(),
     priority: z.enum(ANNOUNCEMENT_PRIORITIES).default('normal'),
     targetDepartmentId: ulidField.nullable().optional(),
     requiresAcknowledgment: z.boolean().default(false),
@@ -24,6 +29,7 @@ export const updateAnnouncementSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
     content: z.string().trim().min(1).max(20_000).optional(),
+    contentHtml: z.string().max(200_000).nullable().optional(),
     priority: z.enum(ANNOUNCEMENT_PRIORITIES).optional(),
     targetDepartmentId: ulidField.nullable().optional(),
     requiresAcknowledgment: z.boolean().optional(),

@@ -72,6 +72,7 @@ const soalUntukPeserta = (
     type: butir.question.type,
     category: butir.question.category,
     text: butir.question.text,
+    textHtml: butir.question.textHtml,
     imagePath: butir.question.imagePath,
     points: bobot(butir),
     options: acakPilihan ? acak(pilihan, rngTerbenih(attemptId + butir.questionId)) : pilihan,

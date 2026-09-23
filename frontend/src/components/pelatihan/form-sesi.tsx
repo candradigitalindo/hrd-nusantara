@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
+import { InputRupiah } from "@/components/ui/input-rupiah";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -43,7 +44,7 @@ export const FormSesi = ({ open, onClose, programs }: { open: boolean; onClose: 
         <Field label="Lokasi"><Input {...f.register("location")} placeholder="Ruang training / Google Meet" /></Field>
         <Field label="Kuota peserta" hint="Kosongkan bila tak terbatas"><Input type="number" min={1} {...f.register("maxParticipants")} /></Field>
         <Field label="Batas pendaftaran"><Input type="datetime-local" {...f.register("registrationDeadline")} /></Field>
-        <Field label="Biaya (Rp)"><Input type="number" min={0} step={10000} {...f.register("cost")} /></Field>
+        <Field label="Biaya"><Controller control={f.control} name="cost" render={({ field }) => <InputRupiah {...field} />} /></Field>
         <Field label="Deskripsi" className="sm:col-span-2"><Textarea rows={2} {...f.register("description")} /></Field>
       </form>
     </Modal>

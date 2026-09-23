@@ -21,6 +21,23 @@ export const formatRupiah = (nilai: number | string | null | undefined) =>
         Number(nilai)
       );
 
+/**
+ * Rupiah ringkas untuk tempat sempit seperti sumbu grafik: "Rp 12,5 jt".
+ * Angka penuhnya tetap muncul di tooltip dan tampilan tabel, jadi pembulatan
+ * di sini tidak pernah menjadi satu-satunya angka yang dilihat orang.
+ */
+export const formatRupiahRingkas = (nilai: number | null | undefined): string => {
+  if (nilai === null || nilai === undefined) return "—";
+  const angka = Number(nilai);
+  const tanda = angka < 0 ? "−" : "";
+  const n = Math.abs(angka);
+  const bulat = (v: number) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(v);
+  if (n >= 1_000_000_000) return `${tanda}Rp ${bulat(n / 1_000_000_000)} M`;
+  if (n >= 1_000_000) return `${tanda}Rp ${bulat(n / 1_000_000)} jt`;
+  if (n >= 1_000) return `${tanda}Rp ${bulat(n / 1_000)} rb`;
+  return `${tanda}Rp ${bulat(n)}`;
+};
+
 export const formatAngka = (nilai: number | null | undefined) =>
   nilai === null || nilai === undefined ? "—" : new Intl.NumberFormat("id-ID").format(nilai);
 

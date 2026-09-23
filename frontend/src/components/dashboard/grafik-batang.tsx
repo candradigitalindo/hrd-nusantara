@@ -4,7 +4,7 @@ import * as React from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import { Table2, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatAngka } from "@/lib/utils";
+import { formatAngka, formatRupiah, formatRupiahRingkas } from "@/lib/utils";
 
 export interface TitikData {
   label: string;
@@ -25,12 +25,20 @@ export interface TitikData {
 export const GrafikBatang = ({
   data,
   satuan = "",
+  format = "angka",
   tinggi = 260,
 }: {
   data: TitikData[];
+  /** Satuan yang ditempel di belakang angka, mis. " diterima". */
   satuan?: string;
+  /** "rupiah" memformat nilainya sebagai mata uang, bukan menempelkan "Rp" di belakang. */
+  format?: "angka" | "rupiah";
   tinggi?: number;
 }) => {
+  const rupiah = format === "rupiah";
+  // Nilai penuh untuk tooltip dan tabel; ringkas untuk sumbu yang sempit.
+  const nilaiPenuh = (v: number) => (rupiah ? formatRupiah(v) : `${formatAngka(v)}${satuan}`);
+  const nilaiSumbu = (v: number) => (rupiah ? formatRupiahRingkas(v) : formatAngka(v));
   const [tabel, setTabel] = React.useState(false);
   const [aktif, setAktif] = React.useState<number | null>(null);
   const maks = Math.max(...data.map((d) => d.nilai), 0);
@@ -60,10 +68,7 @@ export const GrafikBatang = ({
             {data.map((d) => (
               <tr key={d.label} className="border-b border-border last:border-0">
                 <td className="py-2 pr-3">{d.label}</td>
-                <td className="py-2 text-right tabular-nums">
-                  {formatAngka(d.nilai)}
-                  {satuan}
-                </td>
+                <td className="py-2 text-right tabular-nums">{nilaiPenuh(d.nilai)}</td>
               </tr>
             ))}
           </tbody>
@@ -86,17 +91,15 @@ export const GrafikBatang = ({
               axisLine={false}
               tick={{ fill: "var(--muted)", fontSize: 12 }}
               allowDecimals={false}
-              tickFormatter={(v: number) => formatAngka(v)}
+              width={rupiah ? 76 : undefined}
+              tickFormatter={nilaiSumbu}
             />
             <Tooltip
               cursor={{ fill: "var(--surface-2)" }}
               content={({ active, payload }) =>
                 active && payload?.[0] ? (
                   <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm shadow-md">
-                    <p className="font-semibold tabular-nums">
-                      {formatAngka(payload[0].value as number)}
-                      {satuan}
-                    </p>
+                    <p className="font-semibold tabular-nums">{nilaiPenuh(payload[0].value as number)}</p>
                     <p className="text-muted">{(payload[0].payload as TitikData).label}</p>
                   </div>
                 ) : null
@@ -123,7 +126,7 @@ export const GrafikBatang = ({
                   if (value !== maks || x === undefined || y === undefined || width === undefined) return null;
                   return (
                     <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={12} fill="var(--foreground)" fontWeight={600}>
-                      {formatAngka(value)}
+                      {nilaiSumbu(value)}
                     </text>
                   );
                 }}

@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
+import { InputRupiah } from "@/components/ui/input-rupiah";
 import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink, ClipboardPen, Save, UserPlus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -132,7 +133,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
           <Field label="No. HP"><Input inputMode="tel" {...fk.register("phoneNumber")} /></Field>
           <Field label="Sumber" hint="referral, jobstreet, walk-in, …"><Input {...fk.register("source")} /></Field>
           <Field label="Tautan CV"><Input placeholder="https://…" {...fk.register("cvUrl")} /></Field>
-          <Field label="Ekspektasi gaji (Rp)"><Input type="number" min={0} step={100000} {...fk.register("expectedSalary")} /></Field>
+          <Field label="Ekspektasi gaji"><Controller control={fk.control} name="expectedSalary" render={({ field }) => <InputRupiah {...field} />} /></Field>
           <Field label="Catatan" className="sm:col-span-2"><Textarea rows={2} {...fk.register("notes")} /></Field>
         </form>
       </Modal>

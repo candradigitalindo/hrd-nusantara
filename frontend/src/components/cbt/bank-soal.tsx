@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { ListChecks, Pencil, Plus, Search, Trash2, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import type { Halaman, PilihanSoal, SoalCbt, TingkatSoalCbt, TipeSoalCbt } from "@/lib/types";
+import { EditorTeks } from "@/components/ui/editor-teks";
 
 export const LABEL_TIPE_SOAL: Record<TipeSoalCbt, string> = {
   pilihan_ganda: "Pilihan ganda",
@@ -101,7 +102,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
             category: s.category,
             difficulty: s.difficulty,
             type: s.type,
-            text: s.text,
+            text: s.textHtml ?? s.text,
             points: s.points,
             rubric: s.rubric ?? "",
             explanation: s.explanation ?? "",
@@ -132,7 +133,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         category: v.category,
         difficulty: v.difficulty,
         type: v.type,
-        text: v.text,
+        textHtml: v.text,
         points: Number(v.points),
         rubric: v.type === "esai" ? v.rubric || null : null,
         explanation: v.explanation || null,
@@ -241,7 +242,12 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
           </div>
 
           <Field label="Pertanyaan" error={f.formState.errors.text?.message}>
-            <Textarea rows={3} {...f.register("text", { required: "Wajib diisi", minLength: { value: 3, message: "Terlalu pendek" } })} />
+            <Controller
+              control={f.control}
+              name="text"
+              rules={{ required: "Wajib diisi" }}
+              render={({ field }) => <EditorTeks {...field} placeholder="Tulis pertanyaannya…" minTinggi="8rem" />}
+            />
           </Field>
 
           {berpilihan && tipeDipilih !== "benar_salah" && (

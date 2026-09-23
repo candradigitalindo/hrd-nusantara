@@ -4,7 +4,7 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { format, subMonths, startOfMonth } from "date-fns";
-import { Briefcase, Plus, Pencil, Users, CalendarClock, MessageSquareText, Save, X, FileText, Megaphone, Lock, UserCheck, type LucideIcon } from "lucide-react";
+import { Briefcase, Plus, Pencil, Users, CalendarClock, MessageSquareText, Save, X, FileText, Megaphone, Lock, UserCheck, type LucideIcon, Eye } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -23,6 +23,7 @@ import { FormLowongan } from "@/components/rekrutmen/form-lowongan";
 import { PanelPelamar } from "@/components/rekrutmen/panel-pelamar";
 import { formatTanggal, formatRupiah, labelStatus, LABEL_TAHAP, LABEL_EMPLOYMENT, LABEL_HASIL_WAWANCARA } from "@/lib/utils";
 import type { Halaman, Lowongan, Wawancara, CorongRekrutmen, StatusLowongan } from "@/lib/types";
+import { TeksKaya } from "@/components/ui/editor-teks";
 
 type Tab = "lowongan" | "pelamar" | "wawancara" | "corong";
 type FormUmpan = { status: "completed" | "cancelled" | "no_show"; result: "pass" | "fail" | "hold" | ""; score: string; notes: string };
@@ -48,6 +49,7 @@ export default function HalamanRekrutmen() {
   const [tabDipilih, setTab] = React.useState<Tab | null>(null);
   const tab: Tab = tabDipilih ?? (hr ? "pelamar" : "wawancara");
   const [formBuka, setFormBuka] = React.useState<{ open: boolean; item: Lowongan | null }>({ open: false, item: null });
+  const [rincian, setRincian] = React.useState<Lowongan | null>(null);
   const [pageLowongan, setPageLowongan] = React.useState(1);
   const [umpan, setUmpan] = React.useState<Wawancara | null>(null);
   const [statusW, setStatusW] = React.useState("scheduled");
@@ -111,6 +113,9 @@ export default function HalamanRekrutmen() {
                       {l.salaryRangeMin || l.salaryRangeMax ? ` · ${formatRupiah(l.salaryRangeMin)} – ${formatRupiah(l.salaryRangeMax)}` : ""}
                       {l.deadline ? ` · s/d ${formatTanggal(l.deadline)}` : ""}
                     </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setRincian(l)}><Eye className="h-4 w-4" aria-hidden /> Rincian</Button>
+                    </div>
                     {hr && (
                       <div className="flex flex-wrap gap-2">
                         {bolehUbah && <Button size="sm" variant="ghost" onClick={() => setFormBuka({ open: true, item: l })}><Pencil className="h-4 w-4" aria-hidden /> Sunting</Button>}
@@ -187,6 +192,34 @@ export default function HalamanRekrutmen() {
       )}
 
       <FormLowongan open={formBuka.open} onClose={() => setFormBuka({ open: false, item: null })} lowongan={formBuka.item} />
+
+      <Modal
+        open={Boolean(rincian)}
+        onClose={() => setRincian(null)}
+        size="lg"
+        title={rincian?.title ?? ""}
+        description={rincian ? `${rincian.position.name}${rincian.location ? ` · ${rincian.location}` : ""} · ${rincian.openings} posisi` : undefined}
+        footer={<Button variant="outline" onClick={() => setRincian(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}
+      >
+        {rincian && (
+          <div className="space-y-5 text-sm">
+            <p className="flex flex-wrap gap-x-3 gap-y-1 text-muted">
+              <span>{labelStatus(rincian.status)}</span>
+              {(rincian.salaryRangeMin || rincian.salaryRangeMax) && <span>{formatRupiah(rincian.salaryRangeMin)} – {formatRupiah(rincian.salaryRangeMax)}</span>}
+              {rincian.deadline && <span>Lamaran ditutup {formatTanggal(rincian.deadline)}</span>}
+              {rincian.employmentType && <span>{LABEL_EMPLOYMENT[rincian.employmentType]}</span>}
+            </p>
+            <section>
+              <h3 className="mb-1 font-semibold">Deskripsi pekerjaan</h3>
+              <TeksKaya html={rincian.descriptionHtml} teks={rincian.description} />
+            </section>
+            <section>
+              <h3 className="mb-1 font-semibold">Persyaratan</h3>
+              <TeksKaya html={rincian.requirementsHtml} teks={rincian.requirements} />
+            </section>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={Boolean(umpan)} onClose={() => setUmpan(null)} title="Umpan Balik Wawancara" description={umpan ? `${umpan.candidate.name} · ${umpan.stage} putaran ${umpan.round}` : undefined}
         footer={<><Button variant="outline" onClick={() => setUmpan(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-umpan" type="submit" loading={kirimUmpan.isPending}>{!kirimUmpan.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>

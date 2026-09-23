@@ -733,14 +733,18 @@ model CandidateStageHistory {
 }
 
 model JobPosting {
-  id           String    @id
-  title        String
-  description  String
-  requirements String
-  position     Position  @relation(fields: [positionId], references: [id])
-  positionId   String
-  postedDate   DateTime  @default(now())
-  deadline     DateTime?
+  id               String    @id
+  title            String
+  description      String
+  /// Versi berformat dari `description` (lihat utils/richText.ts).
+  descriptionHtml  String?
+  requirements     String
+  /// Versi berformat dari `requirements`.
+  requirementsHtml String?
+  position         Position  @relation(fields: [positionId], references: [id])
+  positionId       String
+  postedDate       DateTime  @default(now())
+  deadline         DateTime?
 
   /// Jumlah orang yang dicari. Tanpa ini, status "filled" tidak punya makna:
   /// tidak ada yang tahu berapa lowongan yang harus terisi.
@@ -941,11 +945,13 @@ model ContinuousFeedback {
 /// "siapa saja yang belum ikut pelatihan Hygiene" tidak bisa dijawab —
 /// yang ada hanya daftar sesi lepas tanpa induk.
 model TrainingProgram {
-  id          String  @id
-  code        String  @unique
-  name        String // mis. "Hygiene & Sanitasi"
-  description String?
-  category    String? // mis. "Keselamatan Kerja", "Pelayanan"
+  id              String  @id
+  code            String  @unique
+  name            String // mis. "Hygiene & Sanitasi"
+  description     String?
+  /// Versi berformat dari `description`.
+  descriptionHtml String?
+  category        String? // mis. "Keselamatan Kerja", "Pelayanan"
 
   /// Wajib diikuti. Dipakai laporan kepatuhan untuk menandai siapa yang belum.
   isMandatory Boolean @default(false)
@@ -1210,11 +1216,16 @@ model CertificationRecord {
 }
 
 model Announcement {
-  id       String   @id
-  title    String
-  content  String
-  author   Employee @relation(fields: [authorId], references: [id])
-  authorId String
+  id          String   @id
+  title       String
+  /// Teks polos. Tetap diisi walau isinya ditulis lewat editor berformat:
+  /// aplikasi Android yang sudah terpasang membaca kolom ini apa adanya.
+  content     String
+  /// Versi berformat dari `content`, sudah dibersihkan di server. null berarti
+  /// isinya memang teks polos.
+  contentHtml String?
+  author      Employee @relation(fields: [authorId], references: [id])
+  authorId    String
 
   /// draft dulu, baru terbit. Sebelumnya menyimpan berarti langsung tayang,
   /// sehingga pengumuman setengah jadi bisa terbaca seluruh karyawan.
@@ -1914,7 +1925,9 @@ model CbtQuestion {
   /// pilihan_ganda | banyak_jawaban | benar_salah | isian | esai
   type String
 
-  text String
+  text     String
+  /// Versi berformat dari `text`. Peserta menerima yang ini bila ada.
+  textHtml String?
 
   /// Gambar pendukung (grafik, foto alat), path relatif di UPLOAD_DIR.
   imagePath String?
@@ -1954,10 +1967,12 @@ model CbtQuestion {
 
 /// Paket tes: kumpulan butir soal beserta aturan pengerjaannya.
 model CbtTest {
-  id          String  @id
-  code        String  @unique
-  title       String
-  description String?
+  id              String  @id
+  code            String  @unique
+  title           String
+  description     String?
+  /// Versi berformat dari `description`.
+  descriptionHtml String?
 
   /// karyawan | pelamar | keduanya — menentukan siapa yang boleh ditugaskan.
   audience String @default("keduanya")

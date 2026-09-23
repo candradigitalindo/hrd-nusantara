@@ -13,6 +13,7 @@ import { Alert } from "@/components/ui/alert";
 import { Logo } from "@/components/ui/logo";
 import { formatTanggal } from "@/lib/utils";
 import { RuangUjianCbt, SelesaiUjian, type ApiUjian } from "@/components/cbt/ruang-ujian";
+import { TeksKaya } from "@/components/ui/editor-teks";
 import type { HasilKirimCbt, InfoTesPublik, RuangUjian } from "@/lib/types";
 
 /**
@@ -82,7 +83,9 @@ export default function HalamanTesPublik() {
               </div>
               <div>
                 <p className="font-semibold">{info.data.test.title}</p>
-                {info.data.test.description && <p className="mt-1 text-sm text-muted">{info.data.test.description}</p>}
+                {(info.data.test.descriptionHtml || info.data.test.description) && (
+                  <TeksKaya html={info.data.test.descriptionHtml} teks={info.data.test.description} className="mt-1 text-sm text-muted" />
+                )}
               </div>
               <ul className="space-y-1.5 text-sm text-muted">
                 <li className="flex items-center gap-2"><Clock className="h-4 w-4" aria-hidden /> {info.data.test.durationMinutes} menit, dihitung sejak tombol Mulai ditekan</li>

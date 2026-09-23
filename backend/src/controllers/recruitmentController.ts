@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
+import { pasanganTeks } from '../utils/richText';
 import {
   canTransition,
   canHire,
@@ -33,7 +34,9 @@ const jobPostingSelect = {
   id: true,
   title: true,
   description: true,
+  descriptionHtml: true,
   requirements: true,
+  requirementsHtml: true,
   positionId: true,
   openings: true,
   employmentType: true,
@@ -72,12 +75,19 @@ export const createJobPosting = async (req: Request, res: Response) => {
   });
   if (!posisi) return res.status(404).json({ error: 'Posisi tidak ditemukan' });
 
+  const deskripsi = pasanganTeks(input.descriptionHtml, input.description);
+  const syarat = pasanganTeks(input.requirementsHtml, input.requirements);
+  if (!deskripsi || deskripsi.teks.trim() === '') return res.status(400).json({ error: 'Deskripsi pekerjaan wajib diisi' });
+  if (!syarat || syarat.teks.trim() === '') return res.status(400).json({ error: 'Persyaratan wajib diisi' });
+
   const lowongan = await prisma.jobPosting.create({
     data: {
       id: generateULID(),
       title: input.title,
-      description: input.description,
-      requirements: input.requirements,
+      description: deskripsi.teks,
+      descriptionHtml: deskripsi.html,
+      requirements: syarat.teks,
+      requirementsHtml: syarat.html,
       positionId: input.positionId,
       openings: input.openings,
       employmentType: input.employmentType,
@@ -135,8 +145,16 @@ export const updateJobPosting = async (req: Request, res: Response) => {
 
   const data: Prisma.JobPostingUpdateInput = {};
   if (input.title !== undefined) data.title = input.title;
-  if (input.description !== undefined) data.description = input.description;
-  if (input.requirements !== undefined) data.requirements = input.requirements;
+  const deskripsi = pasanganTeks(input.descriptionHtml, input.description);
+  if (deskripsi) {
+    data.description = deskripsi.teks;
+    data.descriptionHtml = deskripsi.html;
+  }
+  const syarat = pasanganTeks(input.requirementsHtml, input.requirements);
+  if (syarat) {
+    data.requirements = syarat.teks;
+    data.requirementsHtml = syarat.html;
+  }
   if (input.openings !== undefined) data.openings = input.openings;
   if (input.employmentType !== undefined) data.employmentType = input.employmentType;
   if (input.salaryRangeMin !== undefined) data.salaryRangeMin = dec(input.salaryRangeMin);

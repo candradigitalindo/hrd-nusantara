@@ -18,6 +18,7 @@ import { Alert } from "@/components/ui/alert";
 import { Modal } from "@/components/ui/modal";
 import { cn, formatTanggal } from "@/lib/utils";
 import { LABEL_TIPE_SOAL } from "@/components/cbt/bank-soal";
+import { TeksKaya } from "@/components/ui/editor-teks";
 import type { HasilCbtRinci } from "@/lib/types";
 
 const LABEL_KEJADIAN: Record<string, string> = {
@@ -178,7 +179,7 @@ export default function HalamanHasilCbt() {
 
           {esai.map((b) => (
             <div key={b.questionId} className="space-y-2 rounded-xl border border-border p-4">
-              <p className="text-sm font-medium">{b.text}</p>
+              <TeksKaya html={b.textHtml} teks={b.text} className="text-sm font-medium" />
               {b.rubric && <p className="text-xs text-muted">Rubrik: {b.rubric}</p>}
               <p className="whitespace-pre-wrap rounded-lg bg-surface-2 p-3 text-sm">{b.answerText || <span className="text-muted">Tidak dijawab</span>}</p>
               <div className="grid gap-3 sm:grid-cols-[8rem_1fr]">
@@ -219,7 +220,7 @@ export default function HalamanHasilCbt() {
                   <Badge tone="warning">Belum dinilai</Badge>
                 )}
               </div>
-              <p className="mt-1 text-sm">{b.text}</p>
+              <TeksKaya html={b.textHtml} teks={b.text} className="mt-1 text-sm" />
 
               {b.options.length > 0 ? (
                 <ul className="mt-2 space-y-1">

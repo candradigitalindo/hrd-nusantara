@@ -2,13 +2,13 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
 import { Archive, Camera, Clock, Eye, ListChecks, Megaphone, MonitorCheck, Pencil, Plus, Save, Send, Trash2, Users, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button, TombolAksi } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Input, Select, Field, Textarea } from "@/components/ui/input";
+import { Input, Select, Field } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { SkeletonBaris } from "@/components/ui/skeleton";
@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { DialogTugaskan } from "./tugaskan";
 import { LABEL_TIPE_SOAL } from "./bank-soal";
 import type { AudiensCbt, Halaman, PaketCbt, PaketCbtRinci, SoalCbt } from "@/lib/types";
+import { EditorTeks } from "@/components/ui/editor-teks";
 
 const LABEL_AUDIENS: Record<AudiensCbt, string> = { karyawan: "Karyawan", pelamar: "Pelamar", keduanya: "Karyawan & pelamar" };
 const LABEL_STATUS: Record<string, string> = { draft: "Draf", published: "Tayang", archived: "Arsip" };
@@ -164,7 +165,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         ? {
             code: p.code,
             title: p.title,
-            description: p.description ?? "",
+            description: p.descriptionHtml ?? p.description ?? "",
             audience: p.audience,
             durationMinutes: p.durationMinutes,
             passingScore: p.passingScore === null ? "" : String(p.passingScore),
@@ -186,7 +187,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
       const body = {
         code: v.code.toUpperCase(),
         title: v.title,
-        description: v.description || null,
+        descriptionHtml: v.description || null,
         audience: v.audience,
         durationMinutes: Number(v.durationMinutes),
         passingScore: v.passingScore === "" ? null : Number(v.passingScore),
@@ -200,7 +201,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
       // Paket yang sudah ditugaskan menolak perubahan aturan main; yang dikirim
       // saat menyunting hanya yang memang masih boleh berubah.
       const bodySunting = form.item?._count.assignments
-        ? { title: body.title, description: body.description, audience: body.audience, showResultToTaker: body.showResultToTaker }
+        ? { title: body.title, descriptionHtml: body.descriptionHtml, audience: body.audience, showResultToTaker: body.showResultToTaker }
         : body;
       return form.item ? api.put(`/cbt/tes/${form.item.id}`, bodySunting) : api.post("/cbt/tes", body);
     },
@@ -312,7 +313,9 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
               <Input {...f.register("title", { required: "Wajib diisi" })} placeholder="Tes Higiene Dasar" />
             </Field>
           </div>
-          <Field label="Keterangan"><Textarea rows={2} {...f.register("description")} placeholder="Untuk siapa tes ini dan apa yang diukur" /></Field>
+          <Field label="Keterangan">
+            <Controller control={f.control} name="description" render={({ field }) => <EditorTeks {...field} placeholder="Untuk siapa tes ini dan apa yang diukur" minTinggi="7rem" />} />
+          </Field>
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Sasaran peserta">

@@ -20,6 +20,8 @@ export const createProgramSchema = z
       .regex(/^[A-Z0-9_]+$/, 'Kode hanya boleh huruf kapital, angka, dan garis bawah'),
     name: z.string().trim().min(1).max(150),
     description: z.string().trim().max(2000).optional(),
+    /// HTML dari editor berformat; teks polosnya diturunkan server dari sini.
+    descriptionHtml: z.string().max(200_000).nullable().optional(),
     category: z.string().trim().max(60).optional(),
     isMandatory: z.boolean().default(false),
     targetPositionId: ulidField.nullable().optional(),
@@ -46,6 +48,7 @@ export const updateProgramSchema = z
   .object({
     name: z.string().trim().min(1).max(150).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
+    descriptionHtml: z.string().max(200_000).nullable().optional(),
     category: z.string().trim().max(60).nullable().optional(),
     isMandatory: z.boolean().optional(),
     passingScore: nilai.nullable().optional(),

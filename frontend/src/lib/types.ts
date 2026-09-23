@@ -412,7 +412,9 @@ export interface Lowongan {
   id: string;
   title: string;
   description: string;
+  descriptionHtml: string | null;
   requirements: string;
+  requirementsHtml: string | null;
   positionId: string;
   openings: number;
   employmentType: string | null;
@@ -518,7 +520,10 @@ export type Prioritas = "normal" | "important" | "urgent";
 export interface Pengumuman {
   id: string;
   title: string;
+  /** Teks polos; selalu terisi, juga saat isinya ditulis lewat editor berformat. */
   content: string;
+  /** Versi berformat yang sudah dibersihkan server; null berarti teks polos. */
+  contentHtml: string | null;
   authorId: string | null;
   status: "draft" | "published" | "archived";
   priority: Prioritas;
@@ -584,6 +589,7 @@ export interface ProgramPelatihan {
   code: string;
   name: string;
   description: string | null;
+  descriptionHtml: string | null;
   category: string | null;
   isMandatory: boolean;
   targetPositionId: string | null;
@@ -1014,6 +1020,7 @@ export interface SoalCbt {
   difficulty: TingkatSoalCbt;
   type: TipeSoalCbt;
   text: string;
+  textHtml: string | null;
   imagePath: string | null;
   options: PilihanSoal[] | null;
   answerKey: string[];
@@ -1031,6 +1038,7 @@ export interface PaketCbt {
   code: string;
   title: string;
   description: string | null;
+  descriptionHtml: string | null;
   audience: AudiensCbt;
   durationMinutes: number;
   passingScore: number | null;
@@ -1127,6 +1135,7 @@ export interface RuangUjian {
     type: TipeSoalCbt;
     category: string;
     text: string;
+    textHtml: string | null;
     imagePath: string | null;
     points: number;
     options: PilihanSoal[];
@@ -1156,6 +1165,7 @@ export interface ButirHasilCbt {
   type: TipeSoalCbt;
   category: string;
   text: string;
+  textHtml: string | null;
   imagePath: string | null;
   options: PilihanSoal[];
   answerKey: string[];
@@ -1197,7 +1207,7 @@ export interface HasilCbtRinci {
 export interface InfoTesPublik {
   peserta: string;
   status: StatusPenugasanCbt;
-  test: { title: string; description: string | null; durationMinutes: number; jumlahSoal: number; proctorPhotos: boolean };
+  test: { title: string; description: string | null; descriptionHtml: string | null; durationMinutes: number; jumlahSoal: number; proctorPhotos: boolean };
   availableFrom: string | null;
   availableUntil: string | null;
   sudahDikirim: boolean;

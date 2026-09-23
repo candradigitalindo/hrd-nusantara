@@ -138,3 +138,58 @@ body {
 
 /* Area aman perangkat ber-notch, untuk bar navigasi bawah di mobile. */
 .pb-safe { padding-bottom: max(0.5rem, env(safe-area-inset-bottom)); }
+
+/* Teks berformat dari editor WYSIWYG: dipakai saat menyunting maupun membaca,
+   supaya yang terlihat di editor sama dengan yang terbit. Ditulis manual, bukan
+   plugin prose, agar warnanya ikut token tema termasuk mode gelap. */
+.teks-kaya { line-height: 1.65; }
+.teks-kaya > * + * { margin-top: 0.75rem; }
+.teks-kaya h2 { font-size: 1.25rem; font-weight: 700; line-height: 1.3; }
+.teks-kaya h3 { font-size: 1.1rem; font-weight: 600; }
+.teks-kaya h4 { font-size: 1rem; font-weight: 600; }
+.teks-kaya p:empty::after { content: "\00a0"; }
+.teks-kaya ul { list-style: disc; padding-left: 1.4rem; }
+.teks-kaya ol { list-style: decimal; padding-left: 1.4rem; }
+.teks-kaya li > * + * { margin-top: 0.35rem; }
+.teks-kaya li::marker { color: var(--muted); }
+.teks-kaya a { color: var(--primary); text-decoration: underline; text-underline-offset: 2px; }
+.teks-kaya blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 0.9rem;
+  color: var(--muted);
+  font-style: italic;
+}
+.teks-kaya code {
+  background: var(--surface-2);
+  border-radius: 0.3rem;
+  padding: 0.1rem 0.3rem;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.9em;
+}
+.teks-kaya pre {
+  background: var(--surface-2);
+  border-radius: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  overflow-x: auto;
+}
+.teks-kaya pre code { background: none; padding: 0; }
+.teks-kaya hr { border: 0; border-top: 1px solid var(--border); }
+.teks-kaya table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.925rem;
+  display: block;
+  overflow-x: auto;
+}
+.teks-kaya th, .teks-kaya td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }
+.teks-kaya th { background: var(--surface-2); font-weight: 600; }
+.teks-kaya mark { background: var(--secondary-soft); color: inherit; }
+
+/* Teks bayangan pada editor kosong (ekstensi Placeholder TipTap). */
+.teks-kaya p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

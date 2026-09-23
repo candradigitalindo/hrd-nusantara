@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useWatch, Controller } from "react-hook-form";
+import { InputRupiah } from "@/components/ui/input-rupiah";
 import { Wallet, Plus, History, Save, X, Unlink } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -133,8 +134,13 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
           <Field label="Jenis">
             <Select {...fg.register("salaryType")}>{Object.entries(LABEL_SALARY_TYPE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select>
           </Field>
-          <Field label="Nominal (Rp)" error={fg.formState.errors.baseAmount?.message}>
-            <Input type="number" inputMode="numeric" min={0} step={1000} {...fg.register("baseAmount", { required: "Wajib diisi", min: { value: 1, message: "Harus lebih dari 0" } })} />
+          <Field label="Nominal" error={fg.formState.errors.baseAmount?.message}>
+            <Controller
+              control={fg.control}
+              name="baseAmount"
+              rules={{ required: "Wajib diisi", validate: (v) => Number(v) > 0 || "Harus lebih dari 0" }}
+              render={({ field, fieldState }) => <InputRupiah {...field} aria-invalid={Boolean(fieldState.error)} />}
+            />
           </Field>
           <Field label="Berlaku sejak" error={fg.formState.errors.effectiveFrom?.message}>
             <Input type="date" {...fg.register("effectiveFrom", { required: "Wajib diisi" })} />
@@ -156,7 +162,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
             {komponenDipilih?.calculation === "percentage" ? (
               <Field label="Persentase khusus (%)" hint={`Bawaan ${komponenDipilih.defaultPercentage ?? "—"}%`}><Input type="number" step="0.01" min={0} max={100} {...fk.register("percentage")} /></Field>
             ) : (
-              <Field label="Nominal khusus (Rp)" hint={komponenDipilih ? `Bawaan ${formatRupiah(komponenDipilih.defaultAmount)}` : undefined}><Input type="number" min={0} step={1000} {...fk.register("amount")} /></Field>
+              <Field label="Nominal khusus" hint={komponenDipilih ? `Bawaan ${formatRupiah(komponenDipilih.defaultAmount)}` : undefined}><Controller control={fk.control} name="amount" render={({ field }) => <InputRupiah {...field} />} /></Field>
             )}
             <Field label="Berlaku sejak"><Input type="date" {...fk.register("effectiveFrom", { required: true })} /></Field>
           </div>

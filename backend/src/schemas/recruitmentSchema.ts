@@ -15,8 +15,13 @@ const uang = z.coerce.number().min(0).max(1_000_000_000_000);
 export const createJobPostingSchema = z
   .object({
     title: z.string().trim().min(1).max(150),
-    description: z.string().trim().min(1).max(5000),
-    requirements: z.string().trim().min(1).max(5000),
+    /// Boleh datang sebagai teks polos atau sebagai *Html dari editor;
+    /// controller menolak bila keduanya kosong.
+    description: z.string().trim().min(1).max(5000).optional(),
+    /// HTML dari editor berformat; teks polosnya diturunkan server dari sini.
+    descriptionHtml: z.string().max(200_000).nullable().optional(),
+    requirements: z.string().trim().min(1).max(5000).optional(),
+    requirementsHtml: z.string().max(200_000).nullable().optional(),
     positionId: ulidField,
     openings: z.coerce.number().int().min(1).max(500).default(1),
     employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
@@ -37,7 +42,9 @@ export const updateJobPostingSchema = z
   .object({
     title: z.string().trim().min(1).max(150).optional(),
     description: z.string().trim().min(1).max(5000).optional(),
+    descriptionHtml: z.string().max(200_000).nullable().optional(),
     requirements: z.string().trim().min(1).max(5000).optional(),
+    requirementsHtml: z.string().max(200_000).nullable().optional(),
     openings: z.coerce.number().int().min(1).max(500).optional(),
     employmentType: z.enum(EMPLOYMENT_TYPES).nullable().optional(),
     salaryRangeMin: uang.nullable().optional(),

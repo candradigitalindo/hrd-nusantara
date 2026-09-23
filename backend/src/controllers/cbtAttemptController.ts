@@ -165,6 +165,7 @@ export const publicInfo = async (req: Request, res: Response) => {
       test: {
         title: penugasan.test.title,
         description: penugasan.test.description,
+        descriptionHtml: penugasan.test.descriptionHtml,
         durationMinutes: penugasan.test.durationMinutes,
         jumlahSoal: penugasan.test.questions.length,
         proctorPhotos: penugasan.test.proctorPhotos,

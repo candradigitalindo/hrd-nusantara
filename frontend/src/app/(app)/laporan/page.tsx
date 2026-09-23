@@ -163,7 +163,7 @@ export default function HalamanLaporan() {
             <StatCard label="Rekrutmen" value={formatRupiah(biaya.data.costs.recruitment)} hint={`${biaya.data.costs.shares.recruitment}% · ${formatAngka(biaya.data.detail.jobPostings)} lowongan`} icon={UserSearch} tone="warning" />
           </div>
           <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
-            <Card><CardHeader><CardTitle>Komposisi biaya</CardTitle><CardDescription>Hanya batch penggajian yang sudah disetujui yang dihitung</CardDescription></CardHeader><CardContent><GrafikBatang data={[{ label: "Payroll", nilai: biaya.data.costs.payroll }, { label: "Pelatihan", nilai: biaya.data.costs.training }, { label: "Rekrutmen", nilai: biaya.data.costs.recruitment }]} tinggi={220} satuan="Rp" /></CardContent></Card>
+            <Card><CardHeader><CardTitle>Komposisi biaya</CardTitle><CardDescription>Hanya batch penggajian yang sudah disetujui yang dihitung</CardDescription></CardHeader><CardContent><GrafikBatang data={[{ label: "Payroll", nilai: biaya.data.costs.payroll }, { label: "Pelatihan", nilai: biaya.data.costs.training }, { label: "Rekrutmen", nilai: biaya.data.costs.recruitment }]} tinggi={220} format="rupiah" /></CardContent></Card>
             <Card>
               <CardHeader><CardTitle>Rincian</CardTitle></CardHeader>
               <CardContent>

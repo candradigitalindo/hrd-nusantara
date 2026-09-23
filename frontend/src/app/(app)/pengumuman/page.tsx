@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { Megaphone, Plus, Pencil, Users, CheckCheck, AlertTriangle, Archive, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -10,7 +10,7 @@ import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Select, Textarea, Field } from "@/components/ui/input";
+import { Input, Select, Field } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/alert";
@@ -20,8 +20,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PanelSurvei } from "@/components/komunikasi/panel-survei";
 import { formatTanggal, formatRelatif, labelStatus, LABEL_PRIORITAS, cn } from "@/lib/utils";
 import type { Halaman, Pengumuman, Departemen, Prioritas } from "@/lib/types";
+import { EditorTeks, TeksKaya } from "@/components/ui/editor-teks";
 
-type FormPengumuman = { title: string; content: string; priority: Prioritas; targetDepartmentId: string; requiresAcknowledgment: boolean; expiresAt: string };
+type FormPengumuman = { title: string; contentHtml: string; priority: Prioritas; targetDepartmentId: string; requiresAcknowledgment: boolean; expiresAt: string };
 type BarisPembaca = { employee: { id: string; nik: string; name: string }; readAt: string | null; acknowledgedAt: string | null };
 type LaporanPembaca = { announcement: { id: string; title: string }; targetCount: number; readCount: number; acknowledgedCount: number; notRead: BarisPembaca[]; notAcknowledged?: BarisPembaca[] };
 
@@ -48,10 +49,10 @@ export default function HalamanPengumuman() {
   const departemen = useQuery({ queryKey: ["departemen", "semua"], queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data, enabled: form.open });
   const laporan = useQuery({ queryKey: ["pengumuman", "pembaca", pembaca?.id], queryFn: async () => (await api.get<LaporanPembaca>(`/announcements/${pembaca!.id}/reads`)).data, enabled: Boolean(pembaca) });
 
-  const f = useForm<FormPengumuman>({ defaultValues: { title: "", content: "", priority: "normal", targetDepartmentId: "", requiresAcknowledgment: false, expiresAt: "" } });
+  const f = useForm<FormPengumuman>({ defaultValues: { title: "", contentHtml: "", priority: "normal", targetDepartmentId: "", requiresAcknowledgment: false, expiresAt: "" } });
   React.useEffect(() => {
     if (!form.open) return;
-    f.reset(form.item ? { title: form.item.title, content: form.item.content, priority: form.item.priority, targetDepartmentId: form.item.targetDepartmentId ?? "", requiresAcknowledgment: form.item.requiresAcknowledgment, expiresAt: form.item.expiresAt?.slice(0, 10) ?? "" } : { title: "", content: "", priority: "normal", targetDepartmentId: "", requiresAcknowledgment: false, expiresAt: "" });
+    f.reset(form.item ? { title: form.item.title, contentHtml: form.item.contentHtml ?? form.item.content, priority: form.item.priority, targetDepartmentId: form.item.targetDepartmentId ?? "", requiresAcknowledgment: form.item.requiresAcknowledgment, expiresAt: form.item.expiresAt?.slice(0, 10) ?? "" } : { title: "", contentHtml: "", priority: "normal", targetDepartmentId: "", requiresAcknowledgment: false, expiresAt: "" });
   }, [form, f]);
 
   const segarkan = () => qc.invalidateQueries({ queryKey: ["pengumuman"] });
@@ -70,7 +71,7 @@ export default function HalamanPengumuman() {
 
   const simpan = useMutation({
     mutationFn: async (v: FormPengumuman) => {
-      const body = { title: v.title, content: v.content, priority: v.priority, targetDepartmentId: v.targetDepartmentId || null, requiresAcknowledgment: v.requiresAcknowledgment, expiresAt: v.expiresAt ? new Date(v.expiresAt + "T23:59:59").toISOString() : null };
+      const body = { title: v.title, contentHtml: v.contentHtml, priority: v.priority, targetDepartmentId: v.targetDepartmentId || null, requiresAcknowledgment: v.requiresAcknowledgment, expiresAt: v.expiresAt ? new Date(v.expiresAt + "T23:59:59").toISOString() : null };
       return form.item ? (await api.put<Pengumuman>(`/announcements/${form.item.id}`, body)).data : (await api.post<Pengumuman>("/announcements", body)).data;
     },
     onSuccess: (p) => { segarkan(); notifikasi.sukses(form.item ? "Pengumuman diperbarui" : "Pengumuman dibuat", form.item ? p.title : `${p.title} · masih draft, tayangkan agar terlihat.`); setForm({ open: false, item: null }); },
@@ -148,7 +149,7 @@ export default function HalamanPengumuman() {
         {detail && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">{detail.priority !== "normal" && <Badge tone={nadaStatus(detail.priority)} dot>{LABEL_PRIORITAS[detail.priority]}</Badge>}{detail.targetDepartmentId && <Badge tone="neutral">Khusus departemen</Badge>}</div>
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{detail.content}</p>
+            <TeksKaya html={detail.contentHtml} teks={detail.content} className="text-sm leading-relaxed" />
           </div>
         )}
       </Modal>
@@ -157,7 +158,14 @@ export default function HalamanPengumuman() {
         footer={<><Button variant="outline" onClick={() => setForm({ open: false, item: null })}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-pengumuman" type="submit" loading={simpan.isPending}>{!simpan.isPending && (form.item ? <Save className="h-4 w-4" aria-hidden /> : <Plus className="h-4 w-4" aria-hidden />)} {form.item ? "Simpan" : "Buat Draft"}</Button></>}>
         <form id="form-pengumuman" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-4" noValidate>
           <Field label="Judul" error={f.formState.errors.title?.message}><Input {...f.register("title", { required: "Wajib diisi" })} /></Field>
-          <Field label="Isi" error={f.formState.errors.content?.message}><Textarea rows={8} {...f.register("content", { required: "Wajib diisi" })} /></Field>
+          <Field label="Isi" error={f.formState.errors.contentHtml?.message}>
+            <Controller
+              control={f.control}
+              name="contentHtml"
+              rules={{ required: "Wajib diisi" }}
+              render={({ field }) => <EditorTeks {...field} placeholder="Tulis isi pengumuman…" minTinggi="14rem" />}
+            />
+          </Field>
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Prioritas"><Select {...f.register("priority")}>{Object.entries(LABEL_PRIORITAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
             <Field label="Sasaran"><Select {...f.register("targetDepartmentId")}><option value="">Semua karyawan</option>{(departemen.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>

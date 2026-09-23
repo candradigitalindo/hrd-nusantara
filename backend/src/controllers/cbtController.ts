@@ -8,6 +8,7 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
+import { pasanganTeks } from '../utils/richText';
 import { decodeBase64Image, InvalidImageError, saveImage } from '../utils/imageUpload';
 import { resolveDocumentPath } from '../utils/documentUpload';
 import { decryptBytes } from '../utils/fieldCrypto';
@@ -33,6 +34,7 @@ const soalSelect = {
   difficulty: true,
   type: true,
   text: true,
+  textHtml: true,
   imagePath: true,
   options: true,
   answerKey: true,
@@ -93,6 +95,9 @@ export const createQuestion = async (req: Request, res: Response) => {
   const input = req.body as CreateQuestionInput;
   const aktor = req.user!;
 
+  const isiSoal = pasanganTeks(input.textHtml, input.text);
+  if (!isiSoal || isiSoal.teks.trim().length < 3) return res.status(400).json({ error: 'Pertanyaan wajib diisi' });
+
   let imagePath: string | null | undefined;
   try {
     imagePath = await simpanGambar(input.image);
@@ -107,7 +112,8 @@ export const createQuestion = async (req: Request, res: Response) => {
       category: input.category,
       difficulty: input.difficulty,
       type: input.type,
-      text: input.text,
+      text: isiSoal.teks,
+      textHtml: isiSoal.html,
       imagePath: imagePath ?? null,
       options: input.options ? (input.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
       answerKey: input.answerKey,
@@ -159,7 +165,11 @@ export const updateQuestion = async (req: Request, res: Response) => {
   if (input.category !== undefined) data.category = input.category;
   if (input.difficulty !== undefined) data.difficulty = input.difficulty;
   if (input.type !== undefined) data.type = input.type;
-  if (input.text !== undefined) data.text = input.text;
+  const isiSoal = pasanganTeks(input.textHtml, input.text);
+  if (isiSoal) {
+    data.text = isiSoal.teks;
+    data.textHtml = isiSoal.html;
+  }
   if (imagePath !== undefined) data.imagePath = imagePath;
   if (input.options !== undefined) data.options = input.options as unknown as Prisma.InputJsonValue;
   if (input.answerKey !== undefined) data.answerKey = input.answerKey;
@@ -236,6 +246,7 @@ const paketSelect = {
   code: true,
   title: true,
   description: true,
+  descriptionHtml: true,
   audience: true,
   durationMinutes: true,
   passingScore: true,
@@ -291,7 +302,8 @@ export const createTest = async (req: Request, res: Response) => {
         id: generateULID(),
         code: input.code,
         title: input.title,
-        description: input.description ?? null,
+        description: pasanganTeks(input.descriptionHtml, input.description)?.teks ?? input.description ?? null,
+        descriptionHtml: pasanganTeks(input.descriptionHtml, input.description)?.html ?? null,
         audience: input.audience,
         durationMinutes: input.durationMinutes,
         passingScore: input.passingScore ?? null,
@@ -340,7 +352,10 @@ export const updateTest = async (req: Request, res: Response) => {
       data: {
         ...(input.code !== undefined && { code: input.code }),
         ...(input.title !== undefined && { title: input.title }),
-        ...(input.description !== undefined && { description: input.description }),
+        ...(() => {
+          const isi = pasanganTeks(input.descriptionHtml, input.description);
+          return isi ? { description: isi.teks, descriptionHtml: isi.html } : {};
+        })(),
         ...(input.audience !== undefined && { audience: input.audience }),
         ...(input.durationMinutes !== undefined && { durationMinutes: input.durationMinutes }),
         ...(input.passingScore !== undefined && { passingScore: input.passingScore }),
@@ -671,6 +686,7 @@ export const getResultDetail = async (req: Request, res: Response) => {
       type: b.question.type,
       category: b.question.category,
       text: b.question.text,
+      textHtml: b.question.textHtml,
       imagePath: b.question.imagePath,
       options: bacaPilihan(b.question.options),
       answerKey: b.question.answerKey,

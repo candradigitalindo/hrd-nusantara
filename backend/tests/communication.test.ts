@@ -36,6 +36,38 @@ const buatPengumuman = (ubah: Record<string, unknown> = {}) =>
 const terbitkan = (id: string) =>
   request(app).patch(`/api/announcements/${id}/status`).set(auth(hrToken)).send({ status: 'published' });
 
+describe('Pengumuman berformat', () => {
+  it('menyimpan HTML yang sudah dibersihkan dan menurunkan teks polosnya', async () => {
+    const res = await buatPengumuman({
+      content: undefined,
+      contentHtml:
+        '<h2>Rapat Bulanan</h2><p>Hadir <strong>tepat waktu</strong>.</p>' +
+        '<ul><li>Bawa laporan</li></ul><script>alert(1)</script><a href="javascript:alert(2)">klik</a>',
+    });
+    expect(res.status).toBe(201);
+    // Skrip dan tautan berskema berbahaya tidak pernah tersimpan.
+    expect(res.body.contentHtml).not.toContain('script');
+    expect(res.body.contentHtml).not.toContain('javascript:');
+    expect(res.body.contentHtml).toContain('<strong>tepat waktu</strong>');
+    // Kolom teks polos tetap terisi untuk aplikasi Android yang sudah terpasang.
+    expect(res.body.content).toContain('Rapat Bulanan');
+    expect(res.body.content).toContain('• Bawa laporan');
+    expect(res.body.content).not.toContain('<');
+  });
+
+  it('isi yang kosong setelah dibersihkan ditolak', async () => {
+    const res = await buatPengumuman({ content: undefined, contentHtml: '<p></p><script>alert(1)</script>' });
+    expect(res.status).toBe(400);
+  });
+
+  it('klien lama yang mengirim teks polos tetap diterima', async () => {
+    const res = await buatPengumuman();
+    expect(res.status).toBe(201);
+    expect(res.body.content).toBe('Rapat hari Senin pukul 09.00');
+    expect(res.body.contentHtml).toBeNull();
+  });
+});
+
 describe('Pengumuman', () => {
   it('dibuat sebagai draft, belum tayang', async () => {
     const res = await buatPengumuman();

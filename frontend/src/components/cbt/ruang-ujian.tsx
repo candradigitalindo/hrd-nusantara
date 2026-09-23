@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { cn } from "@/lib/utils";
+import { TeksKaya } from "@/components/ui/editor-teks";
 import type { HasilKirimCbt, RuangUjian } from "@/lib/types";
 
 /** Jawaban yang sedang dipegang layar, sebelum dan sesudah tersimpan di server. */
@@ -267,7 +268,7 @@ export const RuangUjianCbt = ({
             </p>
             <p className="text-xs text-muted">{soal.points} poin</p>
           </div>
-          <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed">{soal.text}</p>
+          <TeksKaya html={soal.textHtml} teks={soal.text} className="mt-3 text-[15px] leading-relaxed" />
 
           {soal.imagePath && (
             // eslint-disable-next-line @next/next/no-img-element

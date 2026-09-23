@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
+import { pasanganTeks } from '../utils/richText';
 import {
   isTargeted,
   validateAnswers,
@@ -35,6 +36,7 @@ const announcementSelect = {
   id: true,
   title: true,
   content: true,
+  contentHtml: true,
   authorId: true,
   status: true,
   priority: true,
@@ -59,10 +61,15 @@ export const createAnnouncement = async (req: Request, res: Response) => {
     if (!dept) return res.status(404).json({ error: 'Departemen sasaran tidak ditemukan' });
   }
 
+  const isi = pasanganTeks(input.contentHtml, input.content);
+  if (!isi || isi.teks.trim() === '') return res.status(400).json({ error: 'Isi pengumuman wajib diisi' });
+
   const pengumuman = await prisma.announcement.create({
     data: {
       id: generateULID(),
       ...input,
+      content: isi.teks,
+      contentHtml: isi.html,
       targetDepartmentId: input.targetDepartmentId ?? null,
       expiresAt: input.expiresAt ?? null,
       authorId: req.user!.id,
@@ -92,9 +99,11 @@ export const updateAnnouncement = async (req: Request, res: Response) => {
     });
   }
 
+  const isi = pasanganTeks(input.contentHtml, input.content);
+
   const diperbarui = await prisma.announcement.update({
     where: { id: pengumuman.id },
-    data: input,
+    data: { ...input, ...(isi && { content: isi.teks, contentHtml: isi.html }) },
     select: announcementSelect,
   });
 

@@ -16,7 +16,10 @@ const soalDasar = {
   category: teksPendek,
   difficulty: z.enum(TINGKAT_SOAL).default('sedang'),
   type: z.enum(TIPE_SOAL),
-  text: z.string().trim().min(3).max(5000),
+  /// Boleh datang sebagai teks polos atau textHtml dari editor berformat.
+  text: z.string().trim().min(3).max(5000).optional(),
+  /// HTML dari editor berformat; teks polosnya diturunkan server dari sini.
+  textHtml: z.string().max(200_000).nullable().optional(),
   /// Gambar dikirim sebagai data URI base64; server yang memutuskan jenisnya.
   image: z.string().max(4_000_000).nullable().optional(),
   options: pilihan.optional(),
@@ -79,6 +82,7 @@ export const updateQuestionSchema = z
     difficulty: z.enum(TINGKAT_SOAL).optional(),
     type: z.enum(TIPE_SOAL).optional(),
     text: z.string().trim().min(3).max(5000).optional(),
+    textHtml: z.string().max(200_000).nullable().optional(),
     image: z.string().max(4_000_000).nullable().optional(),
     options: pilihan.optional(),
     answerKey: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
@@ -116,6 +120,7 @@ export const createTestSchema = z
       .regex(/^[A-Z0-9_-]+$/, 'Kode hanya boleh huruf kapital, angka, garis bawah, dan strip'),
     title: z.string().trim().min(3).max(150),
     description: z.string().trim().max(2000).nullable().optional(),
+    descriptionHtml: z.string().max(200_000).nullable().optional(),
     audience: z.enum(AUDIENS).default('keduanya'),
     durationMinutes: z.coerce.number().int().min(1).max(600),
     passingScore: persen.nullable().optional(),
@@ -148,6 +153,7 @@ export const updateTestSchema = z
       .optional(),
     title: z.string().trim().min(3).max(150).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
+    descriptionHtml: z.string().max(200_000).nullable().optional(),
     audience: z.enum(AUDIENS).optional(),
     durationMinutes: z.coerce.number().int().min(1).max(600).optional(),
     passingScore: persen.nullable().optional(),
