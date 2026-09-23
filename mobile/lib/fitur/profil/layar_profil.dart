@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/api/klien_api.dart';
 import '../../core/widget/widget_umum.dart';
 import '../../firebase_options.dart';
 import '../auth/sesi_provider.dart';
+
+/// Versi terpasang (versionName + versionCode dari manifest APK), supaya
+/// HR tahu build mana yang dipegang karyawan saat menangani keluhan.
+final infoAplikasiProvider = FutureProvider<PackageInfo>((ref) => PackageInfo.fromPlatform());
 
 class LayarProfil extends ConsumerWidget {
   const LayarProfil({super.key});
@@ -107,6 +112,11 @@ class LayarProfil extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(onPressed: () => _keluar(context, ref), icon: const Icon(Icons.logout), label: const Text('Keluar'), style: OutlinedButton.styleFrom(foregroundColor: skema.error)),
+          const SizedBox(height: 14),
+          ref.watch(infoAplikasiProvider).maybeWhen(
+            data: (v) => Text('Versi ${v.version} · build ${v.buildNumber}', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: skema.onSurfaceVariant)),
+            orElse: () => const SizedBox.shrink(),
+          ),
         ],
       ),
     );

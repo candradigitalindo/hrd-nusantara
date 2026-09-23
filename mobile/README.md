@@ -172,15 +172,29 @@ docker run --rm -v "$PWD:/work" -w /work -v "$PWD/../potret:/potret" \
 ## Build rilis dan distribusi
 
 ```bash
-flutter build apk --release --dart-define=API_URL=https://hrd.nbp.co.id/api
-flutter build ipa --release --dart-define=API_URL=https://hrd.nbp.co.id/api
+./rilis.sh                 # APK arm64 (ponsel 64-bit) — dipakai untuk rilis biasa
+./rilis.sh --semua-abi     # satu APK semua ABI (±3x lebih besar) bila ada ponsel 32-bit
+./rilis.sh --unggah        # bangun lalu langsung unggah (minta login HR)
 ```
 
-APK yang dihasilkan (`build/app/outputs/flutter-apk/app-release.apk`) diunggah
-HR lewat web di menu **Aplikasi Mobile** (nama versi + versionCode yang naik).
+Setiap build mendapat **versi unik ber-stempel waktu**: versionName
+`<versi pubspec>+<YYYYMMDDHHMM>` (WIB) dan versionCode = menit sejak epoch
+(selalu naik). Android menganggap dua APK dengan versionCode sama sebagai
+aplikasi yang sama, sehingga build ulang tanpa menaikkan nomor tidak akan
+terpasang di atas yang lama; dengan skrip ini setiap build selalu lebih baru
+dari sebelumnya. Versi dasar (mis. `0.2.0`) tetap diubah di `pubspec.yaml`
+saat ada fitur besar. Versi terpasang tampil di layar Profil.
+
+Skrip menaruh hasilnya di `build/rilis/hrd-nusantara-<versi>-<abi>.apk`
+beserta SHA-256, dan mencetak nama versi + versionCode untuk diisi di menu
+**Aplikasi Mobile** web bila mengunggah manual. Tanpa Flutter di PATH, skrip
+otomatis berjalan di image Docker `ghcr.io/cirruslabs/flutter`.
+
 Karyawan mengunduh versi terbaru dari halaman publik `<web>/unduh` tanpa
 login; HR bisa memajang QR tautannya di outlet. Setiap rilis menyimpan
 sha256 dan jumlah unduhan; versi bermasalah bisa dinonaktifkan.
+
+Build iOS: `flutter build ipa --release --build-name=… --build-number=… --dart-define=API_URL=https://hrd.nbp.co.id/api`.
 
 Catatan: `flutter build ios --no-codesign` berhasil di mesin pengembang
 (Xcode 27, target iOS 15); simulator iOS belum terpasang, jadi uji jalan di
