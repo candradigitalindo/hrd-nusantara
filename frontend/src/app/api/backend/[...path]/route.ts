@@ -20,7 +20,9 @@ export const NAMA_COOKIE = "hrd_sesi";
  */
 export const NAMA_COOKIE_PELAMAR = "hrd_pelamar";
 
-const HEADER_DITERUSKAN = ["content-type", "accept", "x-bellys-signature"];
+// "range" ikut diteruskan supaya video panjang bisa digeser: tanpa itu
+// peramban hanya bisa memutarnya dari awal.
+const HEADER_DITERUSKAN = ["content-type", "accept", "x-bellys-signature", "range"];
 
 const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...path]">) => {
   const { path } = await ctx.params;
@@ -91,7 +93,7 @@ const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...pa
   const res = new NextResponse(jawaban.body, { status: jawaban.status });
   // Header yang menentukan cara browser memperlakukan isi: tanpa
   // content-disposition, unduhan dokumen terbuka sebagai halaman kosong.
-  for (const h of ["content-type", "content-length", "content-disposition", "cache-control", "x-content-type-options", "x-checksum-sha256"]) {
+  for (const h of ["content-type", "content-length", "content-disposition", "cache-control", "x-content-type-options", "x-checksum-sha256", "accept-ranges", "content-range"]) {
     const v = jawaban.headers.get(h);
     if (v) res.headers.set(h, v);
   }

@@ -5,6 +5,10 @@ import { prisma, resetDatabase, makeEmployee } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
+import fs from 'fs/promises';
+import path from 'path';
+import { generateULID } from '../src/utils/generateULID';
+import { encryptField } from '../src/utils/fieldCrypto';
 
 const app = bikinApp();
 
@@ -286,6 +290,105 @@ describe('Arsip percakapan', () => {
       .set(auth(budiToken));
 
     expect(res.status).toBe(403);
+  });
+});
+
+describe('Isi penuh untuk Super Admin', () => {
+  let superToken: string;
+  let accountId: string;
+
+  /** Baris arsip dibuat langsung: jalur webhook tidak mengenal grup dan media. */
+  const buatPesan = async (data: Record<string, unknown>) => {
+    const baris = await prisma.whatsAppConversation.create({
+      data: {
+        id: generateULID(),
+        accountId,
+        externalMessageId: `x-${Math.random().toString(36).slice(2)}`,
+        senderWhatsappNumber: '628333333333',
+        receiverWhatsappNumber: '628111111111',
+        contactNumber: '628333333333',
+        messageBody: encryptField('Stok ayam habis'),
+        searchTokens: [],
+        messageType: 'text',
+        timestamp: new Date('2026-09-20T10:00:00.000Z'),
+        direction: 'incoming',
+        ...data,
+      },
+      select: { id: true },
+    });
+    return baris.id;
+  };
+
+  beforeEach(async () => {
+    await makeEmployee({ email: 'super@resto.id', nik: 'SA-1', role: Role.SUPER_ADMIN });
+    superToken = await login(app, 'super@resto.id');
+    expectStatus(await daftarkanNomor(), 201);
+    accountId = (await prisma.whatsAppAccount.findFirstOrThrow({ select: { id: true } })).id;
+  });
+
+  it('Super Admin melihat pesan grup, HR tidak', async () => {
+    await buatPesan({
+      groupJid: '12036301234567890@g.us',
+      groupName: 'Tim Outlet Kemang',
+      participantNumber: '628333333333',
+      contactNumber: '12036301234567890',
+    });
+
+    const punyaSuper = await request(app).get('/api/whatsapp/conversations').set(auth(superToken));
+    expectStatus(punyaSuper, 200);
+    expect(punyaSuper.body.data).toHaveLength(1);
+    expect(punyaSuper.body.data[0]).toMatchObject({ groupName: 'Tim Outlet Kemang', participantNumber: '628333333333' });
+
+    // Grup memuat pesan orang yang tidak memegang nomor perusahaan sama
+    // sekali, jadi tidak ikut terbuka hanya karena punya izin arsip.
+    const punyaHr = await request(app).get('/api/whatsapp/conversations').set(auth(hrToken));
+    expectStatus(punyaHr, 200);
+    expect(punyaHr.body.data).toHaveLength(0);
+  });
+
+  it('Super Admin mengunduh berkas media, HR ditolak', async () => {
+    const berkas = path.join(env.UPLOAD_DIR, 'whatsapp', accountId, 'uji.jpg');
+    await fs.mkdir(path.dirname(berkas), { recursive: true });
+    await fs.writeFile(berkas, Buffer.from('isi-foto'));
+
+    const id = await buatPesan({
+      messageType: 'image',
+      mediaPath: path.posix.join('whatsapp', accountId, 'uji.jpg'),
+      mediaMimeType: 'image/jpeg',
+      mediaSizeBytes: 8,
+      mediaStatus: 'tersimpan',
+    });
+
+    const unduh = await request(app).get(`/api/whatsapp/conversations/${id}/media`).set(auth(superToken));
+    expectStatus(unduh, 200);
+    expect(unduh.headers['content-type']).toContain('image/jpeg');
+    expect(unduh.body.toString()).toBe('isi-foto');
+
+    expectStatus(await request(app).get(`/api/whatsapp/conversations/${id}/media`).set(auth(hrToken)), 403);
+    expectStatus(await request(app).get(`/api/whatsapp/conversations/${id}/media`).set(auth(budiToken)), 403);
+  });
+
+  it('menyebut alasannya kalau berkasnya memang tidak tersimpan', async () => {
+    const id = await buatPesan({ messageType: 'video', mediaStatus: 'terlalu_besar', mediaSizeBytes: 90_000_000 });
+
+    const res = await request(app).get(`/api/whatsapp/conversations/${id}/media`).set(auth(superToken));
+    expectStatus(res, 404);
+    expect(res.body.mediaStatus).toBe('terlalu_besar');
+    expect(res.body.error).toMatch(/batas ukuran/i);
+  });
+
+  it('daftar arsip tidak pernah membocorkan lokasi berkas di server', async () => {
+    await buatPesan({
+      messageType: 'audio',
+      mediaPath: 'whatsapp/rahasia/berkas.ogg',
+      mediaMimeType: 'audio/ogg',
+      mediaStatus: 'tersimpan',
+    });
+
+    const res = await request(app).get('/api/whatsapp/conversations').set(auth(superToken));
+    expectStatus(res, 200);
+    expect(res.body.data[0].mediaTersedia).toBe(true);
+    expect(JSON.stringify(res.body)).not.toContain('whatsapp/rahasia');
   });
 });
 

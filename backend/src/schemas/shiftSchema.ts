@@ -46,7 +46,22 @@ export const listShiftQuerySchema = z.object({
   endDate: dateOnlyField.optional(),
 });
 
+/**
+ * Rekap libur per bulan. Bulan dipakai, bukan rentang bebas, karena aturan
+ * yang diperiksa — satu hari libur tiap pekan — hanya bermakna pada periode
+ * yang utuh.
+ */
+export const shiftRecapQuerySchema = z
+  .object({
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Format bulan harus YYYY-MM'),
+    departmentId: ulidField.optional(),
+  })
+  .strict();
+
 export type CreateShiftInput = z.infer<typeof createShiftSchema>;
 export type BulkCreateShiftInput = z.infer<typeof bulkCreateShiftSchema>;
 export type UpdateShiftInput = z.infer<typeof updateShiftSchema>;
 export type ListShiftQuery = z.infer<typeof listShiftQuerySchema>;
+export type ShiftRecapQuery = z.infer<typeof shiftRecapQuerySchema>;

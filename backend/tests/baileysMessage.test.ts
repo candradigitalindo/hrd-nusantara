@@ -37,26 +37,43 @@ describe('Mengambil isi pesan', () => {
     });
   });
 
-  it('menyimpan keterangan gambar, bukan gambarnya', () => {
-    // Berkas medianya sengaja tidak diunduh: menumpuk foto kiriman pelanggan
-    // adalah beban UU PDP yang jauh lebih berat daripada manfaatnya.
-    expect(isiDariPesan({ imageMessage: { caption: 'struk pembayaran' } })).toEqual({
+  it('menyertakan keterangan berkas gambar supaya bisa diunduh', () => {
+    expect(isiDariPesan({ imageMessage: { caption: 'struk pembayaran', mimetype: 'image/jpeg' } })).toEqual({
       body: 'struk pembayaran',
       type: 'image',
+      media: { mimeType: 'image/jpeg', fileName: null },
     });
   });
 
   it('memakai nama berkas kalau dokumen tanpa keterangan', () => {
-    expect(isiDariPesan({ documentMessage: { fileName: 'invoice-9921.pdf' } })).toEqual({
+    expect(
+      isiDariPesan({ documentMessage: { fileName: 'invoice-9921.pdf', mimetype: 'application/pdf' } })
+    ).toEqual({
       body: 'invoice-9921.pdf',
       type: 'document',
+      media: { mimeType: 'application/pdf', fileName: 'invoice-9921.pdf' },
     });
   });
 
-  it('mencatat pesan suara walau tanpa teks', () => {
-    // Tanpa ini, urutan percakapan jadi bolong saat dibaca untuk audit.
-    expect(isiDariPesan({ audioMessage: { seconds: 5 } })).toEqual({ body: '', type: 'audio' });
-    expect(isiDariPesan({ pttMessage: {} })).toEqual({ body: '', type: 'audio' });
+  it('pesan suara tidak punya teks, jadi berkasnya yang menjadi isinya', () => {
+    expect(isiDariPesan({ audioMessage: { seconds: 5, mimetype: 'audio/ogg; codecs=opus' } })).toEqual({
+      body: '',
+      type: 'audio',
+      media: { mimeType: 'audio/ogg; codecs=opus', fileName: null },
+    });
+    expect(isiDariPesan({ pttMessage: {} })).toEqual({
+      body: '',
+      type: 'audio',
+      media: { mimeType: 'audio/ogg', fileName: null },
+    });
+  });
+
+  it('video membawa keterangan berkasnya juga', () => {
+    expect(isiDariPesan({ videoMessage: { mimetype: 'video/mp4' } })).toEqual({
+      body: '',
+      type: 'video',
+      media: { mimeType: 'video/mp4', fileName: null },
+    });
   });
 
   it('melewatkan yang bukan percakapan', () => {
@@ -117,15 +134,42 @@ describe('Menerjemahkan pesan Baileys', () => {
     expect(hasil.pesan.to).toBe('628222222222');
   });
 
-  it('melewatkan percakapan grup', () => {
-    // Grup punya banyak peserta, sedangkan arsip ini dibangun di atas satu
-    // lawan bicara per pesan.
+  it('mengarsipkan pesan grup beserta peserta yang mengirimnya', () => {
     const hasil = normalizeBaileysMessage(
-      mentah({ key: { remoteJid: '1234-5678@g.us', fromMe: false, id: 'G1' } }),
+      mentah({
+        key: {
+          remoteJid: '12036301234567890@g.us',
+          fromMe: false,
+          id: 'G1',
+          participant: '628333333333@s.whatsapp.net',
+        },
+      }),
       NOMOR_SENDIRI
     );
 
-    expect(hasil).toEqual({ status: 'dilewati', alasan: 'grup' });
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    // Lawan bicaranya adalah grup; yang menulis disimpan terpisah supaya
+    // tetap terlihat siapa berkata apa di dalamnya.
+    expect(hasil.pesan.grup).toEqual({
+      jid: '12036301234567890@g.us',
+      kunci: '12036301234567890',
+      participantNumber: '628333333333',
+    });
+    expect(hasil.pesan.from).toBe('628333333333');
+    expect(hasil.pesan.to).toBe('12036301234567890');
+  });
+
+  it('pesan grup yang kita kirim sendiri tercatat atas nama nomor ini', () => {
+    const hasil = normalizeBaileysMessage(
+      mentah({ key: { remoteJid: '12036301234567890@g.us', fromMe: true, id: 'G2' } }),
+      NOMOR_SENDIRI
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.from).toBe(NOMOR_SENDIRI);
+    expect(hasil.pesan.grup?.participantNumber).toBe(NOMOR_SENDIRI);
   });
 
   it('melewatkan status dan siaran', () => {

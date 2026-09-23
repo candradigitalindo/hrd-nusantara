@@ -5,7 +5,20 @@ import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { resolveShiftWindow } from '../utils/shiftTime';
-import type { CreateShiftInput, UpdateShiftInput, ListShiftQuery } from '../schemas/shiftSchema';
+import {
+  hitungRekapLibur,
+  rentangBulan,
+  jendelaRoster,
+  BATAS_HARI_BERUNTUN,
+} from '../utils/rosterRecap';
+import { calendarKey } from '../utils/leaveDays';
+import { INACTIVE_STATUSES } from './employeeController';
+import type {
+  CreateShiftInput,
+  UpdateShiftInput,
+  ListShiftQuery,
+  ShiftRecapQuery,
+} from '../schemas/shiftSchema';
 
 const shiftSelect = {
   id: true,
@@ -288,6 +301,77 @@ export const getAllShifts = async (req: Request, res: Response) => {
       total,
       totalPages: Math.ceil(total / query.limit) || 1,
     },
+  });
+};
+
+/**
+ * Rekap hari libur sebulan, per karyawan.
+ *
+ * Jadwal shift disusun sepekan demi sepekan, jadi tidak ada satu layar pun
+ * yang memperlihatkan apakah pembagian liburnya adil — atau apakah ada yang
+ * dijadwalkan tujuh hari beruntun karena penyusunnya berganti di tengah
+ * bulan. Rekap ini menjawab keduanya.
+ */
+export const getShiftRecap = async (req: Request, res: Response) => {
+  const { month, departmentId } = req.query as unknown as ShiftRecapQuery;
+  const actor = req.user!;
+
+  let dept = departmentId;
+  if (actor.role === Role.MANAGER) {
+    if (departmentId && departmentId !== actor.departmentId) {
+      return res.status(403).json({ error: 'Anda hanya bisa melihat departemen sendiri' });
+    }
+    dept = actor.departmentId ?? '__tanpa_departemen__';
+  }
+
+  const { monthStart, monthEnd } = rentangBulan(month);
+
+  const karyawan = await prisma.employee.findMany({
+    where: {
+      status: { notIn: INACTIVE_STATUSES },
+      ...(dept ? { departmentId: dept } : {}),
+    },
+    select: {
+      id: true,
+      nik: true,
+      name: true,
+      department: { select: { id: true, name: true } },
+    },
+    orderBy: { name: 'asc' },
+    take: 300,
+  });
+
+  const shifts = await prisma.shiftSchedule.findMany({
+    where: {
+      employeeId: { in: karyawan.map((k) => k.id) },
+      status: { not: 'cancelled' },
+      date: jendelaRoster(monthStart, monthEnd),
+    },
+    select: { employeeId: true, date: true },
+  });
+
+  const perKaryawan = new Map<string, Set<string>>();
+  for (const s of shifts) {
+    const kunci = perKaryawan.get(s.employeeId) ?? new Set<string>();
+    kunci.add(calendarKey(s.date));
+    perKaryawan.set(s.employeeId, kunci);
+  }
+
+  const data = karyawan.map((k) => ({
+    ...k,
+    ...hitungRekapLibur({
+      scheduledDateKeys: perKaryawan.get(k.id) ?? new Set<string>(),
+      monthStart,
+      monthEnd,
+    }),
+  }));
+
+  res.json({
+    month,
+    startDate: monthStart,
+    endDate: monthEnd,
+    batasBeruntun: BATAS_HARI_BERUNTUN,
+    data,
   });
 };
 

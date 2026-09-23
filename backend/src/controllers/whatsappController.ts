@@ -6,8 +6,10 @@ import { generateULID } from '../utils/generateULID';
 import { normalizePhoneNumber, resolveScope } from '../utils/whatsappRules';
 import { decryptField, tokenizeText, blindIndex } from '../utils/fieldCrypto';
 import { retentionCutoff } from '../utils/whatsappRetention';
+import { lokasiMediaWhatsApp, namaUnduhanMedia, GalatMediaWhatsApp } from '../utils/whatsappMedia';
+import fs from 'fs/promises';
 import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
-import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, statusEfektif, GalatSesiWhatsApp } from '../services/whatsapp/session';
+import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, statusEfektif, tarikRiwayat, GalatSesiWhatsApp } from '../services/whatsapp/session';
 import { kirimKeKaryawan } from '../services/notification/push';
 import { toDataURL } from 'qrcode';
 import { env } from '../config/env';
@@ -21,6 +23,7 @@ import type {
   MarkNotifiedInput,
   PurgeInput,
   DisconnectInput,
+  TarikRiwayatInput,
   ComplianceQuery,
   RemindInput,
   AttendanceGroupInput,
@@ -212,9 +215,40 @@ const conversationSelect = {
   direction: true,
   employeeId: true,
   conversationTopic: true,
+  groupJid: true,
+  groupName: true,
+  participantNumber: true,
+  mediaPath: true,
+  mediaMimeType: true,
+  mediaSizeBytes: true,
+  mediaFileName: true,
+  mediaStatus: true,
   account: { select: { id: true, label: true, phoneNumber: true } },
   relatedEmployee: { select: { id: true, nik: true, name: true } },
 } satisfies Prisma.WhatsAppConversationSelect;
+
+type ConversationRow = Prisma.WhatsAppConversationGetPayload<{ select: typeof conversationSelect }>;
+
+/**
+ * Lokasi berkas tidak pernah ikut keluar — yang dikirim hanya penanda bahwa
+ * berkasnya ada. Membukanya lewat GET /whatsapp/conversations/:id/media,
+ * yang memeriksa peran dan mencatat siapa membuka apa.
+ */
+const conversationDTO = ({ mediaPath, messageBody, ...row }: ConversationRow) => ({
+  ...row,
+  messageBody: decryptField(messageBody),
+  mediaTersedia: mediaPath !== null,
+});
+
+/**
+ * Percakapan grup dan berkas medianya hanya untuk Super Admin.
+ *
+ * Grup memuat pesan orang-orang yang tidak memegang nomor perusahaan sama
+ * sekali, dan berkas media memuat wajah serta suara mereka. Membukanya untuk
+ * seluruh pemegang izin whatsapp.lihat berarti memperluas akses jauh melebihi
+ * yang diputuskan; kalau HR memang perlu, itu keputusan tersendiri.
+ */
+const bolehSeluruhIsi = (role: Role) => role === Role.SUPER_ADMIN;
 
 export const getConversations = async (req: Request, res: Response) => {
   const query = req.query as unknown as ListConversationQuery;
@@ -223,6 +257,8 @@ export const getConversations = async (req: Request, res: Response) => {
     ...(query.accountId ? { accountId: query.accountId } : {}),
     ...(query.employeeId ? { employeeId: query.employeeId } : {}),
     ...(query.direction ? { direction: query.direction } : {}),
+    ...(bolehSeluruhIsi(req.user!.role) ? {} : { groupJid: null }),
+    ...(query.groupJid ? { groupJid: query.groupJid } : {}),
   };
 
   // Pelacakan isu. Isi pesan terenkripsi, jadi LIKE tidak mungkin: kata yang
@@ -292,12 +328,91 @@ export const getConversations = async (req: Request, res: Response) => {
   res.json({
     // Token pencarian tidak pernah ikut keluar: tidak berguna bagi pembaca
     // dan hanya memperbesar permukaan kalau responsnya bocor.
-    data: data.map((row) => ({ ...row, messageBody: decryptField(row.messageBody) })),
+    data: data.map(conversationDTO),
     pagination: {
       page: query.page,
       limit: query.limit,
       total,
       totalPages: Math.ceil(total / query.limit) || 1,
+    },
+  });
+};
+
+/**
+ * Tipe yang boleh disajikan apa adanya. Sisanya dikirim sebagai unduhan
+ * biasa: berkas dari luar tidak boleh dijalankan peramban sebagai halaman.
+ */
+const TIPE_AMAN = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|3gpp|quicktime)|audio\/(ogg|opus|mpeg|mp4|aac|amr)|application\/pdf)$/;
+
+/**
+ * Membuka berkas media sebuah pesan: foto, video, pesan suara, dokumen.
+ *
+ * Hanya Super Admin, dan selalu tercatat — ini membuka isi komunikasi orang,
+ * termasuk pihak ketiga yang tidak pernah bekerja di perusahaan ini.
+ */
+export const getConversationMedia = async (req: Request, res: Response) => {
+  if (!bolehSeluruhIsi(req.user!.role)) {
+    return res.status(403).json({ error: 'Hanya Super Admin yang bisa membuka berkas media' });
+  }
+
+  const pesan = await prisma.whatsAppConversation.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      mediaPath: true,
+      mediaMimeType: true,
+      mediaFileName: true,
+      mediaStatus: true,
+      messageType: true,
+      timestamp: true,
+      contactNumber: true,
+      groupName: true,
+    },
+  });
+
+  if (!pesan) return res.status(404).json({ error: 'Pesan tidak ditemukan' });
+  if (!pesan.mediaPath) {
+    // Dibedakan supaya yang membuka tahu ini bukan kesalahan sistem:
+    // berkasnya memang tidak pernah tersimpan, dan alasannya disebut.
+    const alasan =
+      pesan.mediaStatus === 'terlalu_besar'
+        ? 'Berkas melewati batas ukuran, jadi tidak ikut disimpan'
+        : pesan.mediaStatus === 'gagal'
+          ? 'Berkas gagal diunduh dari WhatsApp saat pesan ini tiba'
+          : 'Pesan ini tidak punya berkas media';
+    return res.status(404).json({ error: alasan, mediaStatus: pesan.mediaStatus });
+  }
+
+  let lokasi: string;
+  try {
+    lokasi = lokasiMediaWhatsApp(pesan.mediaPath);
+    await fs.access(lokasi);
+  } catch (error) {
+    if (error instanceof GalatMediaWhatsApp) {
+      return res.status(400).json({ error: error.message });
+    }
+    return res.status(500).json({ error: 'Berkas tidak ditemukan di penyimpanan' });
+  }
+
+  res.locals.audit = {
+    action: 'whatsapp.media.buka',
+    entity: 'WhatsAppConversation',
+    entityId: pesan.id,
+    summary: `Membuka ${pesan.messageType} dari ${pesan.groupName ? `grup ${pesan.groupName}` : `+${pesan.contactNumber}`}`,
+  };
+
+  const tipe = (pesan.mediaMimeType ?? '').split(';')[0].trim().toLowerCase();
+  const aman = TIPE_AMAN.test(tipe);
+  const nama = namaUnduhanMedia(pesan.mediaFileName, pesan.mediaMimeType, pesan.timestamp);
+
+  // sendFile, bukan send(buffer): video panjang perlu permintaan Range supaya
+  // bisa digeser tanpa mengunduh ulang seluruh berkas.
+  res.sendFile(lokasi, {
+    headers: {
+      'Content-Type': aman ? tipe : 'application/octet-stream',
+      'Content-Disposition': `${aman ? 'inline' : 'attachment'}; filename="${nama}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 };
@@ -537,6 +652,55 @@ export const disconnectWhatsAppAccount = async (req: Request, res: Response) => 
   };
 
   res.json({ ...sesi, label: akun.label });
+};
+
+/**
+ * Menarik percakapan lama sebuah nomor, atas permintaan.
+ *
+ * WhatsApp tidak mengirimkan riwayat sebelum nomornya dipantau, dan itu
+ * memang bawaannya di sini: yang diarsipkan hanya percakapan sejak
+ * pemantauan berjalan. Kalau Super Admin menilai ada yang perlu ditarik,
+ * ini pintunya — satu permintaan, untuk satu nomor, tercatat di jejak audit.
+ */
+export const tarikRiwayatAkun = async (req: Request, res: Response) => {
+  if (!bolehSeluruhIsi(req.user!.role)) {
+    return res.status(403).json({ error: 'Hanya Super Admin yang bisa menarik percakapan lama' });
+  }
+  if (!env.WHATSAPP_BAILEYS_ENABLED) return driverMati(res);
+
+  const { jumlah, contactNumber } = req.body as TarikRiwayatInput;
+
+  const akun = await akunUntukSesi(req.params.id);
+  if (!akun) return res.status(404).json({ error: 'Nomor WhatsApp tidak ditemukan' });
+
+  const nomor = contactNumber ? normalizePhoneNumber(contactNumber) : undefined;
+  if (contactNumber && !nomor) return res.status(400).json({ error: 'Nomor kontak tidak valid' });
+
+  try {
+    const hasil = await tarikRiwayat(akun.id, { jumlah, contactNumber: nomor ?? undefined });
+
+    res.locals.audit = {
+      action: 'whatsapp.riwayat.tarik',
+      entity: 'WhatsAppAccount',
+      entityId: akun.id,
+      summary: `Menarik ${jumlah} pesan lama dari ${hasil.percakapan} percakapan pada ${akun.label}`,
+      metadata: { phoneNumber: akun.phoneNumber, jumlah, contactNumber: nomor ?? null },
+    };
+
+    res.json({
+      ...hasil,
+      label: akun.label,
+      // Jawaban WhatsApp datang belakangan lewat koneksi yang sama, jadi
+      // halaman arsip perlu dibuka lagi beberapa saat kemudian.
+      catatan:
+        'Permintaan terkirim. WhatsApp mengirim pesannya secara bertahap, jadi arsip terisi beberapa saat lagi. Berkas media yang sudah lama biasanya tidak bisa diunduh lagi.',
+    });
+  } catch (error) {
+    if (error instanceof GalatSesiWhatsApp) {
+      return res.status(409).json({ error: error.message, kode: error.kode });
+    }
+    throw error;
+  }
 };
 
 // ============ WhatsApp pribadi karyawan (wajib) ============

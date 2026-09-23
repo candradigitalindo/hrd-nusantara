@@ -11,6 +11,7 @@ import {
   shutdownSessions,
   tungguEventSelesai,
   type SesiDibuat,
+  type KunciPesanWhatsApp,
 } from '../src/services/whatsapp/session';
 import { ALASAN_PUTUS } from '../src/services/whatsapp/reconnect';
 import * as ingest from '../src/services/whatsapp/ingest';
@@ -46,6 +47,27 @@ class SoketPalsu {
 
   end = () => {
     this.endDipanggil += 1;
+  };
+
+  /** Berkas yang akan dikembalikan unduhMedia; null = driver tanpa dukungan. */
+  isiMedia: Buffer | null = null;
+  mediaDiminta = 0;
+  namaGrup = 'Tim Outlet Kemang';
+
+  groupMetadata = async (jid: string) => ({ id: jid, subject: this.namaGrup });
+
+  unduhMedia = async () => {
+    this.mediaDiminta += 1;
+    if (!this.isiMedia) throw new Error('media kedaluwarsa di server WhatsApp');
+    return this.isiMedia;
+  };
+
+  /** Permintaan riwayat yang diterima, untuk diperiksa test. */
+  permintaanRiwayat: { jumlah: number; kunci: KunciPesanWhatsApp; waktu: number }[] = [];
+
+  fetchMessageHistory = async (jumlah: number, kunci: KunciPesanWhatsApp, waktu: number) => {
+    this.permintaanRiwayat.push({ jumlah, kunci, waktu });
+    return 'permintaan-1';
   };
 
   pancarkan(nama: string, data: unknown) {
@@ -383,6 +405,128 @@ describe('Memutus sesi dari HR', () => {
   });
 });
 
+describe('Menarik percakapan lama atas permintaan', () => {
+  const pesanBaileys = (ubah: Record<string, unknown> = {}) => ({
+    key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'WA-1' },
+    message: { conversation: 'Keluhan: pesanan lama' },
+    messageTimestamp: 1789000000,
+    ...ubah,
+  });
+
+  const siapkan = async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    return id;
+  };
+
+  const tarik = (id: string, token: string, body: Record<string, unknown> = {}) =>
+    request(app).post(`/api/whatsapp/accounts/${id}/riwayat`).set(auth(token)).send(body);
+
+  let superToken: string;
+
+  beforeEach(async () => {
+    await makeEmployee({ email: 'super@resto.id', nik: 'SA-1', role: Role.SUPER_ADMIN });
+    superToken = await login(app, 'super@resto.id');
+  });
+
+  it('meminta riwayat dari pesan tertua tiap percakapan', async () => {
+    const id = await siapkan();
+    // Dua percakapan, masing-masing satu pesan sebagai titik awal.
+    soketTerakhir!.pancarkan('messages.upsert', {
+      type: 'notify',
+      messages: [
+        pesanBaileys(),
+        pesanBaileys({
+          key: { remoteJid: '12036301234567890@g.us', fromMe: false, id: 'G-9', participant: '628333333333@s.whatsapp.net' },
+          message: { conversation: 'Absen sore' },
+        }),
+      ],
+    });
+    await tungguEventSelesai();
+
+    const res = await tarik(id, superToken, { jumlah: 100 });
+    expectStatus(res, 200);
+    expect(res.body.percakapan).toBe(2);
+    expect(res.body.jumlahPerPercakapan).toBe(100);
+
+    const permintaan = soketTerakhir!.permintaanRiwayat;
+    expect(permintaan).toHaveLength(2);
+    expect(permintaan.every((p) => p.jumlah === 100)).toBe(true);
+    // Kuncinya harus menunjuk pesan yang benar-benar ada, karena WhatsApp
+    // menjawab dengan pesan yang lebih tua DARI pesan itu.
+    const grup = permintaan.find((p) => String(p.kunci.remoteJid).endsWith('@g.us'));
+    expect(grup?.kunci).toMatchObject({ id: 'G-9', fromMe: false, participant: '628333333333@s.whatsapp.net' });
+    const pribadi = permintaan.find((p) => String(p.kunci.remoteJid).endsWith('@s.whatsapp.net'));
+    expect(pribadi?.kunci).toMatchObject({ id: 'WA-1', remoteJid: '628222222222@s.whatsapp.net' });
+    // Waktu dikirim dalam detik, bukan milidetik.
+    expect(pribadi?.waktu).toBe(1789000000);
+  });
+
+  it('bisa dibatasi ke satu nomor kontak saja', async () => {
+    const id = await siapkan();
+    soketTerakhir!.pancarkan('messages.upsert', {
+      type: 'notify',
+      messages: [
+        pesanBaileys(),
+        pesanBaileys({ key: { remoteJid: '628555555555@s.whatsapp.net', fromMe: false, id: 'WA-9' } }),
+      ],
+    });
+    await tungguEventSelesai();
+
+    const res = await tarik(id, superToken, { contactNumber: '08222222222' });
+    expectStatus(res, 200);
+    expect(res.body.percakapan).toBe(1);
+    expect(soketTerakhir!.permintaanRiwayat[0].kunci.remoteJid).toBe('628222222222@s.whatsapp.net');
+  });
+
+  it('mengarsipkan riwayat yang datang belakangan', async () => {
+    const id = await siapkan();
+    soketTerakhir!.pancarkan('messages.upsert', { type: 'notify', messages: [pesanBaileys()] });
+    await tungguEventSelesai();
+    expectStatus(await tarik(id, superToken), 200);
+
+    // Jawaban WhatsApp datang lewat event terpisah, beberapa saat kemudian.
+    soketTerakhir!.pancarkan('messaging-history.set', {
+      messages: [
+        pesanBaileys({ key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'LAMA-1' }, message: { conversation: 'Pesanan bulan lalu' }, messageTimestamp: 1780000000 }),
+      ],
+    });
+    await tungguEventSelesai();
+
+    const lama = await prisma.whatsAppConversation.findFirstOrThrow({ where: { externalMessageId: 'LAMA-1' } });
+    expect(decryptField(lama.messageBody)).toBe('Pesanan bulan lalu');
+    expect(lama.accountId).toBe(id);
+  });
+
+  it('hanya Super Admin yang boleh menariknya', async () => {
+    const id = await siapkan();
+    soketTerakhir!.pancarkan('messages.upsert', { type: 'notify', messages: [pesanBaileys()] });
+    await tungguEventSelesai();
+
+    expectStatus(await tarik(id, hrToken), 403);
+    expectStatus(await tarik(id, budiToken), 403);
+    expect(soketTerakhir!.permintaanRiwayat).toHaveLength(0);
+  });
+
+  it('menolak kalau belum ada satu pun pesan sebagai titik awal', async () => {
+    const id = await siapkan();
+
+    const res = await tarik(id, superToken);
+    expectStatus(res, 409);
+    expect(res.body.kode).toBe('tanpa_titik_awal');
+  });
+
+  it('menolak kalau sesinya tidak tersambung', async () => {
+    const id = await buatAkun();
+
+    const res = await tarik(id, superToken);
+    expectStatus(res, 409);
+    expect(res.body.kode).toBe('tidak_tersambung');
+  });
+});
+
 describe('Pesan masuk lewat Baileys', () => {
   const pesanBaileys = (ubah: Record<string, unknown> = {}) => ({
     key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'WA-1' },
@@ -419,28 +563,115 @@ describe('Pesan masuk lewat Baileys', () => {
     expect(baris.employeeId).toBe(budi.id);
   });
 
-  it('tidak mengarsipkan sinkronisasi riwayat lama', async () => {
+  it('ikut mengarsipkan pesan yang disusulkan ponsel', async () => {
     await siapkanTersambung();
 
-    // type 'append' adalah riwayat yang ditarik WhatsApp saat perangkat baru
-    // ditautkan. Mengarsipkannya berarti menyedot percakapan dari sebelum
-    // pemantauan disetujui — jauh di luar ruang lingkup.
+    // type 'append' antara lain dipakai untuk pesan yang masuk saat sesi ini
+    // sempat putus. Tanpa ini, arsipnya bolong persis selama waktu putusnya.
     soketTerakhir!.pancarkan('messages.upsert', { type: 'append', messages: [pesanBaileys()] });
     await tungguEventSelesai();
 
-    expect(await prisma.whatsAppConversation.count()).toBe(0);
+    expect(await prisma.whatsAppConversation.count()).toBe(1);
   });
 
-  it('tidak mengarsipkan percakapan grup', async () => {
+  it('mengarsipkan pesan grup beserta nama grup dan pengirimnya', async () => {
     await siapkanTersambung();
 
     soketTerakhir!.pancarkan('messages.upsert', {
       type: 'notify',
-      messages: [pesanBaileys({ key: { remoteJid: '123-456@g.us', fromMe: false, id: 'G-1' } })],
+      messages: [
+        pesanBaileys({
+          key: {
+            remoteJid: '12036301234567890@g.us',
+            fromMe: false,
+            id: 'G-1',
+            participant: '628333333333@s.whatsapp.net',
+          },
+          message: { conversation: 'Stok ayam habis' },
+        }),
+      ],
     });
     await tungguEventSelesai();
 
-    expect(await prisma.whatsAppConversation.count()).toBe(0);
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({ where: { externalMessageId: 'G-1' } });
+    expect(baris.groupJid).toBe('12036301234567890@g.us');
+    expect(baris.groupName).toBe('Tim Outlet Kemang');
+    expect(baris.participantNumber).toBe('628333333333');
+    // Grup diperlakukan sebagai satu lawan bicara, supaya utasnya utuh.
+    expect(baris.contactNumber).toBe('12036301234567890');
+    expect(decryptField(baris.messageBody)).toBe('Stok ayam habis');
+  });
+
+  it('mengunduh berkas media dan mencatat lokasinya', async () => {
+    await siapkanTersambung();
+    soketTerakhir!.isiMedia = Buffer.from('ini-isi-foto');
+
+    soketTerakhir!.pancarkan('messages.upsert', {
+      type: 'notify',
+      messages: [
+        pesanBaileys({
+          key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'M-1' },
+          message: { imageMessage: { caption: 'struk', mimetype: 'image/jpeg' } },
+        }),
+      ],
+    });
+    await tungguEventSelesai();
+
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({ where: { externalMessageId: 'M-1' } });
+    expect(baris.mediaStatus).toBe('tersimpan');
+    expect(baris.mediaPath).toMatch(/^whatsapp\/.+\.jpg$/);
+    expect(baris.mediaSizeBytes).toBe(12);
+    expect(soketTerakhir!.mediaDiminta).toBe(1);
+  });
+
+  it('pesan tetap tersimpan walau berkasnya gagal diunduh', async () => {
+    await siapkanTersambung();
+    soketTerakhir!.isiMedia = null; // kunci media sudah kedaluwarsa
+
+    soketTerakhir!.pancarkan('messages.upsert', {
+      type: 'notify',
+      messages: [
+        pesanBaileys({
+          key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'M-2' },
+          message: { pttMessage: { mimetype: 'audio/ogg' } },
+        }),
+      ],
+    });
+    await tungguEventSelesai();
+
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({ where: { externalMessageId: 'M-2' } });
+    // Kehilangan berkas tidak boleh ikut menghilangkan jejak bahwa pesan
+    // suara itu pernah ada.
+    expect(baris.mediaStatus).toBe('gagal');
+    expect(baris.mediaPath).toBeNull();
+    expect(baris.messageType).toBe('audio');
+  });
+
+  it('melewati berkas yang melebihi batas ukuran, pesannya tetap dicatat', async () => {
+    await siapkanTersambung();
+    const batasAsli = env.WHATSAPP_MEDIA_MAX_BYTES;
+    (env as { WHATSAPP_MEDIA_MAX_BYTES: number }).WHATSAPP_MEDIA_MAX_BYTES = 5;
+    soketTerakhir!.isiMedia = Buffer.alloc(64);
+
+    try {
+      soketTerakhir!.pancarkan('messages.upsert', {
+        type: 'notify',
+        messages: [
+          pesanBaileys({
+            key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'M-3' },
+            message: { videoMessage: { mimetype: 'video/mp4' } },
+          }),
+        ],
+      });
+      await tungguEventSelesai();
+    } finally {
+      (env as { WHATSAPP_MEDIA_MAX_BYTES: number }).WHATSAPP_MEDIA_MAX_BYTES = batasAsli;
+    }
+
+    const baris = await prisma.whatsAppConversation.findFirstOrThrow({ where: { externalMessageId: 'M-3' } });
+    expect(baris.mediaStatus).toBe('terlalu_besar');
+    expect(baris.mediaSizeBytes).toBe(64);
+    expect(baris.mediaPath).toBeNull();
   });
 
   it('menandai arah keluar untuk pesan yang dikirim dari nomor perusahaan', async () => {

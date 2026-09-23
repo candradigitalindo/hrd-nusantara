@@ -5,6 +5,8 @@ import {
   getAllAccounts,
   updateAccount,
   getConversations,
+  getConversationMedia,
+  tarikRiwayatAkun,
   getSessionEvents,
   markEventsNotified,
   purgeExpiredConversations,
@@ -26,6 +28,7 @@ import {
   updateAccountSchema,
   listAccountQuerySchema,
   listConversationQuerySchema,
+  tarikRiwayatSchema,
   listSessionEventQuerySchema,
   markNotifiedSchema,
   purgeSchema,
@@ -109,6 +112,17 @@ router.post(
   asyncHandler(disconnectWhatsAppAccount)
 );
 
+// Menarik percakapan lama sebuah nomor — opsional, atas permintaan Super
+// Admin. Perannya diperiksa di controller, sekalian dengan pemeriksaan
+// driver Baileys yang harus menyala.
+router.post(
+  '/whatsapp/accounts/:id/riwayat',
+  requirePermission(...lihatAtauKelola('whatsapp')),
+  validate(idParamSchema, 'params'),
+  validate(tarikRiwayatSchema),
+  asyncHandler(tarikRiwayatAkun)
+);
+
 // --- Arsip percakapan ---
 // Hanya HR: arsip ini memuat data pribadi pihak ketiga (pelanggan dan tamu)
 // yang tidak pernah menjadi bagian dari perusahaan.
@@ -117,6 +131,16 @@ router.get(
   requirePermission(...lihatAtauKelola('whatsapp')),
   validate(listConversationQuerySchema, 'query'),
   asyncHandler(getConversations)
+);
+
+// Berkas media (foto, video, pesan suara, dokumen) — hanya Super Admin, dan
+// setiap pembukaan tercatat. Penyaringan perannya di controller, sekaligus
+// dengan penyaringan baris grup pada daftar di atas.
+router.get(
+  '/whatsapp/conversations/:id/media',
+  requirePermission(...lihatAtauKelola('whatsapp')),
+  validate(idParamSchema, 'params'),
+  asyncHandler(getConversationMedia)
 );
 
 // --- Retensi ---

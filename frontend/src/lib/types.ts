@@ -193,6 +193,18 @@ export interface Percakapan {
   direction: "incoming" | "outgoing";
   account: { id: string; label: string; phoneNumber: string };
   relatedEmployee: { id: string; nik: string; name: string } | null;
+  /** Terisi untuk pesan grup; hanya Super Admin yang menerima baris ini. */
+  groupJid: string | null;
+  groupName: string | null;
+  /** Peserta grup yang mengirim pesan ini. */
+  participantNumber: string | null;
+  /** Berkasnya ada di server; dibuka lewat /whatsapp/conversations/:id/media. */
+  mediaTersedia: boolean;
+  mediaMimeType: string | null;
+  mediaSizeBytes: number | null;
+  mediaFileName: string | null;
+  /** tersimpan | terlalu_besar | gagal | tidak_didukung */
+  mediaStatus: string | null;
 }
 
 export interface JejakAudit {
@@ -864,6 +876,33 @@ export interface Shift {
   startsAt: string;
   endsAt: string;
   employee: { id: string; nik: string; name: string; departmentId: string | null };
+}
+
+/** Satu baris rekap libur bulanan, dari /shifts/rekap. */
+export interface RekapLiburKaryawan {
+  id: string;
+  nik: string;
+  name: string;
+  department: Ref | null;
+  /** Tanggal yang dijadwalkan; split shift tetap satu hari. */
+  hariKerja: number;
+  hariLibur: number;
+  /** Tanggal yang rosternya belum disusun — belum tentu libur. */
+  belumDisusun: number;
+  pekanTersusun: number;
+  /** Ada pekan tersusun yang tidak menyisakan satu pun hari libur. */
+  kurangLibur: boolean;
+  beruntunMaks: number;
+  beruntunLewatBatas: boolean;
+}
+
+export interface RekapLibur {
+  month: string;
+  startDate: string;
+  endDate: string;
+  /** Hari kerja berturut-turut yang masih dianggap wajar. */
+  batasBeruntun: number;
+  data: RekapLiburKaryawan[];
 }
 
 export interface KaryawanDirektori {

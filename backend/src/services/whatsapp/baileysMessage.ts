@@ -14,13 +14,15 @@ export interface PesanBaileys {
     remoteJid?: string | null;
     fromMe?: boolean | null;
     id?: string | null;
+    /** Peserta grup yang mengirim; hanya terisi pada pesan grup. */
+    participant?: string | null;
   } | null;
   message?: Record<string, unknown> | null;
   messageTimestamp?: number | string | { toNumber?: () => number } | null;
+  pushName?: string | null;
 }
 
 export type AlasanDilewati =
-  | 'grup'
   | 'siaran'
   | 'jid_tidak_valid'
   | 'tanpa_id'
@@ -39,17 +41,21 @@ export const nomorDariJid = (jid: string): string | null => {
   return angka.length > 0 ? angka : null;
 };
 
-/**
- * Isi dan jenis pesan.
- *
- * Berkas medianya sendiri TIDAK diunduh. Menyimpan foto dan dokumen yang
- * dikirim pelanggan berarti menumpuk data pribadi pihak ketiga dalam jumlah
- * besar — beban UU PDP yang jauh lebih berat daripada manfaatnya untuk
- * pelacakan isu. Yang diarsipkan hanya keterangan dan nama berkasnya.
- */
+export interface IsiPesan {
+  body: string;
+  type: TipePesan;
+  /**
+   * Keterangan berkas yang menyertai pesan. Gambar, video, dan pesan suara
+   * tidak punya teks, jadi tanpa berkasnya arsip hanya berisi tanda kurung
+   * kosong. Berkasnya sendiri diunduh terpisah oleh pemegang soket.
+   */
+  media?: { mimeType: string | null; fileName: string | null };
+}
+
+/** Isi dan jenis pesan, beserta keterangan berkas bila ada. */
 export const isiDariPesan = (
   message: Record<string, unknown> | null | undefined
-): { body: string; type: TipePesan } | null => {
+): IsiPesan | null => {
   if (!message) return null;
 
   const ambil = <T>(kunci: string) => message[kunci] as T | undefined;
@@ -60,18 +66,39 @@ export const isiDariPesan = (
   const diperluas = ambil<{ text?: string }>('extendedTextMessage');
   if (diperluas?.text !== undefined) return { body: diperluas.text, type: 'text' };
 
-  const gambar = ambil<{ caption?: string }>('imageMessage');
-  if (gambar) return { body: gambar.caption ?? '', type: 'image' };
+  const gambar = ambil<{ caption?: string; mimetype?: string }>('imageMessage');
+  if (gambar) {
+    return {
+      body: gambar.caption ?? '',
+      type: 'image',
+      media: { mimeType: gambar.mimetype ?? 'image/jpeg', fileName: null },
+    };
+  }
 
-  const video = ambil<{ caption?: string }>('videoMessage');
-  if (video) return { body: video.caption ?? '', type: 'video' };
+  const video = ambil<{ caption?: string; mimetype?: string }>('videoMessage');
+  if (video) {
+    return {
+      body: video.caption ?? '',
+      type: 'video',
+      media: { mimeType: video.mimetype ?? 'video/mp4', fileName: null },
+    };
+  }
 
-  const dokumen = ambil<{ caption?: string; fileName?: string }>('documentMessage');
-  if (dokumen) return { body: dokumen.caption ?? dokumen.fileName ?? '', type: 'document' };
+  const dokumen = ambil<{ caption?: string; fileName?: string; mimetype?: string }>('documentMessage');
+  if (dokumen) {
+    return {
+      body: dokumen.caption ?? dokumen.fileName ?? '',
+      type: 'document',
+      media: { mimeType: dokumen.mimetype ?? null, fileName: dokumen.fileName ?? null },
+    };
+  }
 
-  // Pesan suara dan rekaman: tidak ada teks sama sekali, tapi kejadiannya
-  // tetap perlu tercatat supaya urutan percakapan tidak bolong.
-  if (ambil('audioMessage') || ambil('pttMessage')) return { body: '', type: 'audio' };
+  // Pesan suara dan rekaman: tidak ada teks sama sekali, jadi berkasnya yang
+  // menjadi isinya.
+  const suara = ambil<{ mimetype?: string }>('audioMessage') ?? ambil<{ mimetype?: string }>('pttMessage');
+  if (suara) {
+    return { body: '', type: 'audio', media: { mimeType: suara.mimetype ?? 'audio/ogg', fileName: null } };
+  }
 
   // Stiker, reaksi, pesan protokol, pembaruan status — bukan percakapan.
   return null;
@@ -103,10 +130,8 @@ export const normalizeBaileysMessage = (
   const jid = raw.key?.remoteJid;
   if (!jid) return { status: 'dilewati', alasan: 'jid_tidak_valid' };
 
-  // Percakapan grup punya banyak peserta sekaligus, sementara arsip ini
-  // dibangun di atas satu lawan bicara per pesan. Memaksakannya masuk akan
-  // menghasilkan arsip yang menyesatkan saat dipakai audit.
-  if (jid.endsWith('@g.us')) return { status: 'dilewati', alasan: 'grup' };
+  // Status dan siaran bukan percakapan: tidak ada lawan bicara yang bisa
+  // dipertanggungjawabkan, dan isinya sama untuk semua penerima.
   if (jid.endsWith('@broadcast') || jid.startsWith('status@')) {
     return { status: 'dilewati', alasan: 'siaran' };
   }
@@ -114,13 +139,39 @@ export const normalizeBaileysMessage = (
   const idPesan = raw.key?.id;
   if (!idPesan) return { status: 'dilewati', alasan: 'tanpa_id' };
 
-  const lawan = nomorDariJid(jid);
-  if (!lawan) return { status: 'dilewati', alasan: 'jid_tidak_valid' };
-
   const isi = isiDariPesan(raw.message);
   if (!isi) return { status: 'dilewati', alasan: 'jenis_tidak_didukung' };
 
   const dariSaya = raw.key?.fromMe === true;
+  const waktu = waktuDariTimestamp(raw.messageTimestamp);
+  const grup = jid.endsWith('@g.us');
+
+  if (grup) {
+    // Di grup, lawan bicaranya adalah grup itu sendiri; yang mengirim
+    // disimpan terpisah supaya tetap terlihat siapa menulis apa.
+    const kunciGrup = nomorDariJid(jid);
+    if (!kunciGrup) return { status: 'dilewati', alasan: 'jid_tidak_valid' };
+
+    const peserta = raw.key?.participant ? nomorDariJid(raw.key.participant) : null;
+    const pengirim = dariSaya ? nomorSendiri : (peserta ?? kunciGrup);
+
+    return {
+      status: 'ok',
+      pesan: {
+        externalMessageId: idPesan,
+        from: pengirim,
+        to: kunciGrup,
+        body: isi.body,
+        type: isi.type,
+        timestamp: waktu,
+        media: isi.media,
+        grup: { jid, kunci: kunciGrup, participantNumber: dariSaya ? nomorSendiri : peserta },
+      },
+    };
+  }
+
+  const lawan = nomorDariJid(jid);
+  if (!lawan) return { status: 'dilewati', alasan: 'jid_tidak_valid' };
 
   return {
     status: 'ok',
@@ -134,7 +185,8 @@ export const normalizeBaileysMessage = (
       to: dariSaya ? lawan : nomorSendiri,
       body: isi.body,
       type: isi.type,
-      timestamp: waktuDariTimestamp(raw.messageTimestamp),
+      timestamp: waktu,
+      media: isi.media,
     },
   };
 };

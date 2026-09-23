@@ -41,7 +41,7 @@ const employeeSelect = {
   position: { select: { id: true, name: true } },
 } satisfies Prisma.EmployeeSelect;
 
-const INACTIVE_STATUSES = ['resign', 'terminated', 'inactive'];
+export const INACTIVE_STATUSES = ['resign', 'terminated', 'inactive'];
 
 /**
  * HR_ADMIN boleh mengangkat MANAGER dan EMPLOYEE, tapi tidak boleh membuat

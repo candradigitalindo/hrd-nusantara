@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { CalendarRange, ChevronLeft, ChevronRight, Copy, Plus, Trash2, CalendarDays, Save, X } from "lucide-react";
+import { CalendarRange, ChevronLeft, ChevronRight, Copy, Plus, Trash2, CalendarDays, Save, X, TriangleAlert, Coffee } from "lucide-react";
 import { api, ambilSemua } from "@/lib/api";
 import { useSesi, punyaIzin, bolehHr } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -17,7 +17,7 @@ import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Alert } from "@/components/ui/alert";
 import { formatTanggal, cn } from "@/lib/utils";
-import type { Departemen, KaryawanDirektori, Shift } from "@/lib/types";
+import type { Departemen, KaryawanDirektori, RekapLibur, Shift } from "@/lib/types";
 
 type FormShift = {
   employeeId: string;
@@ -30,6 +30,9 @@ type FormShift = {
 };
 
 const HARI = 7;
+
+/** "YYYY-MM" dari sebuah tanggal — parameter rekap libur bulanan. */
+const bulanISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
 /** "YYYY-MM-DD" dari komponen tanggal lokal — tanpa pergeseran zona waktu. */
 const tanggalISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -104,6 +107,15 @@ export default function HalamanShift() {
     enabled: hr || Boolean(dept),
   });
 
+  // Rekap sebulan: jadwal disusun sepekan demi sepekan, jadi pembagian libur
+  // dan deret hari kerja yang terlalu panjang hanya kelihatan dari bulan penuh.
+  const bulan = bulanISO(senin);
+  const rekap = useQuery({
+    queryKey: ["shift-rekap", dept, bulan],
+    queryFn: async () => (await api.get<RekapLibur>(`/shifts/rekap?month=${bulan}${dept ? `&departmentId=${dept}` : ""}`)).data,
+    enabled: hr || Boolean(dept),
+  });
+
   const karyawan = React.useMemo(
     () => (direktori.data ?? []).filter((k) => (dept ? k.department?.id === dept : true)),
     [direktori.data, dept]
@@ -120,7 +132,15 @@ export default function HalamanShift() {
     return m;
   }, [shift.data]);
 
-  const segarkan = () => qc.invalidateQueries({ queryKey: ["shift"] });
+  const petaRekap = React.useMemo(
+    () => new Map((rekap.data?.data ?? []).map((r) => [r.id, r])),
+    [rekap.data]
+  );
+
+  const segarkan = () => {
+    qc.invalidateQueries({ queryKey: ["shift"] });
+    qc.invalidateQueries({ queryKey: ["shift-rekap"] });
+  };
 
   const simpan = useMutation({
     mutationFn: async (v: FormShift) => {
@@ -215,8 +235,21 @@ export default function HalamanShift() {
     setForm({ open: true, shift: null, awal: { employeeId, date } });
   };
 
-  const semua = shift.data ?? [];
-  const tanpaShift = karyawan.filter((k) => !semua.some((s) => s.employeeId === k.id && s.status !== "cancelled")).length;
+  const semua = React.useMemo(() => shift.data ?? [], [shift.data]);
+  /**
+   * Karyawan yang punya minimal satu shift di minggu ini. Sistem tidak
+   * menyimpan baris "libur": tanggal kosong baru berarti libur kalau roster
+   * minggunya sudah disusun — aturan yang sama dipakai perhitungan cuti.
+   */
+  const sudahDiroster = React.useMemo(
+    () => new Set(semua.filter((s) => s.status !== "cancelled").map((s) => s.employeeId)),
+    [semua]
+  );
+  const tanpaShift = karyawan.filter((k) => !sudahDiroster.has(k.id)).length;
+  const perluPerhatian = karyawan.filter((k) => {
+    const r = petaRekap.get(k.id);
+    return r?.beruntunLewatBatas || r?.kurangLibur;
+  });
   const hariIni = tanggalISO(new Date());
   const perluDept = !hr && !saya?.departmentId;
 
@@ -276,7 +309,16 @@ export default function HalamanShift() {
           <span><span className="font-semibold text-foreground">{Math.round(jamTerjadwal(semua))}</span> jam terjadwal</span>
           <span><span className="font-semibold text-foreground">{karyawan.length}</span> karyawan</span>
           {tanpaShift > 0 && <span className="text-warning">{tanpaShift} belum dijadwalkan</span>}
+          <span className="inline-flex items-center gap-1"><Coffee className="h-3.5 w-3.5" aria-hidden /> sel kosong pada baris yang sudah dijadwalkan = libur</span>
         </div>
+
+        {perluPerhatian.length > 0 && (
+          <div className="border-b border-border px-3 py-2">
+            <Alert tone="warning" title={`${perluPerhatian.length} orang perlu diperiksa pembagian liburnya`}>
+              Ada yang dijadwalkan lebih dari {rekap.data?.batasBeruntun ?? 6} hari berturut-turut atau melewati satu pekan penuh tanpa libur bulan ini. Rinciannya di rekap di bawah tabel.
+            </Alert>
+          </div>
+        )}
 
         {shift.isLoading || direktori.isLoading ? (
           <SkeletonBaris />
@@ -311,6 +353,22 @@ export default function HalamanShift() {
                     <th scope="row" className="sticky left-0 z-10 border-b border-border bg-surface px-3 py-2 text-left font-normal">
                       <span className="block truncate text-sm font-medium">{k.name}</span>
                       <span className="block truncate text-xs text-muted">{k.nik}{k.position ? ` · ${k.position.name}` : ""}</span>
+                      {(() => {
+                        const r = petaRekap.get(k.id);
+                        if (!r?.beruntunLewatBatas && !r?.kurangLibur) return null;
+                        return (
+                          <Badge
+                            tone="warning"
+                            className="mt-1"
+                            title={r.beruntunLewatBatas
+                              ? `Dijadwalkan ${r.beruntunMaks} hari berturut-turut pada ${formatTanggal(senin, "MMMM yyyy")}`
+                              : `Ada pekan tanpa satu pun hari libur pada ${formatTanggal(senin, "MMMM yyyy")}`}
+                          >
+                            <TriangleAlert className="h-3 w-3" aria-hidden />
+                            {r.beruntunLewatBatas ? `${r.beruntunMaks} hari beruntun` : "Pekan tanpa libur"}
+                          </Badge>
+                        );
+                      })()}
                     </th>
                     {hari.map((d) => {
                       const tgl = tanggalISO(d);
@@ -337,22 +395,96 @@ export default function HalamanShift() {
                                 {s.startTime}–{s.endTime}
                               </button>
                             ))}
-                            {bolehBuat && (
-                              <button
-                                type="button"
-                                onClick={() => bukaSel(k.id, tgl)}
-                                aria-label={`Tambah shift ${k.name} ${formatTanggal(d)}`}
-                                className="grid flex-1 place-items-center rounded-lg border border-dashed border-border text-muted/70 transition hover:border-primary hover:text-primary"
-                              >
-                                <Plus className="h-4 w-4" aria-hidden />
-                              </button>
-                            )}
+                            {(() => {
+                              // Tiga keadaan berbeda untuk sel tanpa shift:
+                              // sudah diroster berarti libur, belum diroster
+                              // berarti belum disusun, dan tanpa izin membuat
+                              // keduanya hanya dibaca.
+                              const libur = isi.length === 0 && sudahDiroster.has(k.id);
+                              if (!bolehBuat) {
+                                return isi.length === 0 ? (
+                                  <span className={cn("grid flex-1 place-items-center rounded-lg text-xs", libur ? "bg-surface-2 text-muted" : "text-muted/50")}>
+                                    {libur ? "Libur" : "—"}
+                                  </span>
+                                ) : null;
+                              }
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => bukaSel(k.id, tgl)}
+                                  aria-label={`${libur ? "Libur" : "Belum dijadwalkan"} — tambah shift ${k.name} ${formatTanggal(d)}`}
+                                  title={libur ? "Libur: tidak dijadwalkan di minggu yang sudah disusun" : "Belum dijadwalkan"}
+                                  className={cn(
+                                    "grid flex-1 place-items-center rounded-lg border border-dashed transition hover:border-primary hover:text-primary",
+                                    libur ? "border-transparent bg-surface-2 text-xs text-muted" : "border-border text-muted/70"
+                                  )}
+                                >
+                                  {libur ? "Libur" : <Plus className="h-4 w-4" aria-hidden />}
+                                </button>
+                              );
+                            })()}
                           </div>
                         </td>
                       );
                     })}
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-3">
+          <div>
+            <h2 className="text-sm font-semibold">Rekap libur {formatTanggal(senin, "MMMM yyyy")}</h2>
+            <p className="text-xs text-muted">
+              Hari libur dihitung dari tanggal yang tidak dijadwalkan pada pekan yang rosternya sudah disusun. Batas wajar {rekap.data?.batasBeruntun ?? 6} hari kerja berturut-turut.
+            </p>
+          </div>
+          {perluPerhatian.length > 0 && (
+            <Badge tone="warning"><TriangleAlert className="h-3 w-3" aria-hidden /> {perluPerhatian.length} perlu diperiksa</Badge>
+          )}
+        </div>
+
+        {rekap.isLoading ? (
+          <SkeletonBaris />
+        ) : !rekap.data?.data.length ? (
+          <EmptyState icon={Coffee} title="Belum ada data" description={hr && !dept ? "Pilih departemen untuk melihat rekapnya." : "Tidak ada karyawan aktif di departemen ini."} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-sm">
+              <thead>
+                <tr className="text-xs uppercase tracking-wide text-muted">
+                  <th scope="col" className="border-b border-border px-3 py-2 text-left font-medium">Karyawan</th>
+                  <th scope="col" className="border-b border-border px-3 py-2 text-right font-medium">Hari kerja</th>
+                  <th scope="col" className="border-b border-border px-3 py-2 text-right font-medium">Libur</th>
+                  <th scope="col" className="border-b border-border px-3 py-2 text-right font-medium">Belum disusun</th>
+                  <th scope="col" className="border-b border-border px-3 py-2 text-right font-medium">Beruntun</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rekap.data.data.map((r) => {
+                  const perhatian = r.beruntunLewatBatas || r.kurangLibur;
+                  return (
+                    <tr key={r.id} className={cn("border-b border-border last:border-0", perhatian && "bg-warning-soft/40")}>
+                      <th scope="row" className="px-3 py-2 text-left font-normal">
+                        <span className="block truncate font-medium">{r.name}</span>
+                        <span className="block truncate text-xs text-muted">
+                          {r.nik}
+                          {r.kurangLibur && <span className="text-warning"> · ada pekan tanpa libur</span>}
+                        </span>
+                      </th>
+                      <td className="px-3 py-2 text-right tabular-nums">{r.hariKerja}</td>
+                      <td className={cn("px-3 py-2 text-right tabular-nums", r.kurangLibur && "font-semibold text-warning")}>{r.hariLibur}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted">{r.belumDisusun}</td>
+                      <td className={cn("px-3 py-2 text-right tabular-nums", r.beruntunLewatBatas && "font-semibold text-warning")}>
+                        {r.beruntunMaks} hari
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

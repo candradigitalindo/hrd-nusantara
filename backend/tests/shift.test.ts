@@ -300,6 +300,85 @@ describe('Akses jadwal', () => {
   });
 });
 
+describe('GET /api/shifts/rekap', () => {
+  /** Roster berurutan mulai `mulai`, sebanyak `jumlah` hari. */
+  const rosterBeruntun = async (employeeId: string, mulai: string, jumlah: number) => {
+    const awal = new Date(`${mulai}T00:00:00.000Z`).getTime();
+    for (let i = 0; i < jumlah; i += 1) {
+      const tanggal = new Date(awal + i * 86_400_000).toISOString().slice(0, 10);
+      const res = await buatShift({ employeeId, date: tanggal, startTime: '08:00', endTime: '16:00' });
+      expect(res.status).toBe(201);
+    }
+  };
+
+  const rekap = (bulan: string, token = hrToken, dept?: string) =>
+    request(app)
+      .get(`/api/shifts/rekap?month=${bulan}${dept ? `&departmentId=${dept}` : ''}`)
+      .set(auth(token));
+
+  it('memisahkan hari kerja, hari libur, dan tanggal yang belum disusun', async () => {
+    // Senin 7 Sep 2026 sampai Sabtu 12 Sep: Minggu 13 Sep jadi hari libur.
+    await rosterBeruntun(karyawan.id, '2026-09-07', 6);
+
+    const res = await rekap('2026-09');
+    expect(res.status).toBe(200);
+    const baris = res.body.data.find((k: { id: string }) => k.id === karyawan.id);
+    expect(baris).toMatchObject({ hariKerja: 6, hariLibur: 1, belumDisusun: 23, pekanTersusun: 1 });
+    expect(baris.kurangLibur).toBe(false);
+    expect(res.body.batasBeruntun).toBe(6);
+  });
+
+  it('menandai pekan tanpa libur dan deret yang melewati batas', async () => {
+    await rosterBeruntun(karyawan.id, '2026-09-07', 7);
+
+    const baris = (await rekap('2026-09')).body.data.find((k: { id: string }) => k.id === karyawan.id);
+    expect(baris).toMatchObject({ kurangLibur: true, beruntunMaks: 7, beruntunLewatBatas: true });
+  });
+
+  it('menyambung deret yang menyeberang pergantian bulan', async () => {
+    await rosterBeruntun(karyawan.id, '2026-08-26', 6);
+    await rosterBeruntun(karyawan.id, '2026-09-01', 3);
+
+    const baris = (await rekap('2026-09')).body.data.find((k: { id: string }) => k.id === karyawan.id);
+    expect(baris.beruntunMaks).toBe(9);
+    expect(baris.beruntunLewatBatas).toBe(true);
+  });
+
+  it('shift yang dibatalkan tidak dihitung sebagai hari kerja', async () => {
+    const dibuat = await buatShift({ employeeId: karyawan.id, date: '2026-09-07', startTime: '08:00', endTime: '16:00' });
+    await makeOpenAttendance({ employeeId: karyawan.id, minutesAgo: 60, shiftScheduleId: dibuat.body.id });
+    expect((await request(app).delete(`/api/shifts/${dibuat.body.id}`).set(auth(hrToken))).status).toBe(200);
+
+    const baris = (await rekap('2026-09')).body.data.find((k: { id: string }) => k.id === karyawan.id);
+    // Satu-satunya shift dibatalkan, jadi tidak ada pekan yang tersusun.
+    expect(baris).toMatchObject({ hariKerja: 0, hariLibur: 0, belumDisusun: 30 });
+  });
+
+  it('manajer hanya melihat departemennya sendiri', async () => {
+    const dapur = await makeDepartment('Kitchen');
+    const fo = await makeDepartment('Front Office');
+    await makeEmployee({ email: 'manajer@resto.id', nik: 'MGR-1', role: Role.MANAGER, departmentId: dapur.id });
+    const koki = await makeEmployee({ email: 'koki@resto.id', nik: 'KIT-1', departmentId: dapur.id });
+    await makeEmployee({ email: 'resepsionis@resto.id', nik: 'FO-1', departmentId: fo.id });
+
+    const tokenManajer = await login(app, 'manajer@resto.id');
+    const res = await rekap('2026-09', tokenManajer);
+
+    expect(res.status).toBe(200);
+    const id = res.body.data.map((k: { id: string }) => k.id);
+    expect(id).toContain(koki.id);
+    expect(id).not.toContain(karyawan.id);
+
+    // Meminta departemen lain secara eksplisit ditolak, bukan diam-diam diganti.
+    expect((await rekap('2026-09', tokenManajer, fo.id)).status).toBe(403);
+  });
+
+  it('menolak format bulan yang tidak sah', async () => {
+    expect((await rekap('2026-13')).status).toBe(400);
+    expect((await rekap('September')).status).toBe(400);
+  });
+});
+
 describe('DELETE /api/shifts/:id', () => {
   it('menghapus jadwal yang belum dipakai presensi', async () => {
     const shift = await buatShift({

@@ -126,6 +126,9 @@ services:
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY wajib diisi (openssl rand -base64 32)}
       WHATSAPP_BAILEYS_ENABLED: ${WHATSAPP_BAILEYS_ENABLED:-false}
       WHATSAPP_SESSION_DIR: /app/whatsapp-sessions
+      # Berkas media WhatsApp ikut disimpan di volume uploads; batas ini yang
+      # menjaga satu video panjang tidak menghabiskan disk server.
+      WHATSAPP_MEDIA_MAX_BYTES: ${WHATSAPP_MEDIA_MAX_BYTES:-25000000}
       PUSH_NOTIFICATIONS_ENABLED: ${PUSH_NOTIFICATIONS_ENABLED:-false}
       FIREBASE_SERVICE_ACCOUNT_PATH: ${FIREBASE_SERVICE_ACCOUNT_PATH:-/app/secrets/firebase-service-account.json}
     volumes:

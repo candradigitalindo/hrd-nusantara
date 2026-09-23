@@ -13,7 +13,7 @@ import type { PembuatSoket, SoketWhatsApp } from './session';
 export const buatPembuatSoketBaileys = (): PembuatSoket => async ({ authDir }) => {
   const baileys = await import('baileys');
   const makeWASocket = (baileys as unknown as { default?: unknown }).default ?? baileys.makeWASocket;
-  const { useMultiFileAuthState, fetchLatestBaileysVersion, Browsers } = baileys;
+  const { useMultiFileAuthState, fetchLatestBaileysVersion, Browsers, downloadMediaMessage } = baileys;
 
   // Kredensial sesi: setara akses penuh ke akun WhatsApp itu. 0700 supaya
   // pengguna lain di server yang sama tidak bisa membacanya.
@@ -45,8 +45,35 @@ export const buatPembuatSoketBaileys = (): PembuatSoket => async ({ authDir }) =
     syncFullHistory: false,
   });
 
+  const soket = sock as SoketWhatsApp & {
+    updateMediaMessage?: (pesan: unknown) => Promise<unknown>;
+  };
+
+  // Gambar, video, dan pesan suara tidak punya teks: tanpa berkasnya arsip
+  // tidak memuat isi pesan sama sekali. Kuncinya ada di dalam pesan, jadi
+  // pengunduhannya hanya bisa dilakukan dari sini.
+  soket.unduhMedia = async (pesan: unknown) => {
+    const isi = await (downloadMediaMessage as (
+      pesan: unknown,
+      jenis: 'buffer',
+      opsi: Record<string, unknown>,
+      konteks: Record<string, unknown>
+    ) => Promise<Buffer>)(
+      pesan,
+      'buffer',
+      {},
+      {
+        logger: pino({ level: 'silent' }),
+        // Berkas yang kedaluwarsa di server WhatsApp diminta ulang lewat
+        // ponsel pemegang nomor; tanpa ini media lama gagal diunduh.
+        reuploadRequest: soket.updateMediaMessage?.bind(soket),
+      }
+    );
+    return isi;
+  };
+
   return {
-    sock: sock as SoketWhatsApp,
+    sock: soket,
     simpanKredensial: saveCreds,
   };
 };

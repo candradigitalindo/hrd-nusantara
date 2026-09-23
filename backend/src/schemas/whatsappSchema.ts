@@ -77,6 +77,9 @@ export const listConversationQuerySchema = z.object({
   employeeId: ulidField.optional(),
   contactNumber: nomor.optional(),
   direction: z.enum(MESSAGE_DIRECTIONS).optional(),
+  /// Menyaring satu grup, mis. "12036301234567890@g.us". Hanya berguna bagi
+  /// Super Admin; pemegang izin lain tidak menerima baris grup sama sekali.
+  groupJid: z.string().trim().max(120).optional(),
   /// Pencarian isi pesan, untuk pelacakan isu. Per KATA UTUH, bukan potongan
   /// kata: isi pesan terenkripsi, jadi pencocokan lewat indeks buta. Beberapa
   /// kata berarti DAN. Lihat src/utils/fieldCrypto.ts.
@@ -84,6 +87,20 @@ export const listConversationQuerySchema = z.object({
   startDate: dateOnlyField.optional(),
   endDate: dateOnlyField.optional(),
 });
+
+/**
+ * Penarikan riwayat lama, per nomor. Opsional dan atas permintaan: yang
+ * ditarik adalah percakapan dari sebelum nomor ini dipantau, jadi harus
+ * merupakan keputusan sadar, bukan sesuatu yang berjalan sendiri.
+ */
+export const tarikRiwayatSchema = z
+  .object({
+    /// Berapa pesan lama yang diminta per percakapan.
+    jumlah: z.coerce.number().int().min(10).max(500).default(50),
+    /// Kosong berarti seluruh percakapan yang sudah dikenal di nomor ini.
+    contactNumber: nomor.optional(),
+  })
+  .strict();
 
 export const listSessionEventQuerySchema = z.object({
   ...paginationFields,
@@ -117,6 +134,7 @@ export type ListSessionEventQuery = z.infer<typeof listSessionEventQuerySchema>;
 export type MarkNotifiedInput = z.infer<typeof markNotifiedSchema>;
 export type PurgeInput = z.infer<typeof purgeSchema>;
 export type DisconnectInput = z.infer<typeof disconnectSchema>;
+export type TarikRiwayatInput = z.infer<typeof tarikRiwayatSchema>;
 
 // --- Kepatuhan: setiap karyawan wajib menautkan WhatsApp-nya ---
 

@@ -20,6 +20,27 @@ import type { SESSION_EVENT_TYPES } from '../../utils/whatsappRules';
 
 export type TipePesan = 'text' | 'image' | 'document' | 'audio' | 'video';
 
+/** Berkas yang menyertai pesan, sesudah diunduh pemegang soket. */
+export interface BerkasMedia {
+  /** Relatif terhadap UPLOAD_DIR; null bila berkasnya tidak jadi tersimpan. */
+  path: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  fileName: string | null;
+  status: 'tersimpan' | 'terlalu_besar' | 'gagal' | 'tidak_didukung';
+}
+
+/** Keterangan grup asal pesan. */
+export interface AsalGrup {
+  /** JID penuh, mis. "12036301234567890@g.us". */
+  jid: string;
+  /** Angka dari JID; dipakai sebagai contactNumber supaya satu grup satu utas. */
+  kunci: string;
+  /** Peserta yang mengirim; null bila WhatsApp tidak menyebutkannya. */
+  participantNumber: string | null;
+  nama?: string | null;
+}
+
 /** Bentuk baku pesan, apa pun sumbernya. */
 export interface PesanMasuk {
   externalMessageId: string;
@@ -28,6 +49,9 @@ export interface PesanMasuk {
   body: string;
   type: TipePesan;
   timestamp: Date;
+  /** Keterangan berkas dari pesannya; berkas fisiknya menyusul lewat `media`. */
+  media?: { mimeType: string | null; fileName: string | null };
+  grup?: AsalGrup;
 }
 
 export type HasilIngest =
@@ -36,6 +60,8 @@ export type HasilIngest =
   | { status: 'ditolak'; alasan: string };
 
 export interface OpsiIngest {
+  /** Berkas media yang sudah diunduh, siap dicatat bersama pesannya. */
+  berkas?: BerkasMedia;
   /**
    * Akun pemilik sesi yang menerima pesan ini (jalur Baileys). Dengan ini
    * pesan dikaitkan ke akun yang benar walau kedua pihak sama-sama nomor
@@ -65,14 +91,26 @@ export const ingestMessage = async (pesan: PesanMasuk, opsi: OpsiIngest = {}): P
     const from = normalizePhoneNumber(pesan.from);
     const to = normalizePhoneNumber(pesan.to);
     if (!from || !to) return { status: 'ditolak', alasan: 'invalid_number' };
-    if (from !== milik.phoneNumber && to !== milik.phoneNumber) {
-      return { status: 'ditolak', alasan: 'not_company_number' };
+
+    if (pesan.grup) {
+      // Ruang lingkup pesan grup ditentukan oleh keanggotaan, bukan oleh
+      // nomor lawan bicara: yang menerimanya adalah nomor perusahaan yang
+      // sesinya sedang terhubung, dan itu sudah pasti dari accountId.
+      akun = milik;
+      lingkup = {
+        contactNumber: pesan.grup.kunci,
+        direction: from === milik.phoneNumber ? 'outgoing' : 'incoming',
+      };
+    } else {
+      if (from !== milik.phoneNumber && to !== milik.phoneNumber) {
+        return { status: 'ditolak', alasan: 'not_company_number' };
+      }
+      akun = milik;
+      lingkup =
+        from === milik.phoneNumber
+          ? { contactNumber: to, direction: 'outgoing' }
+          : { contactNumber: from, direction: 'incoming' };
     }
-    akun = milik;
-    lingkup =
-      from === milik.phoneNumber
-        ? { contactNumber: to, direction: 'outgoing' }
-        : { contactNumber: from, direction: 'incoming' };
   } else {
     const hasil = resolveScope({
       from: pesan.from,
@@ -101,6 +139,14 @@ export const ingestMessage = async (pesan: PesanMasuk, opsi: OpsiIngest = {}): P
         messageType: pesan.type,
         timestamp: pesan.timestamp,
         direction: lingkup.direction,
+        groupJid: pesan.grup?.jid ?? null,
+        groupName: pesan.grup?.nama ?? null,
+        participantNumber: pesan.grup?.participantNumber ?? null,
+        mediaPath: opsi.berkas?.path ?? null,
+        mediaMimeType: opsi.berkas?.mimeType ?? pesan.media?.mimeType ?? null,
+        mediaSizeBytes: opsi.berkas?.sizeBytes ?? null,
+        mediaFileName: opsi.berkas?.fileName ?? pesan.media?.fileName ?? null,
+        mediaStatus: opsi.berkas?.status ?? null,
         // Disalin saat pesan masuk: nomor bisa berpindah tangan, dan arsip
         // lama harus tetap menunjuk pemegang yang benar saat itu.
         employeeId: akun.assignedEmployeeId,

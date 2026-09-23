@@ -155,6 +155,17 @@ const envSchema = z.object({
   // adalah keputusan hukum dan bisnis, bukan keputusan kode.
   WHATSAPP_RETENTION_DAYS: z.coerce.number().int().min(0).max(3650).default(0),
 
+  // Batas ukuran berkas media WhatsApp (gambar, video, pesan suara, dokumen)
+  // yang diunduh ke arsip. Video bisa berukuran puluhan megabita dan masuk
+  // terus-menerus, jadi batasnya harus ada; yang melewati batas tetap
+  // tercatat sebagai pesan, dengan penanda bahwa berkasnya dilewati.
+  WHATSAPP_MEDIA_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(100_000)
+    .max(200_000_000)
+    .default(25_000_000),
+
   // --- Notifikasi push ke ponsel karyawan ---
   // Dipakai untuk memberi tahu pemegang nomor bahwa sesi WhatsApp-nya
   // terputus atau perlu discan ulang.

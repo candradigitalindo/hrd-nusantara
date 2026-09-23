@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { MessageCircle, Plus, QrCode, Unplug, Search, Smartphone, ArrowDownLeft, ArrowUpRight, BellRing, Link2, Link2Off, ScanLine, UserX, Archive, Check, LogOut, Users, X } from "lucide-react";
+import { MessageCircle, Plus, QrCode, Unplug, Search, Smartphone, ArrowDownLeft, ArrowUpRight, BellRing, Link2, Link2Off, ScanLine, UserX, Archive, Check, LogOut, Users, X, UsersRound, Download, FileText, History } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -24,15 +24,77 @@ import { cn } from "@/lib/utils";
 
 type FormAkun = { phoneNumber: string; label: string; assignedEmployeeId: string };
 
+const ukuranBerkas = (bytes: number | null) => {
+  if (!bytes) return null;
+  return bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`;
+};
+
+const ALASAN_TANPA_BERKAS: Record<string, string> = {
+  terlalu_besar: "Berkas melewati batas ukuran, tidak ikut disimpan",
+  gagal: "Berkas sudah tidak bisa diunduh dari WhatsApp saat pesan ini tiba",
+  tidak_didukung: "Driver WhatsApp saat itu belum bisa mengunduh berkas",
+};
+
+/**
+ * Isi berkas sebuah pesan: foto, video, pesan suara, dokumen.
+ *
+ * Pesan suara dan foto tanpa keterangan tidak punya teks sama sekali, jadi
+ * bagian inilah isi pesannya. Berkasnya diambil lewat BFF supaya token sesi
+ * ikut terpasang, dan server tetap memeriksa perannya sendiri.
+ */
+const MediaPesan = ({ pesan, bolehBuka }: { pesan: Percakapan; bolehBuka: boolean }) => {
+  const url = `/api/backend/whatsapp/conversations/${pesan.id}/media`;
+  const tipe = (pesan.mediaMimeType ?? "").split(";")[0].trim();
+
+  if (!pesan.mediaTersedia) {
+    const alasan = pesan.mediaStatus ? ALASAN_TANPA_BERKAS[pesan.mediaStatus] : null;
+    return alasan ? <p className="mt-1 text-xs italic text-muted">{alasan}</p> : null;
+  }
+
+  if (!bolehBuka) {
+    return <p className="mt-1 text-xs italic text-muted">Berkas {pesan.messageType} tersimpan — hanya Super Admin yang bisa membukanya</p>;
+  }
+
+  const keterangan = [pesan.mediaFileName, ukuranBerkas(pesan.mediaSizeBytes)].filter(Boolean).join(" · ");
+
+  return (
+    <div className="mt-2 space-y-1">
+      {tipe.startsWith("image/") ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt={pesan.mediaFileName ?? "Foto dari WhatsApp"} className="max-h-72 rounded-xl border border-border object-contain" loading="lazy" />
+      ) : tipe.startsWith("video/") ? (
+        <video src={url} controls preload="metadata" className="max-h-72 w-full max-w-lg rounded-xl border border-border" />
+      ) : tipe.startsWith("audio/") ? (
+        <audio src={url} controls preload="none" className="w-full max-w-sm" />
+      ) : (
+        <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+          <FileText className="h-4 w-4" aria-hidden /> {pesan.mediaFileName ?? "Buka berkas"}
+        </a>
+      )}
+      <p className="flex items-center gap-2 text-xs text-muted">
+        {keterangan}
+        <a href={url} download className="inline-flex items-center gap-1 text-primary hover:underline">
+          <Download className="h-3 w-3" aria-hidden /> Unduh
+        </a>
+      </p>
+    </div>
+  );
+};
+
 export default function HalamanWhatsApp() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const bolehBuat = punyaIzin(saya, "whatsapp.buat");
   const bolehUbah = punyaIzin(saya, "whatsapp.ubah");
+  // Pesan grup dan berkas media hanya terbuka untuk Super Admin; server
+  // menyaringnya juga, ini semata supaya tombolnya tidak muncul sia-sia.
+  const seluruhIsi = saya?.role === "SUPER_ADMIN";
   const [tab, setTab] = React.useState<"kepatuhan" | "nomor" | "arsip">("kepatuhan");
   const [filterStatus, setFilterStatus] = React.useState<StatusTautanWa | "">("");
   const [filterDept, setFilterDept] = React.useState("");
   const [arsipKaryawan, setArsipKaryawan] = React.useState<{ id: string; name: string } | null>(null);
+  const [arsipGrup, setArsipGrup] = React.useState<{ jid: string; nama: string } | null>(null);
+  const [tarikUntuk, setTarikUntuk] = React.useState<AkunWhatsApp | null>(null);
   const [formBuka, setFormBuka] = React.useState(false);
   const [qrUntuk, setQrUntuk] = React.useState<AkunWhatsApp | null>(null);
   const [putus, setPutus] = React.useState<{ akun: AkunWhatsApp; logout: boolean } | null>(null);
@@ -60,6 +122,7 @@ export default function HalamanWhatsApp() {
   const paramsArsip = new URLSearchParams({ page: String(page), limit: "20" });
   if (cariTunda.length >= 2) paramsArsip.set("search", cariTunda);
   if (arsipKaryawan) paramsArsip.set("employeeId", arsipKaryawan.id);
+  if (arsipGrup) paramsArsip.set("groupJid", arsipGrup.jid);
 
   const departemen = useQuery({ queryKey: ["departemen", "semua"], queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data, enabled: tab === "kepatuhan" });
   const kepatuhan = useQuery({
@@ -73,6 +136,20 @@ export default function HalamanWhatsApp() {
     onSuccess: (r) => notifikasi.sukses(`Pengingat dikirim ke ${r.terkirim} dari ${r.diminta} karyawan`, r.terkirim < r.diminta ? "Sisanya belum memasang aplikasi mobile atau belum mengizinkan notifikasi." : "Semua menerima push di ponselnya."),
     onError: (e) => notifikasi.galat(e, "Pengingat gagal dikirim"),
   });
+  // Penarikan riwayat lama: opsional, per nomor, dan hanya Super Admin.
+  const tarikRiwayat = useMutation({
+    mutationFn: async (v: { akun: AkunWhatsApp; jumlah: number; contactNumber: string }) =>
+      (await api.post<{ percakapan: number; jumlahPerPercakapan: number; catatan: string }>(
+        `/whatsapp/accounts/${v.akun.id}/riwayat`,
+        { jumlah: v.jumlah, ...(v.contactNumber.trim() ? { contactNumber: v.contactNumber.trim() } : {}) }
+      )).data,
+    onSuccess: (r) => {
+      notifikasi.sukses(`Permintaan terkirim untuk ${r.percakapan} percakapan`, r.catatan);
+      setTarikUntuk(null);
+    },
+    onError: (e) => notifikasi.galat(e, "Riwayat gagal ditarik"),
+  });
+
   const arsip = useQuery({
     queryKey: ["wa", "arsip", paramsArsip.toString()],
     queryFn: async () => (await api.get<Halaman<Percakapan>>(`/whatsapp/conversations?${paramsArsip}`)).data,
@@ -203,6 +280,11 @@ export default function HalamanWhatsApp() {
                       <Button size="sm" variant="ghost" className="text-danger" onClick={() => setPutus({ akun: a, logout: true })}><LogOut className="h-4 w-4" aria-hidden /> Logout</Button>
                     </>
                   )}
+                  {seluruhIsi && a.sessionStatus === "connected" && (
+                    <Button size="sm" variant="outline" onClick={() => setTarikUntuk(a)}>
+                      <History className="h-4 w-4" aria-hidden /> Tarik Riwayat Lama
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -212,6 +294,7 @@ export default function HalamanWhatsApp() {
         <Card>
           <div className="border-b border-border p-3">
             {arsipKaryawan && <div className="mb-2 flex items-center gap-2 text-sm"><Badge tone="info">Arsip {arsipKaryawan.name}</Badge><Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan(null); setPage(1); }}><Users className="h-4 w-4" aria-hidden /> Semua karyawan</Button></div>}
+            {arsipGrup && <div className="mb-2 flex items-center gap-2 text-sm"><Badge tone="info"><UsersRound className="h-3 w-3" aria-hidden /> {arsipGrup.nama}</Badge><Button size="sm" variant="ghost" onClick={() => { setArsipGrup(null); setPage(1); }}><X className="h-4 w-4" aria-hidden /> Semua percakapan</Button></div>}
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
               <Input className="pl-9" placeholder="Cari kata dalam percakapan, mis. keluhan" value={cari} onChange={(e) => setCari(e.target.value)} aria-label="Cari percakapan" />
@@ -230,10 +313,29 @@ export default function HalamanWhatsApp() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                        <p className="text-sm font-medium truncate">{p.direction === "incoming" ? `+${p.contactNumber} → ${p.account.label}` : `${p.account.label} → +${p.contactNumber}`}</p>
+                        <p className="text-sm font-medium truncate">
+                          {(() => {
+                            // Grup tidak punya nomor lawan bicara yang berarti:
+                            // angka JID-nya bukan nomor telepon siapa pun.
+                            const lawan = p.groupJid ? (p.groupName ?? "Grup") : `+${p.contactNumber}`;
+                            return p.direction === "incoming" ? `${lawan} → ${p.account.label}` : `${p.account.label} → ${lawan}`;
+                          })()}
+                        </p>
                         <time className="text-xs text-muted tabular-nums">{formatTanggal(p.timestamp, "d MMM HH:mm")}</time>
                       </div>
+                      {p.groupJid && (
+                        <button
+                          type="button"
+                          onClick={() => { setArsipGrup({ jid: p.groupJid!, nama: p.groupName ?? "Grup tanpa nama" }); setPage(1); }}
+                          className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <UsersRound className="h-3 w-3" aria-hidden />
+                          {p.groupName ?? "Grup tanpa nama"}
+                          {p.participantNumber && <span className="text-muted">· +{p.participantNumber}</span>}
+                        </button>
+                      )}
                       <p className="mt-1 text-sm whitespace-pre-wrap break-words">{p.messageBody || <span className="italic text-muted">[{p.messageType}]</span>}</p>
+                      <MediaPesan pesan={p} bolehBuka={seluruhIsi} />
                     </div>
                   </li>
                 ))}
@@ -285,6 +387,67 @@ export default function HalamanWhatsApp() {
         title={putus?.logout ? "Logout sesi WhatsApp?" : "Putus sesi sementara?"}
         description={putus?.logout ? "Pairing dihapus di sisi WhatsApp. Pemegang nomor harus memindai QR lagi untuk menyambungkan." : "Sesi ditutup tanpa menghapus pairing, bisa disambungkan lagi tanpa scan ulang."}
         confirmLabel={putus?.logout ? "Logout" : "Putus"} confirmIcon={putus?.logout ? LogOut : Unplug} />
+
+      <DialogTarikRiwayat
+        akun={tarikUntuk}
+        onClose={() => setTarikUntuk(null)}
+        onKirim={(jumlah, contactNumber) => tarikUntuk && tarikRiwayat.mutate({ akun: tarikUntuk, jumlah, contactNumber })}
+        loading={tarikRiwayat.isPending}
+      />
     </>
   );
 }
+
+/**
+ * Menarik percakapan lama sebuah nomor.
+ *
+ * Bawaannya sistem hanya mengarsipkan percakapan sejak nomor dipantau.
+ * Riwayat sebelum itu ditarik hanya kalau memang diperlukan, per nomor, dan
+ * atas keputusan Super Admin — karena isinya percakapan dari masa sebelum
+ * pemantauan berjalan.
+ */
+const DialogTarikRiwayat = ({
+  akun,
+  onClose,
+  onKirim,
+  loading,
+}: {
+  akun: AkunWhatsApp | null;
+  onClose: () => void;
+  onKirim: (jumlah: number, contactNumber: string) => void;
+  loading: boolean;
+}) => {
+  const [jumlah, setJumlah] = React.useState("50");
+  const [kontak, setKontak] = React.useState("");
+
+  return (
+    <Modal
+      // key: tiap nomor membuka dialog dengan isian bersih.
+      key={akun?.id ?? "kosong"}
+      open={Boolean(akun)}
+      onClose={onClose}
+      title="Tarik Percakapan Lama"
+      description={akun ? `${akun.label}${akun.phoneNumber ? ` · +${akun.phoneNumber}` : ""}` : undefined}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={loading}><X className="h-4 w-4" aria-hidden /> Batal</Button>
+          <Button onClick={() => onKirim(Number(jumlah) || 50, kontak)} loading={loading}>
+            {!loading && <History className="h-4 w-4" aria-hidden />} Tarik
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Alert tone="info" title="Permintaan ke WhatsApp, bukan pencarian di sistem">
+          WhatsApp mengirim pesannya bertahap lewat koneksi nomor ini, jadi arsip terisi beberapa saat setelah tombol ditekan. Berkas media yang sudah lama umumnya tidak bisa diunduh lagi — yang tersisa teksnya.
+        </Alert>
+        <Field label="Jumlah pesan per percakapan" hint="10–500. Makin besar makin lama WhatsApp mengirimkannya.">
+          <Input type="number" min={10} max={500} step={10} value={jumlah} onChange={(e) => setJumlah(e.target.value)} />
+        </Field>
+        <Field label="Nomor kontak tertentu (opsional)" hint="Kosongkan untuk seluruh percakapan yang sudah dikenal di nomor ini.">
+          <Input inputMode="tel" placeholder="mis. 081234567890" value={kontak} onChange={(e) => setKontak(e.target.value)} />
+        </Field>
+      </div>
+    </Modal>
+  );
+};

@@ -1604,9 +1604,24 @@ model WhatsAppConversation {
   senderWhatsappNumber   String
   receiverWhatsappNumber String
 
-  /// Nomor lawan bicara, yaitu pihak yang bukan nomor perusahaan.
+  /// Nomor lawan bicara, yaitu pihak yang bukan nomor perusahaan. Untuk
+  /// pesan grup, berisi angka dari JID grup sehingga satu grup tetap bisa
+  /// ditarik sebagai satu percakapan.
   /// Disimpan terpisah agar pencarian per kontak tidak perlu menebak arah.
   contactNumber String
+
+  /// JID grup, mis. "12036301234567890@g.us". null untuk percakapan pribadi.
+  /// Pesan grup punya banyak peserta, jadi lawan bicaranya bukan satu nomor:
+  /// yang mengirim disimpan terpisah di participantNumber.
+  groupJid String?
+
+  /// Nama grup saat pesan itu tiba. Disalin, bukan dibaca ulang: grup bisa
+  /// berganti nama, dan arsip harus tetap menyebut nama yang berlaku saat itu.
+  groupName String?
+
+  /// Peserta grup yang mengirim pesan ini. null untuk percakapan pribadi,
+  /// karena pengirimnya sudah jelas dari senderWhatsappNumber.
+  participantNumber String?
 
   /// Terenkripsi AES-256-GCM (lihat src/utils/fieldCrypto.ts). Jangan
   /// dibaca langsung dari database: pakai decryptField.
@@ -1618,6 +1633,20 @@ model WhatsAppConversation {
   searchTokens String[]
 
   messageType String @default("text") // text, image, document, audio, video
+
+  /// --- Berkas media ---
+  /// Lokasi berkas relatif terhadap UPLOAD_DIR. Hanya terisi bila berkasnya
+  /// berhasil diunduh; isi pesan suara, gambar, dan video tidak punya teks,
+  /// jadi tanpa berkas ini arsipnya kosong.
+  mediaPath      String?
+  mediaMimeType  String?
+  mediaSizeBytes Int?
+  mediaFileName  String?
+
+  /// tersimpan | terlalu_besar | gagal | tidak_didukung. Dibedakan dari
+  /// mediaPath yang kosong supaya "belum sempat diunduh" tidak tertukar
+  /// dengan "memang tidak ada berkasnya".
+  mediaStatus String?
 
   timestamp DateTime
   direction String // incoming, outgoing
@@ -1638,6 +1667,7 @@ model WhatsAppConversation {
   @@index([senderWhatsappNumber])
   @@index([accountId, timestamp])
   @@index([contactNumber])
+  @@index([groupJid, timestamp])
   /// GIN: pencarian memakai hasEvery pada array token.
   @@index([searchTokens], type: Gin)
 }

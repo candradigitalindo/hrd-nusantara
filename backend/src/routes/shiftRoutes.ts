@@ -5,6 +5,7 @@ import {
   bulkCreateShifts,
   getAllShifts,
   getMyShifts,
+  getShiftRecap,
   updateShift,
   cancelShift,
 } from '../controllers/shiftController';
@@ -16,6 +17,7 @@ import {
   bulkCreateShiftSchema,
   updateShiftSchema,
   listShiftQuerySchema,
+  shiftRecapQuerySchema,
 } from '../schemas/shiftSchema';
 import { lihatAtauKelola } from '../utils/permissions';
 
@@ -25,6 +27,14 @@ router.use(authenticateToken);
 
 // Didaftarkan sebelum '/:id' supaya "me" tidak tertangkap sebagai ULID.
 router.get('/me', requirePermission('presensi.lihat'), validate(listShiftQuerySchema, 'query'), asyncHandler(getMyShifts));
+
+// Sama seperti '/me': nama tetap, jadi harus didaftarkan lebih dulu.
+router.get(
+  '/rekap',
+  requirePermission(...lihatAtauKelola('shift')),
+  validate(shiftRecapQuerySchema, 'query'),
+  asyncHandler(getShiftRecap)
+);
 
 router.get(
   '/',

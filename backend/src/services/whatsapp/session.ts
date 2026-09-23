@@ -19,10 +19,20 @@
 // WhatsApp.
 import path from 'path';
 import { env } from '../../config/env';
-import { ingestMessage, applySessionEvent, claimPhoneNumber } from './ingest';
+import { ingestMessage, applySessionEvent, claimPhoneNumber, type BerkasMedia } from './ingest';
+import { simpanMediaWhatsApp } from '../../utils/whatsappMedia';
 import { normalizeBaileysMessage, nomorDariJid, type PesanBaileys } from './baileysMessage';
 import { normalizePhoneNumber } from '../../utils/whatsappRules';
 import { putuskanReconnect } from './reconnect';
+import { prisma } from '../../lib/prisma';
+
+/** Penunjuk satu pesan di WhatsApp; dipakai sebagai titik awal penarikan riwayat. */
+export interface KunciPesanWhatsApp {
+  remoteJid: string;
+  id: string;
+  fromMe: boolean;
+  participant?: string;
+}
 
 export interface MetadataGrup {
   id: string;
@@ -39,6 +49,24 @@ export interface SoketWhatsApp {
   groupFetchAllParticipating?: () => Promise<Record<string, MetadataGrup>>;
   /** Mengirim pesan (gambar + keterangan) atas nama nomor ini. */
   sendMessage?: (jid: string, content: { image: Buffer; caption?: string } | { text: string }) => Promise<unknown>;
+  /** Keterangan satu grup; dipakai untuk menyimpan nama grup di arsip. */
+  groupMetadata?: (jid: string) => Promise<MetadataGrup>;
+  /**
+   * Mengunduh berkas media sebuah pesan. Kuncinya ada di dalam pesan itu
+   * sendiri, jadi hanya pemegang soket yang bisa melakukannya — dan hanya
+   * selama kuncinya masih berlaku di server WhatsApp.
+   */
+  unduhMedia?: (pesan: unknown) => Promise<Buffer>;
+  /**
+   * Meminta WhatsApp mengirimkan pesan yang LEBIH LAMA dari sebuah pesan yang
+   * sudah dikenal. Jawabannya tidak datang seketika: WhatsApp mengirimkannya
+   * lewat event 'messaging-history.set', bisa beberapa saat kemudian.
+   */
+  fetchMessageHistory?: (
+    jumlah: number,
+    kunci: KunciPesanWhatsApp,
+    waktuDetik: number
+  ) => Promise<string>;
   /** Identitas akun WhatsApp yang tertaut, terisi setelah koneksi terbuka: "628…:12@s.whatsapp.net". */
   user?: { id?: string } | null;
 }
@@ -68,6 +96,8 @@ interface Sesi {
   /** Ditutup atas permintaan, bukan karena gangguan: jangan sambung ulang. */
   ditutupSengaja: boolean;
   catatanTerakhir: string | null;
+  /** Nama grup yang sudah pernah ditanyakan, supaya tidak ditanya per pesan. */
+  namaGrup: Map<string, string>;
 }
 
 const sesiAktif = new Map<string, Sesi>();
@@ -121,14 +151,67 @@ const bersihkanTimer = (sesi: Sesi) => {
 
 // --- Penanganan event ---
 
-const tanganiPesanMasuk = async (sesi: Sesi, muatan: unknown) => {
-  const { messages, type } = (muatan ?? {}) as { messages?: PesanBaileys[]; type?: string };
+/**
+ * Nama grup, ditanyakan sekali lalu diingat selama sesi hidup.
+ *
+ * Tanpa nama, arsip grup hanya berisi deretan angka JID yang tidak bisa
+ * dikenali siapa pun. Kegagalannya tidak fatal: pesannya tetap diarsipkan
+ * dengan nama kosong.
+ */
+const namaGrupUntuk = async (sesi: Sesi, jid: string): Promise<string | null> => {
+  const tersimpan = sesi.namaGrup.get(jid);
+  if (tersimpan !== undefined) return tersimpan;
 
-  // 'notify' adalah pesan yang baru tiba. 'append' adalah sinkronisasi
-  // riwayat — mengarsipkan seluruh riwayat lama sebuah nomor jauh melampaui
-  // ruang lingkup pemantauan kanal kerja, jadi sengaja diabaikan.
-  if (type !== 'notify' || !Array.isArray(messages)) return;
+  try {
+    const meta = await sesi.sock?.groupMetadata?.(jid);
+    const nama = meta?.subject ?? null;
+    if (nama) sesi.namaGrup.set(jid, nama);
+    return nama;
+  } catch (error) {
+    catat(`gagal membaca nama grup ${jid}`, error);
+    return null;
+  }
+};
 
+/**
+ * Mengunduh berkas media sebuah pesan.
+ *
+ * Kunci media hanya ada pada pesannya dan hanya berlaku selama berkasnya
+ * masih tersimpan di server WhatsApp, jadi ini harus dilakukan saat pesannya
+ * tiba — bukan nanti saat ada yang membukanya di halaman arsip.
+ */
+const unduhBerkas = async (
+  sesi: Sesi,
+  mentah: PesanBaileys,
+  keterangan: { mimeType: string | null; fileName: string | null }
+): Promise<BerkasMedia> => {
+  const dasar = { mimeType: keterangan.mimeType, fileName: keterangan.fileName };
+
+  if (!sesi.sock?.unduhMedia) {
+    return { ...dasar, path: null, sizeBytes: null, status: 'tidak_didukung' };
+  }
+
+  try {
+    const buffer = await sesi.sock.unduhMedia(mentah);
+    if (buffer.byteLength > env.WHATSAPP_MEDIA_MAX_BYTES) {
+      // Pesannya tetap diarsipkan: yang hilang hanya berkasnya, dan itu
+      // harus terlihat sebagai keputusan sistem, bukan sebagai kegagalan.
+      return { ...dasar, path: null, sizeBytes: buffer.byteLength, status: 'terlalu_besar' };
+    }
+
+    const path = await simpanMediaWhatsApp({
+      accountId: sesi.accountId,
+      buffer,
+      mimeType: keterangan.mimeType,
+    });
+    return { ...dasar, path, sizeBytes: buffer.byteLength, status: 'tersimpan' };
+  } catch (error) {
+    catat(`gagal mengunduh media pesan di akun ${sesi.accountId}`, error);
+    return { ...dasar, path: null, sizeBytes: null, status: 'gagal' };
+  }
+};
+
+const arsipkanPesan = async (sesi: Sesi, messages: PesanBaileys[]) => {
   // Tanpa nomor sendiri, arah pesan tidak bisa ditentukan. Ini hanya terjadi
   // bila pesan datang sebelum koneksi dilaporkan terbuka — sangat jarang.
   if (!sesi.phoneNumber) {
@@ -140,19 +223,51 @@ const tanganiPesanMasuk = async (sesi: Sesi, muatan: unknown) => {
     const hasil = normalizeBaileysMessage(mentah, sesi.phoneNumber);
     if (hasil.status === 'dilewati') continue;
 
+    const pesan = hasil.pesan;
+    if (pesan.grup) {
+      pesan.grup.nama = await namaGrupUntuk(sesi, pesan.grup.jid);
+    }
+
+    const berkas = pesan.media ? await unduhBerkas(sesi, mentah, pesan.media) : undefined;
+
     // Tiap pesan berdiri sendiri. Tanpa ini, satu kegagalan database di
     // tengah batch akan membuang seluruh pesan sesudahnya tanpa jejak —
     // dan WhatsApp tidak mengirim ulang pesan yang sudah diterima, jadi
     // yang hilang hilang untuk selamanya.
     try {
-      const disimpan = await ingestMessage(hasil.pesan, { accountId: sesi.accountId });
+      const disimpan = await ingestMessage(pesan, { accountId: sesi.accountId, berkas });
       if (disimpan.status === 'ditolak') {
         catat(`pesan di luar lingkup dilewati (${disimpan.alasan})`);
       }
     } catch (error) {
-      catat(`gagal mengarsipkan pesan ${hasil.pesan.externalMessageId}`, error);
+      catat(`gagal mengarsipkan pesan ${pesan.externalMessageId}`, error);
     }
   }
+};
+
+const tanganiPesanMasuk = async (sesi: Sesi, muatan: unknown) => {
+  const { messages, type } = (muatan ?? {}) as { messages?: PesanBaileys[]; type?: string };
+
+  // 'notify' adalah pesan yang baru tiba, 'append' adalah pesan yang
+  // disusulkan ponsel — antara lain yang datang saat sesi ini sempat putus.
+  // Keduanya diarsipkan; yang ditolak hanya muatan tanpa daftar pesan.
+  if ((type !== 'notify' && type !== 'append') || !Array.isArray(messages)) return;
+
+  await arsipkanPesan(sesi, messages);
+};
+
+/**
+ * Riwayat lama yang dikirim WhatsApp setelah diminta lewat tarikRiwayat().
+ *
+ * Event yang sama juga dipakai WhatsApp saat perangkat baru ditautkan; karena
+ * syncFullHistory dimatikan, yang datang tanpa diminta hanya sedikit.
+ */
+const tanganiRiwayat = async (sesi: Sesi, muatan: unknown) => {
+  const { messages } = (muatan ?? {}) as { messages?: PesanBaileys[] };
+  if (!Array.isArray(messages) || messages.length === 0) return;
+
+  catat(`riwayat masuk untuk akun ${sesi.accountId}: ${messages.length} pesan`);
+  await arsipkanPesan(sesi, messages);
 };
 
 const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
@@ -291,6 +406,9 @@ const bukaSoket = async (sesi: Sesi) => {
   sock.ev.on('messages.upsert', (muatan) => {
     amanDijalankan('messages.upsert', () => tanganiPesanMasuk(sesi, muatan));
   });
+  sock.ev.on('messaging-history.set', (muatan) => {
+    amanDijalankan('messaging-history.set', () => tanganiRiwayat(sesi, muatan));
+  });
 };
 
 // --- Antarmuka yang dipakai controller ---
@@ -347,6 +465,7 @@ export const connectAccount = async (
     timer: null,
     ditutupSengaja: false,
     catatanTerakhir: null,
+    namaGrup: new Map(),
   };
   sesi.phoneNumber = phoneNumber;
   sesi.status = 'connecting';
@@ -466,7 +585,10 @@ export const shutdownSessions = async () => {
 // --- Grup dan pengiriman pesan (foto absensi ber-stempel) ---
 
 export class GalatSesiWhatsApp extends Error {
-  constructor(pesan: string, public readonly kode: 'tidak_tersambung' | 'tidak_didukung') {
+  constructor(
+    pesan: string,
+    public readonly kode: 'tidak_tersambung' | 'tidak_didukung' | 'tanpa_titik_awal'
+  ) {
     super(pesan);
     this.name = 'GalatSesiWhatsApp';
   }
@@ -496,6 +618,100 @@ export const listGroups = async (accountId: string): Promise<GrupWhatsApp[]> => 
   return Object.values(peta)
     .map((g) => ({ jid: g.id, nama: g.subject, jumlahAnggota: g.participants?.length ?? g.size ?? 0 }))
     .sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
+};
+
+export interface HasilTarikRiwayat {
+  /** Berapa percakapan yang dimintakan riwayatnya. */
+  percakapan: number;
+  /** Berapa pesan yang diminta per percakapan. */
+  jumlahPerPercakapan: number;
+  /** Nama atau nomor percakapan yang diminta, untuk ditampilkan kembali. */
+  daftar: { kontak: string; nama: string | null; sejak: Date }[];
+}
+
+/**
+ * Meminta WhatsApp mengirimkan percakapan yang lebih lama.
+ *
+ * Perangkat tertaut tidak menerima riwayat sebelum ia dipasang, kecuali
+ * diminta. Permintaan itu harus berangkat dari sebuah pesan yang sudah
+ * dikenal — WhatsApp menjawab dengan pesan yang lebih tua dari pesan itu —
+ * jadi titik awalnya diambil dari pesan tertua yang sudah ada di arsip.
+ *
+ * Jawabannya tidak datang seketika. WhatsApp mengirimkannya lewat event
+ * 'messaging-history.set' beberapa saat kemudian, dan pesannya masuk arsip
+ * lewat jalur yang sama dengan pesan baru.
+ */
+export const tarikRiwayat = async (
+  accountId: string,
+  opsi: { jumlah: number; contactNumber?: string }
+): Promise<HasilTarikRiwayat> => {
+  const sock = soketTersambung(accountId);
+  if (!sock.fetchMessageHistory) {
+    throw new GalatSesiWhatsApp('Driver WhatsApp ini tidak mendukung penarikan riwayat', 'tidak_didukung');
+  }
+
+  const percakapan = await prisma.whatsAppConversation.groupBy({
+    by: ['contactNumber', 'groupJid'],
+    where: { accountId, ...(opsi.contactNumber ? { contactNumber: opsi.contactNumber } : {}) },
+    _min: { timestamp: true },
+    // Satu permintaan per percakapan; dibatasi supaya satu klik tidak
+    // menghasilkan ratusan permintaan sekaligus ke server WhatsApp.
+    orderBy: { contactNumber: 'asc' },
+    take: 50,
+  });
+
+  if (percakapan.length === 0) {
+    throw new GalatSesiWhatsApp(
+      'Belum ada pesan sama sekali di arsip nomor ini, jadi tidak ada titik awal untuk menarik riwayat. Tunggu satu pesan masuk lebih dulu.',
+      'tanpa_titik_awal'
+    );
+  }
+
+  const daftar: HasilTarikRiwayat['daftar'] = [];
+
+  for (const c of percakapan) {
+    const tertua = await prisma.whatsAppConversation.findFirst({
+      where: {
+        accountId,
+        contactNumber: c.contactNumber,
+        groupJid: c.groupJid,
+        timestamp: c._min.timestamp ?? undefined,
+      },
+      select: {
+        externalMessageId: true,
+        direction: true,
+        contactNumber: true,
+        groupJid: true,
+        groupName: true,
+        participantNumber: true,
+        timestamp: true,
+      },
+    });
+    if (!tertua) continue;
+
+    const kunci: KunciPesanWhatsApp = {
+      remoteJid: tertua.groupJid ?? `${tertua.contactNumber}@s.whatsapp.net`,
+      id: tertua.externalMessageId,
+      fromMe: tertua.direction === 'outgoing',
+      ...(tertua.groupJid && tertua.participantNumber
+        ? { participant: `${tertua.participantNumber}@s.whatsapp.net` }
+        : {}),
+    };
+
+    try {
+      await sock.fetchMessageHistory(opsi.jumlah, kunci, Math.floor(tertua.timestamp.getTime() / 1000));
+      daftar.push({
+        kontak: tertua.contactNumber,
+        nama: tertua.groupName,
+        sejak: tertua.timestamp,
+      });
+    } catch (error) {
+      // Satu percakapan yang ditolak tidak boleh membatalkan sisanya.
+      catat(`gagal meminta riwayat ${kunci.remoteJid} pada akun ${accountId}`, error);
+    }
+  }
+
+  return { percakapan: daftar.length, jumlahPerPercakapan: opsi.jumlah, daftar };
 };
 
 /** Mengirim gambar berketerangan ke sebuah grup atas nama nomor ini. */
