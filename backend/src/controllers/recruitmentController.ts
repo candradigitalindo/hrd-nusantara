@@ -4,6 +4,7 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
 import { pasanganTeks } from '../utils/richText';
+import { kirimBerkas } from './karierController';
 import {
   canTransition,
   canHire,
@@ -710,4 +711,26 @@ export const getRecruitmentFunnel = async (req: Request, res: Response) => {
         : null,
     bySource: [...perSumber.entries()].map(([source, v]) => ({ source, ...v })),
   });
+};
+
+/**
+ * Berkas CV yang diunggah pelamar lewat portal karier.
+ *
+ * Berkasnya tidak pernah bisa diambil langsung dari penyimpanan: jalurnya
+ * hanya lewat sini, yang memeriksa izin rekrutmen lebih dulu.
+ */
+export const unduhCvPelamar = async (req: Request, res: Response) => {
+  const pelamar = await prisma.candidate.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, name: true, account: { select: { cvPath: true, cvFileName: true } } },
+  });
+  if (!pelamar?.account?.cvPath) return res.status(404).json({ error: 'Pelamar ini tidak punya CV tersimpan' });
+
+  res.locals.audit = {
+    action: 'rekrutmen.cv.lihat',
+    entity: 'Candidate',
+    entityId: pelamar.id,
+    summary: `Membuka CV ${pelamar.name}`,
+  };
+  await kirimBerkas(res, pelamar.account.cvPath, pelamar.account.cvFileName ?? 'cv.pdf');
 };

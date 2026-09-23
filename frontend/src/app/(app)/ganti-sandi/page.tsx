@@ -30,7 +30,7 @@ export default function HalamanGantiSandi() {
       await api.post("/auth/change-password", { currentPassword: v.currentPassword, newPassword: v.newPassword });
       await qc.invalidateQueries({ queryKey: ["sesi"] });
       notifikasi.sukses("Kata sandi diganti", "Gunakan sandi baru saat masuk berikutnya, di web maupun aplikasi Android.");
-      router.replace("/");
+      router.replace("/dashboard");
     } catch (e) {
       notifikasi.galat(e, "Kata sandi belum diganti");
     }

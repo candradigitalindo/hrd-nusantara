@@ -1212,3 +1212,79 @@ export interface InfoTesPublik {
   availableUntil: string | null;
   sudahDikirim: boolean;
 }
+
+// ===================== Portal karier (pelamar) =====================
+
+/**
+ * Lowongan versi publik. Bentuknya sama dengan yang dipakai halaman server
+ * (lib/karier-server.ts); didefinisikan di sini supaya komponen klien tidak
+ * ikut menarik modul "server-only".
+ */
+export interface LowonganPublik {
+  id: string;
+  title: string;
+  description: string;
+  descriptionHtml: string | null;
+  requirements: string;
+  requirementsHtml: string | null;
+  openings: number;
+  employmentType: string | null;
+  salaryRangeMin: number | null;
+  salaryRangeMax: number | null;
+  location: string | null;
+  deadline: string | null;
+  createdAt: string;
+  position: { id: string; name: string; department: { id: string; name: string } | null };
+}
+
+export interface PelamarSesi {
+  id: string;
+  email: string;
+  name: string;
+}
+
+export interface LamaranSaya {
+  id: string;
+  status: TahapKandidat;
+  applicationDate: string;
+  expectedSalary: number | null;
+  coverLetter: string | null;
+  cvUrl: string | null;
+  appliedPosition: {
+    id: string;
+    title: string;
+    status: string;
+    location: string | null;
+    employmentType: string | null;
+    deadline: string | null;
+  };
+  stageHistory: { id: string; fromStage: string | null; toStage: string; createdAt: string }[];
+  /** Hasil dan catatan penilai sengaja tidak dikirim ke pelamar. */
+  interviews: {
+    id: string;
+    scheduledDateTime: string;
+    durationMinutes: number;
+    stage: string;
+    round: number;
+    location: string | null;
+    status: string;
+  }[];
+  cbtAssignments: {
+    id: string;
+    status: StatusPenugasanCbt;
+    availableFrom: string | null;
+    availableUntil: string | null;
+    test: { title: string; durationMinutes: number; _count: { questions: number } };
+  }[];
+}
+
+export interface ProfilPelamar {
+  id: string;
+  email: string;
+  name: string;
+  phoneNumber: string | null;
+  cvFileName: string | null;
+  punyaCv: boolean;
+  createdAt: string;
+  applications: LamaranSaya[];
+}

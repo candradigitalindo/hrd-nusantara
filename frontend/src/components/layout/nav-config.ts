@@ -50,7 +50,7 @@ export interface KelompokMenu {
 }
 
 export const KELOMPOK: KelompokMenu[] = [
-  { id: "beranda", label: "Beranda", icon: LayoutDashboard, item: [{ href: "/", label: "Dashboard", icon: LayoutDashboard, izin: "dashboard.lihat", utama: true }] },
+  { id: "beranda", label: "Beranda", icon: LayoutDashboard, item: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, izin: "dashboard.lihat", utama: true }] },
   {
     id: "komunikasi",
     label: "Komunikasi",

@@ -11,6 +11,14 @@ import { cookies } from "next/headers";
  */
 const BACKEND = process.env.BACKEND_URL ?? "http://localhost:3000";
 export const NAMA_COOKIE = "hrd_sesi";
+/**
+ * Sesi portal karier, terpisah dari sesi karyawan.
+ *
+ * Pelamar bukan karyawan: tokennya tidak boleh dipakai di rute internal, dan
+ * sebaliknya. Dua cookie berbeda membuat pemisahan itu tidak bergantung pada
+ * ketelitian kode di kemudian hari.
+ */
+export const NAMA_COOKIE_PELAMAR = "hrd_pelamar";
 
 const HEADER_DITERUSKAN = ["content-type", "accept", "x-bellys-signature"];
 
@@ -31,7 +39,10 @@ const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...pa
   const ua = req.headers.get("user-agent");
   if (ua) headers.set("user-agent", ua);
 
-  const token = (await cookies()).get(NAMA_COOKIE)?.value;
+  // Jalur /karier/* memakai sesi pelamar; sisanya sesi karyawan.
+  const kePortal = path[0] === "karier";
+  const simpanan = await cookies();
+  const token = simpanan.get(kePortal ? NAMA_COOKIE_PELAMAR : NAMA_COOKIE)?.value;
   if (token) headers.set("authorization", `Bearer ${token}`);
 
   const adaBody = req.method !== "GET" && req.method !== "HEAD";
@@ -42,6 +53,25 @@ const teruskan = async (req: NextRequest, ctx: RouteContext<"/api/backend/[...pa
     redirect: "manual",
     cache: "no-store",
   });
+
+  // Masuk dan mendaftar di portal karier: tokennya dipindahkan ke cookie
+  // httpOnly persis seperti login karyawan, jadi peramban tidak pernah
+  // memegangnya dan XSS tidak bisa mencurinya.
+  const jalur = path.join("/");
+  if ((jalur === "karier/masuk" || jalur === "karier/daftar") && req.method === "POST" && jawaban.ok) {
+    const data = (await jawaban.json()) as { token?: string; pelamar?: unknown; ok?: boolean };
+    const res = NextResponse.json({ pelamar: data.pelamar ?? null, ok: true });
+    if (data.token) {
+      res.cookies.set(NAMA_COOKIE_PELAMAR, data.token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 8 * 60 * 60,
+      });
+    }
+    return res;
+  }
 
   const isLogin = req.method === "POST" && path.join("/") === "auth/login";
   if (isLogin && jawaban.ok) {

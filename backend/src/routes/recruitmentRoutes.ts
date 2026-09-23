@@ -7,6 +7,7 @@ import {
   changeJobPostingStatus,
   createCandidate,
   getAllCandidates,
+  unduhCvPelamar,
   getCandidateById,
   changeCandidateStage,
   hireCandidate,
@@ -80,6 +81,12 @@ router.post(
   requirePermission('rekrutmen.buat'),
   validate(createCandidateSchema),
   asyncHandler(createCandidate)
+);
+router.get(
+  '/candidates/:id/cv',
+  requirePermission(...lihatAtauKelola('rekrutmen')),
+  validate(idParamSchema, 'params'),
+  asyncHandler(unduhCvPelamar)
 );
 router.get(
   '/candidates/:id',

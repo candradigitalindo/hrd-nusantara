@@ -6,23 +6,49 @@ import { NextRequest, NextResponse } from "next/server";
  * API — di sini hanya mencegah orang tanpa sesi melihat kerangka halaman.
  */
 const NAMA_COOKIE = "hrd_sesi";
+const NAMA_COOKIE_PELAMAR = "hrd_pelamar";
+
+/**
+ * Halaman yang memang untuk umum: landing, lowongan, unduhan aplikasi, ujian
+ * bertoken, dan pintu masuk portal karier. Diperiksa sebagai awalan.
+ */
+const PUBLIK = [
+  "/lowongan",
+  "/unduh",
+  "/tes/",
+  "/karier/masuk",
+  "/karier/daftar",
+  // Berkas yang dibaca mesin pencari. Tanpa ini keduanya ikut dipantulkan ke
+  // /login dan yang terbaca crawler adalah halaman HTML, bukan peta situs.
+  "/robots.txt",
+  "/sitemap.xml",
+];
 
 export function proxy(req: NextRequest) {
   const adaSesi = Boolean(req.cookies.get(NAMA_COOKIE)?.value);
+  const adaSesiPelamar = Boolean(req.cookies.get(NAMA_COOKIE_PELAMAR)?.value);
   const { pathname } = req.nextUrl;
 
-  if (pathname.startsWith("/login")) {
-    if (adaSesi) return NextResponse.redirect(new URL("/", req.url));
-    return NextResponse.next();
+  // Akar adalah landing page untuk umum; karyawan yang sudah masuk langsung
+  // dibawa ke dashboard internalnya.
+  if (pathname === "/") {
+    return adaSesi ? NextResponse.redirect(new URL("/dashboard", req.url)) : NextResponse.next();
   }
 
-  // Halaman unduh aplikasi mobile terbuka untuk siapa pun: karyawan
-  // mengunduh APK sebelum punya sesi di ponselnya.
-  if (pathname.startsWith("/unduh")) return NextResponse.next();
+  if (PUBLIK.some((p) => pathname === p || pathname.startsWith(p))) return NextResponse.next();
 
-  // Ujian pelamar dibuka dari tautan bertoken: pelamar memang belum punya
-  // akun, jadi halaman ini tidak boleh dipantulkan ke /login.
-  if (pathname.startsWith("/tes/")) return NextResponse.next();
+  // Portal pelamar punya sesinya sendiri, terpisah dari sesi karyawan.
+  if (pathname.startsWith("/karier")) {
+    if (adaSesiPelamar) return NextResponse.next();
+    const ke = new URL("/karier/masuk", req.url);
+    ke.searchParams.set("kembali", pathname);
+    return NextResponse.redirect(ke);
+  }
+
+  if (pathname.startsWith("/login")) {
+    if (adaSesi) return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.next();
+  }
 
   if (!adaSesi) {
     const ke = new URL("/login", req.url);

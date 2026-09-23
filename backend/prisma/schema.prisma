@@ -685,6 +685,12 @@ model Candidate {
   source String?
 
   expectedSalary  Decimal? @db.Decimal(15, 2)
+
+  /// Surat lamaran yang ditulis pelamar sendiri lewat portal karier.
+  /// Dipisahkan dari `notes` yang merupakan catatan internal HR: yang satu
+  /// ditulis pelamar dan boleh ia baca kembali, yang lain tidak.
+  coverLetter     String?
+
   notes           String?
   rejectionReason String?
 
@@ -694,6 +700,11 @@ model Candidate {
   /// dan pertanyaan seperti "berapa biaya per rekrutan" tidak bisa dijawab.
   hiredEmployee   Employee? @relation("CandidateHire", fields: [hiredEmployeeId], references: [id])
   hiredEmployeeId String?   @unique
+
+  /// Akun portal karier milik pelamar ini. null untuk pelamar yang dicatat HR
+  /// secara manual — mereka tidak punya akses portal.
+  account   CandidateAccount? @relation(fields: [accountId], references: [id])
+  accountId String?
 
   interviews              Interview[]
   psychometricTestResults PsychometricTestResult[]
@@ -706,6 +717,35 @@ model Candidate {
   @@index([appliedPositionId, status])
   @@index([email])
   @@index([status, applicationDate])
+  @@index([accountId])
+}
+
+/// Akun portal karier untuk calon karyawan.
+///
+/// Terpisah dari Employee karena pelamar bukan karyawan: tidak punya NIK,
+/// peran, maupun lingkup data, dan tidak boleh menyentuh satu pun rute
+/// internal. Terpisah pula dari Candidate karena satu orang bisa melamar
+/// beberapa lowongan — satu akun, banyak lamaran.
+model CandidateAccount {
+  id    String @id
+  email String @unique
+  name  String
+
+  phoneNumber String?
+
+  /// Hash bcrypt, sama seperti akun karyawan. Tidak ada akun tanpa sandi.
+  password String
+
+  /// Berkas CV terakhir yang diunggah, dipakai ulang untuk lamaran berikutnya.
+  cvPath     String?
+  cvFileName String?
+
+  lastLoginAt DateTime?
+
+  applications Candidate[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// Riwayat perpindahan tahap seorang pelamar.

@@ -50,7 +50,7 @@ export default function HalamanUnduh() {
           ))}
         </ol>
 
-        <p className="text-center text-xs text-muted"><Link href="/" className="inline-flex items-center gap-1 hover:underline"><ArrowLeft className="h-3 w-3" aria-hidden /> Ke aplikasi web</Link></p>
+        <p className="text-center text-xs text-muted"><Link href="/" className="inline-flex items-center gap-1 hover:underline"><ArrowLeft className="h-3 w-3" aria-hidden /> Ke halaman utama</Link></p>
       </div>
     </div>
   );

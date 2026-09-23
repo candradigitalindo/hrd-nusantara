@@ -34,6 +34,7 @@ import webhookRoutes from './routes/webhookRoutes';
 import mobileReleaseRoutes from './routes/mobileReleaseRoutes';
 import cbtRoutes from './routes/cbtRoutes';
 import cbtPublicRoutes from './routes/cbtPublicRoutes';
+import karierRoutes from './routes/karierRoutes';
 import roleRoutes from './routes/roleRoutes';
 
 export const createApp = () => {
@@ -112,6 +113,10 @@ export const createApp = () => {
   // Tautan ujian pelamar: tanpa akun, jadi harus di atas router yang memasang
   // authenticateToken di '/api'.
   app.use('/api/cbt/publik', cbtPublicRoutes);
+
+  // Portal karier: lowongan publik dan akun pelamar. Sama seperti di atas,
+  // harus di luar jangkauan authenticateToken milik router internal.
+  app.use('/api/karier', karierRoutes);
 
   app.use('/api/auth', authRoutes);
   app.use('/api/employees', employeeRoutes);
