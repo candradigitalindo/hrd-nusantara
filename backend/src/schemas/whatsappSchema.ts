@@ -89,6 +89,18 @@ export const listConversationQuerySchema = z.object({
 });
 
 /**
+ * Daftar utas percakapan: satu baris per lawan bicara (atau grup) per nomor.
+ * Satu kotak pencarian: angka dianggap nomor kontak, selain itu kata di
+ * dalam isi pesan.
+ */
+export const listThreadQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
+  accountId: ulidField.optional(),
+  q: z.string().trim().max(200).optional(),
+});
+
+/**
  * Penarikan riwayat lama, per nomor. Opsional dan atas permintaan: yang
  * ditarik adalah percakapan dari sebelum nomor ini dipantau, jadi harus
  * merupakan keputusan sadar, bukan sesuatu yang berjalan sendiri.
@@ -135,6 +147,7 @@ export type MarkNotifiedInput = z.infer<typeof markNotifiedSchema>;
 export type PurgeInput = z.infer<typeof purgeSchema>;
 export type DisconnectInput = z.infer<typeof disconnectSchema>;
 export type TarikRiwayatInput = z.infer<typeof tarikRiwayatSchema>;
+export type ListThreadQuery = z.infer<typeof listThreadQuerySchema>;
 
 // --- Kepatuhan: setiap karyawan wajib menautkan WhatsApp-nya ---
 

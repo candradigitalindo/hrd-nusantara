@@ -392,6 +392,89 @@ describe('Isi penuh untuk Super Admin', () => {
   });
 });
 
+describe('Utas percakapan dan ringkasan', () => {
+  const kirim = (ubah: Record<string, unknown>) => kirimWebhook(pesan(ubah));
+
+  beforeEach(async () => {
+    expectStatus(await daftarkanNomor(), 201);
+  });
+
+  it('mengelompokkan pesan per lawan bicara, yang terbaru di atas', async () => {
+    expectStatus(await kirim({ messageId: 'a1', body: 'Mau reservasi', timestamp: '2026-09-20T10:00:00.000Z' }), 201);
+    expectStatus(await kirim({ messageId: 'a2', from: NOMOR_PERUSAHAAN, to: NOMOR_PELANGGAN, body: 'Siap, jam berapa?', timestamp: '2026-09-20T10:01:00.000Z' }), 201);
+    expectStatus(await kirim({ messageId: 'b1', from: '08555555555', body: 'Keluhan pesanan', timestamp: '2026-09-21T08:00:00.000Z' }), 201);
+
+    const res = await request(app).get('/api/whatsapp/threads').set(auth(hrToken));
+    expectStatus(res, 200);
+    expect(res.body.pagination.total).toBe(2);
+    // Utas yang terakhir bergerak lebih dulu.
+    expect(res.body.data[0].contactNumber).toBe('628555555555');
+    const pelanggan = res.body.data[1];
+    expect(pelanggan).toMatchObject({ contactNumber: '628222222222', jumlahPesan: 2 });
+    expect(pelanggan.pesanTerakhir).toMatchObject({ cuplikan: 'Siap, jam berapa?', direction: 'outgoing' });
+  });
+
+  it('satu kotak pencarian: angka mencari nomor, kata mencari isi', async () => {
+    expectStatus(await kirim({ messageId: 'c1', body: 'Mau reservasi meja' }), 201);
+    expectStatus(await kirim({ messageId: 'c2', from: '08555555555', body: 'Keluhan: pesanan lama' }), 201);
+
+    // Ditulis seperti orang menulis nomor, bukan seperti yang tersimpan.
+    const nomor = await request(app).get('/api/whatsapp/threads?q=0855 5555 555').set(auth(hrToken));
+    expect(nomor.body.data.map((u: { contactNumber: string }) => u.contactNumber)).toEqual(['628555555555']);
+
+    const kata = await request(app).get('/api/whatsapp/threads?q=keluhan').set(auth(hrToken));
+    expect(kata.body.data.map((u: { contactNumber: string }) => u.contactNumber)).toEqual(['628555555555']);
+
+    // Tanda baca saja tidak boleh berubah menjadi "tampilkan semua".
+    const kosong = await request(app).get('/api/whatsapp/threads?q=%3F%3F').set(auth(hrToken));
+    expect(kosong.body.data).toHaveLength(0);
+  });
+
+  it('utas grup hanya muncul untuk Super Admin', async () => {
+    await makeEmployee({ email: 'super@resto.id', nik: 'SA-1', role: Role.SUPER_ADMIN });
+    const superToken = await login(app, 'super@resto.id');
+    const akun = await prisma.whatsAppAccount.findFirstOrThrow({ select: { id: true } });
+    await prisma.whatsAppConversation.create({
+      data: {
+        id: generateULID(),
+        accountId: akun.id,
+        externalMessageId: 'g-1',
+        senderWhatsappNumber: '628333333333',
+        receiverWhatsappNumber: '12036301234567890',
+        contactNumber: '12036301234567890',
+        messageBody: encryptField('Stok habis'),
+        searchTokens: [],
+        messageType: 'text',
+        timestamp: new Date(),
+        direction: 'incoming',
+        groupJid: '12036301234567890@g.us',
+        groupName: 'Tim Dapur',
+      },
+    });
+
+    const hr = await request(app).get('/api/whatsapp/threads').set(auth(hrToken));
+    expect(hr.body.data).toHaveLength(0);
+    const sa = await request(app).get('/api/whatsapp/threads').set(auth(superToken));
+    expect(sa.body.data[0]).toMatchObject({ groupName: 'Tim Dapur', groupJid: '12036301234567890@g.us' });
+  });
+
+  it('ringkasan menghitung pesan hari ini dan waktu pesan terakhir', async () => {
+    const sekarang = new Date().toISOString();
+    expectStatus(await kirim({ messageId: 'd1', timestamp: '2026-01-01T10:00:00.000Z' }), 201);
+    expectStatus(await kirim({ messageId: 'd2', timestamp: sekarang }), 201);
+
+    const res = await request(app).get('/api/whatsapp/ringkasan').set(auth(hrToken));
+    expectStatus(res, 200);
+    expect(res.body).toMatchObject({ pesanHariIni: 1, totalPesan: 2 });
+    expect(new Date(res.body.pesanTerakhir).toISOString()).toBe(sekarang);
+  });
+
+  it('karyawan biasa tidak boleh membuka utas maupun ringkasan', async () => {
+    expectStatus(await request(app).get('/api/whatsapp/threads').set(auth(budiToken)), 403);
+    expectStatus(await request(app).get('/api/whatsapp/ringkasan').set(auth(budiToken)), 403);
+  });
+});
+
 describe('Sesi Belly\'s dan pemberitahuan', () => {
   it('mencatat sesi terputus dan memperbarui status nomor', async () => {
     const akun = await daftarkanNomor();

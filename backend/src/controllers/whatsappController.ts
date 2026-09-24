@@ -8,6 +8,7 @@ import { decryptField, tokenizeText, blindIndex } from '../utils/fieldCrypto';
 import { retentionCutoff } from '../utils/whatsappRetention';
 import { lokasiMediaWhatsApp, namaUnduhanMedia, GalatMediaWhatsApp } from '../utils/whatsappMedia';
 import fs from 'fs/promises';
+import { DateTime } from 'luxon';
 import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
 import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, statusEfektif, tarikRiwayat, GalatSesiWhatsApp } from '../services/whatsapp/session';
 import { kirimKeKaryawan } from '../services/notification/push';
@@ -24,6 +25,7 @@ import type {
   PurgeInput,
   DisconnectInput,
   TarikRiwayatInput,
+  ListThreadQuery,
   ComplianceQuery,
   RemindInput,
   AttendanceGroupInput,
@@ -335,6 +337,146 @@ export const getConversations = async (req: Request, res: Response) => {
       total,
       totalPages: Math.ceil(total / query.limit) || 1,
     },
+  });
+};
+
+// ============ Utas percakapan ============
+
+/**
+ * Pencarian satu kotak: yang tampak seperti nomor dicocokkan ke nomor kontak,
+ * selain itu dicari sebagai kata di dalam isi pesan lewat indeks buta.
+ * Mengembalikan null bila yang dicari habis oleh tanda baca — pencarian
+ * seperti itu tidak boleh diam-diam berubah menjadi "tampilkan semua".
+ */
+const saringanCari = (q: string | undefined): Prisma.WhatsAppConversationWhereInput | null => {
+  const teks = q?.trim();
+  if (!teks) return {};
+
+  const angka = teks.replace(/[\s+\-()]/g, '');
+  if (/^\d{4,}$/.test(angka)) {
+    // 0812… ditulis orang, 62812… yang tersimpan: keduanya harus ketemu.
+    const inti = angka.startsWith('0') ? angka.slice(1) : angka.startsWith('62') ? angka.slice(2) : angka;
+    return { contactNumber: { contains: inti } };
+  }
+
+  const token = tokenizeText(teks).map(blindIndex);
+  if (token.length === 0) return null;
+  return { searchTokens: { hasEvery: token } };
+};
+
+/**
+ * Daftar utas: satu baris per lawan bicara atau grup, per nomor yang
+ * dipantau, diurutkan dari yang paling baru bergerak.
+ *
+ * Arsip yang ditampilkan sebagai deretan pesan lepas sulit diikuti — pesan
+ * dari lima pelanggan bercampur jadi satu. Utas mengembalikan bentuk yang
+ * dikenal semua orang dari WhatsApp itu sendiri.
+ */
+export const getThreads = async (req: Request, res: Response) => {
+  const { page, limit, accountId, q } = req.query as unknown as ListThreadQuery;
+
+  const cari = saringanCari(q);
+  if (cari === null) {
+    return res.json({ data: [], pagination: { page, limit, total: 0, totalPages: 1 } });
+  }
+
+  const where: Prisma.WhatsAppConversationWhereInput = {
+    ...(accountId ? { accountId } : {}),
+    ...(bolehSeluruhIsi(req.user!.role) ? {} : { groupJid: null }),
+    ...cari,
+  };
+
+  const semuaUtas = await prisma.whatsAppConversation.groupBy({
+    by: ['accountId', 'contactNumber', 'groupJid'],
+    where,
+    _count: { _all: true },
+    _max: { timestamp: true },
+    orderBy: { _max: { timestamp: 'desc' } },
+  });
+
+  const halaman = semuaUtas.slice((page - 1) * limit, page * limit);
+
+  const data = await Promise.all(
+    halaman.map(async (u) => {
+      const terakhir = await prisma.whatsAppConversation.findFirst({
+        where: { ...where, accountId: u.accountId, contactNumber: u.contactNumber, groupJid: u.groupJid },
+        orderBy: { timestamp: 'desc' },
+        select: {
+          messageBody: true,
+          messageType: true,
+          direction: true,
+          timestamp: true,
+          groupName: true,
+          participantNumber: true,
+          mediaPath: true,
+          account: { select: { id: true, label: true, phoneNumber: true, kind: true } },
+          relatedEmployee: { select: { id: true, nik: true, name: true } },
+        },
+      });
+
+      const isi = terakhir ? decryptField(terakhir.messageBody) : '';
+      return {
+        kunci: `${u.accountId}:${u.groupJid ?? u.contactNumber}`,
+        accountId: u.accountId,
+        contactNumber: u.contactNumber,
+        groupJid: u.groupJid,
+        groupName: terakhir?.groupName ?? null,
+        jumlahPesan: u._count._all,
+        account: terakhir?.account ?? null,
+        relatedEmployee: terakhir?.relatedEmployee ?? null,
+        pesanTerakhir: terakhir
+          ? {
+              // Cuplikan, bukan isi utuh: daftar utas tidak perlu memuat
+              // seluruh pesan panjang hanya untuk satu baris pratinjau.
+              cuplikan: isi.length > 140 ? `${isi.slice(0, 140)}…` : isi,
+              messageType: terakhir.messageType,
+              direction: terakhir.direction,
+              timestamp: terakhir.timestamp,
+              participantNumber: terakhir.participantNumber,
+              adaBerkas: terakhir.mediaPath !== null,
+            }
+          : null,
+      };
+    })
+  );
+
+  res.locals.audit = {
+    action: 'whatsapp.threads.read',
+    entity: 'WhatsAppConversation',
+    summary: `Membaca daftar ${data.length} utas dari ${semuaUtas.length}`,
+    metadata: { accountId, pencarian: q, total: semuaUtas.length },
+  };
+
+  res.json({
+    data,
+    pagination: { page, limit, total: semuaUtas.length, totalPages: Math.ceil(semuaUtas.length / limit) || 1 },
+  });
+};
+
+/**
+ * Angka ringkas untuk kepala halaman: seberapa aktif arsip ini sebenarnya.
+ *
+ * "Pesan terakhir" adalah angka yang paling cepat membuka masalah: nomor
+ * yang tercatat tersambung tapi tidak menerima apa pun berhari-hari hampir
+ * pasti sudah tidak benar-benar terpantau.
+ */
+export const getRingkasan = async (req: Request, res: Response) => {
+  const gerbang: Prisma.WhatsAppConversationWhereInput = bolehSeluruhIsi(req.user!.role) ? {} : { groupJid: null };
+  const awalHariIni = DateTime.now().setZone(env.APP_TIMEZONE).startOf('day').toJSDate();
+  const tujuhHari = DateTime.now().setZone(env.APP_TIMEZONE).startOf('day').minus({ days: 6 }).toJSDate();
+
+  const [hariIni, pekanIni, total, terakhir] = await Promise.all([
+    prisma.whatsAppConversation.count({ where: { ...gerbang, timestamp: { gte: awalHariIni } } }),
+    prisma.whatsAppConversation.count({ where: { ...gerbang, timestamp: { gte: tujuhHari } } }),
+    prisma.whatsAppConversation.count({ where: gerbang }),
+    prisma.whatsAppConversation.findFirst({ where: gerbang, orderBy: { timestamp: 'desc' }, select: { timestamp: true } }),
+  ]);
+
+  res.json({
+    pesanHariIni: hariIni,
+    pesanTujuhHari: pekanIni,
+    totalPesan: total,
+    pesanTerakhir: terakhir?.timestamp ?? null,
   });
 };
 

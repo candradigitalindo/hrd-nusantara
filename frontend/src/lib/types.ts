@@ -207,6 +207,34 @@ export interface Percakapan {
   mediaStatus: string | null;
 }
 
+/** Satu utas di daftar percakapan: satu lawan bicara (atau grup) per nomor. */
+export interface UtasWa {
+  kunci: string;
+  accountId: string;
+  contactNumber: string;
+  groupJid: string | null;
+  groupName: string | null;
+  jumlahPesan: number;
+  account: { id: string; label: string; phoneNumber: string | null; kind: string } | null;
+  relatedEmployee: { id: string; nik: string; name: string } | null;
+  pesanTerakhir: {
+    cuplikan: string;
+    messageType: string;
+    direction: "incoming" | "outgoing";
+    timestamp: string;
+    participantNumber: string | null;
+    adaBerkas: boolean;
+  } | null;
+}
+
+/** Angka ringkas untuk kepala halaman pemantauan WhatsApp. */
+export interface RingkasanWa {
+  pesanHariIni: number;
+  pesanTujuhHari: number;
+  totalPesan: number;
+  pesanTerakhir: string | null;
+}
+
 export interface JejakAudit {
   id: string;
   actorId: string | null;

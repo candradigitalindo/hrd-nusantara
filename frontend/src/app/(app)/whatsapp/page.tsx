@@ -2,82 +2,50 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
-import { MessageCircle, Plus, QrCode, Unplug, Search, Smartphone, ArrowDownLeft, ArrowUpRight, BellRing, Link2, Link2Off, ScanLine, UserX, Archive, Check, LogOut, Users, X, UsersRound, Download, FileText, History } from "lucide-react";
+import { LogOut, Unplug } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input, Field, Select } from "@/components/ui/input";
-import { Badge, nadaStatus } from "@/components/ui/badge";
-import { Modal, ConfirmDialog } from "@/components/ui/modal";
-import { Alert } from "@/components/ui/alert";
-import { SkeletonBaris, Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Pagination } from "@/components/ui/pagination";
-import { StatCard } from "@/components/ui/stat-card";
-import { formatTanggal, formatRelatif, labelStatus } from "@/lib/utils";
-import type { Halaman, AkunWhatsApp, SesiWhatsApp, Percakapan, Karyawan, KepatuhanWa, StatusTautanWa, Departemen } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/modal";
+import { PanelPercakapan } from "@/components/whatsapp/percakapan";
+import { PanelNomor, type SaringanNomor } from "@/components/whatsapp/daftar-nomor";
+import { DialogDaftarNomor, DialogQr, DialogTarikRiwayat } from "@/components/whatsapp/dialog-nomor";
+import { cn, formatRelatif, formatTanggal } from "@/lib/utils";
+import type { Halaman, AkunWhatsApp, SesiWhatsApp, KepatuhanWa, Departemen, RingkasanWa } from "@/lib/types";
 
-type FormAkun = { phoneNumber: string; label: string; assignedEmployeeId: string };
+const SEHARI_MS = 24 * 60 * 60 * 1000;
 
-const ukuranBerkas = (bytes: number | null) => {
-  if (!bytes) return null;
-  return bytes >= 1_000_000 ? `${(bytes / 1_000_000).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1000))} KB`;
-};
+/** "sekitar 2 jam yang lalu" → "2 jam lalu": muat di satu sel ringkasan, juga di ponsel. */
+const relatifRingkas = (nilai: string) => formatRelatif(nilai).replace(/^(sekitar|kurang dari) /, "").replace(" yang lalu", " lalu");
 
-const ALASAN_TANPA_BERKAS: Record<string, string> = {
-  terlalu_besar: "Berkas melewati batas ukuran, tidak ikut disimpan",
-  gagal: "Berkas sudah tidak bisa diunduh dari WhatsApp saat pesan ini tiba",
-  tidak_didukung: "Driver WhatsApp saat itu belum bisa mengunduh berkas",
-};
-
-/**
- * Isi berkas sebuah pesan: foto, video, pesan suara, dokumen.
- *
- * Pesan suara dan foto tanpa keterangan tidak punya teks sama sekali, jadi
- * bagian inilah isi pesannya. Berkasnya diambil lewat BFF supaya token sesi
- * ikut terpasang, dan server tetap memeriksa perannya sendiri.
- */
-const MediaPesan = ({ pesan, bolehBuka }: { pesan: Percakapan; bolehBuka: boolean }) => {
-  const url = `/api/backend/whatsapp/conversations/${pesan.id}/media`;
-  const tipe = (pesan.mediaMimeType ?? "").split(";")[0].trim();
-
-  if (!pesan.mediaTersedia) {
-    const alasan = pesan.mediaStatus ? ALASAN_TANPA_BERKAS[pesan.mediaStatus] : null;
-    return alasan ? <p className="mt-1 text-xs italic text-muted">{alasan}</p> : null;
-  }
-
-  if (!bolehBuka) {
-    return <p className="mt-1 text-xs italic text-muted">Berkas {pesan.messageType} tersimpan — hanya Super Admin yang bisa membukanya</p>;
-  }
-
-  const keterangan = [pesan.mediaFileName, ukuranBerkas(pesan.mediaSizeBytes)].filter(Boolean).join(" · ");
-
-  return (
-    <div className="mt-2 space-y-1">
-      {tipe.startsWith("image/") ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={pesan.mediaFileName ?? "Foto dari WhatsApp"} className="max-h-72 rounded-xl border border-border object-contain" loading="lazy" />
-      ) : tipe.startsWith("video/") ? (
-        <video src={url} controls preload="metadata" className="max-h-72 w-full max-w-lg rounded-xl border border-border" />
-      ) : tipe.startsWith("audio/") ? (
-        <audio src={url} controls preload="none" className="w-full max-w-sm" />
-      ) : (
-        <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-          <FileText className="h-4 w-4" aria-hidden /> {pesan.mediaFileName ?? "Buka berkas"}
-        </a>
-      )}
-      <p className="flex items-center gap-2 text-xs text-muted">
-        {keterangan}
-        <a href={url} download className="inline-flex items-center gap-1 text-primary hover:underline">
-          <Download className="h-3 w-3" aria-hidden /> Unduh
-        </a>
-      </p>
-    </div>
+/** Satu angka di kepala halaman. Bisa ditekan bila angka itu menunjuk ke tindakan. */
+const Angka = ({
+  label,
+  nilai,
+  keterangan,
+  nada,
+  onClick,
+}: {
+  label: string;
+  nilai: React.ReactNode;
+  keterangan?: React.ReactNode;
+  nada?: "peringatan" | "bahaya";
+  onClick?: () => void;
+}) => {
+  const isi = (
+    <>
+      <p className="text-xs text-muted">{label}</p>
+      <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", nada === "peringatan" && "text-warning", nada === "bahaya" && "text-danger")}>{nilai}</p>
+      {keterangan && <p className="mt-0.5 truncate text-xs text-muted">{keterangan}</p>}
+    </>
+  );
+  return onClick ? (
+    <button type="button" onClick={onClick} className="min-w-0 bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+      {isi}
+    </button>
+  ) : (
+    <div className="min-w-0 bg-surface px-4 py-3">{isi}</div>
   );
 };
 
@@ -86,102 +54,48 @@ export default function HalamanWhatsApp() {
   const { data: saya } = useSesi();
   const bolehBuat = punyaIzin(saya, "whatsapp.buat");
   const bolehUbah = punyaIzin(saya, "whatsapp.ubah");
-  // Pesan grup dan berkas media hanya terbuka untuk Super Admin; server
-  // menyaringnya juga, ini semata supaya tombolnya tidak muncul sia-sia.
+  // Pesan grup, berkas media, dan penarikan riwayat hanya untuk Super Admin;
+  // server menyaringnya juga, ini semata supaya tombolnya tidak muncul sia-sia.
   const seluruhIsi = saya?.role === "SUPER_ADMIN";
-  const [tab, setTab] = React.useState<"kepatuhan" | "nomor" | "arsip">("kepatuhan");
-  const [filterStatus, setFilterStatus] = React.useState<StatusTautanWa | "">("");
-  const [filterDept, setFilterDept] = React.useState("");
-  const [arsipKaryawan, setArsipKaryawan] = React.useState<{ id: string; name: string } | null>(null);
-  const [arsipGrup, setArsipGrup] = React.useState<{ jid: string; nama: string } | null>(null);
-  const [tarikUntuk, setTarikUntuk] = React.useState<AkunWhatsApp | null>(null);
+
+  const [tab, setTab] = React.useState<"percakapan" | "nomor">("percakapan");
+  const [saringan, setSaringan] = React.useState<SaringanNomor>("semua");
+  const [accountId, setAccountId] = React.useState("");
   const [formBuka, setFormBuka] = React.useState(false);
   const [qrUntuk, setQrUntuk] = React.useState<AkunWhatsApp | null>(null);
+  const [tarikUntuk, setTarikUntuk] = React.useState<AkunWhatsApp | null>(null);
   const [putus, setPutus] = React.useState<{ akun: AkunWhatsApp; logout: boolean } | null>(null);
-  const [cari, setCari] = React.useState("");
-  const [cariTunda, setCariTunda] = React.useState("");
-  const [page, setPage] = React.useState(1);
-
-  React.useEffect(() => {
-    const t = setTimeout(() => { setCariTunda(cari.trim()); setPage(1); }, 400);
-    return () => clearTimeout(t);
-  }, [cari]);
 
   const akun = useQuery({
     queryKey: ["wa", "akun"],
     queryFn: async () => (await api.get<Halaman<AkunWhatsApp>>("/whatsapp/accounts?limit=100")).data.data,
     refetchInterval: 15_000,
   });
-
-  const karyawan = useQuery({
-    queryKey: ["karyawan", "pilihan"],
-    queryFn: async () => (await api.get<Halaman<Karyawan>>("/employees?limit=100")).data.data,
-    enabled: formBuka,
-  });
-
-  const paramsArsip = new URLSearchParams({ page: String(page), limit: "20" });
-  if (cariTunda.length >= 2) paramsArsip.set("search", cariTunda);
-  if (arsipKaryawan) paramsArsip.set("employeeId", arsipKaryawan.id);
-  if (arsipGrup) paramsArsip.set("groupJid", arsipGrup.jid);
-
-  const departemen = useQuery({ queryKey: ["departemen", "semua"], queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data, enabled: tab === "kepatuhan" });
   const kepatuhan = useQuery({
-    queryKey: ["wa", "kepatuhan", filterDept],
-    queryFn: async () => (await api.get<KepatuhanWa>(`/whatsapp/compliance${filterDept ? `?departmentId=${filterDept}` : ""}`)).data,
-    enabled: tab === "kepatuhan",
+    queryKey: ["wa", "kepatuhan"],
+    queryFn: async () => (await api.get<KepatuhanWa>("/whatsapp/compliance")).data,
+    refetchInterval: 30_000,
+  });
+  const ringkasan = useQuery({
+    queryKey: ["wa", "ringkasan"],
+    queryFn: async () => (await api.get<RingkasanWa>("/whatsapp/ringkasan")).data,
     refetchInterval: 15_000,
   });
+  const departemen = useQuery({
+    queryKey: ["departemen", "semua"],
+    queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data,
+    enabled: tab === "nomor",
+  });
+
   const ingatkan = useMutation({
-    mutationFn: async (employeeIds?: string[]) => (await api.post<{ diminta: number; terkirim: number }>("/whatsapp/compliance/remind", employeeIds ? { employeeIds } : {})).data,
-    onSuccess: (r) => notifikasi.sukses(`Pengingat dikirim ke ${r.terkirim} dari ${r.diminta} karyawan`, r.terkirim < r.diminta ? "Sisanya belum memasang aplikasi mobile atau belum mengizinkan notifikasi." : "Semua menerima push di ponselnya."),
+    mutationFn: async (employeeIds?: string[]) =>
+      (await api.post<{ diminta: number; terkirim: number }>("/whatsapp/compliance/remind", employeeIds ? { employeeIds } : {})).data,
+    onSuccess: (r) =>
+      notifikasi.sukses(
+        `Pengingat dikirim ke ${r.terkirim} dari ${r.diminta} karyawan`,
+        r.terkirim < r.diminta ? "Sisanya belum memasang aplikasi mobile atau belum mengizinkan notifikasi." : "Semua menerima push di ponselnya."
+      ),
     onError: (e) => notifikasi.galat(e, "Pengingat gagal dikirim"),
-  });
-  // Penarikan riwayat lama: opsional, per nomor, dan hanya Super Admin.
-  const tarikRiwayat = useMutation({
-    mutationFn: async (v: { akun: AkunWhatsApp; jumlah: number; contactNumber: string }) =>
-      (await api.post<{ percakapan: number; jumlahPerPercakapan: number; catatan: string }>(
-        `/whatsapp/accounts/${v.akun.id}/riwayat`,
-        { jumlah: v.jumlah, ...(v.contactNumber.trim() ? { contactNumber: v.contactNumber.trim() } : {}) }
-      )).data,
-    onSuccess: (r) => {
-      notifikasi.sukses(`Permintaan terkirim untuk ${r.percakapan} percakapan`, r.catatan);
-      setTarikUntuk(null);
-    },
-    onError: (e) => notifikasi.galat(e, "Riwayat gagal ditarik"),
-  });
-
-  const arsip = useQuery({
-    queryKey: ["wa", "arsip", paramsArsip.toString()],
-    queryFn: async () => (await api.get<Halaman<Percakapan>>(`/whatsapp/conversations?${paramsArsip}`)).data,
-    enabled: tab === "arsip",
-    placeholderData: (prev) => prev,
-  });
-
-  // QR diperbarui WhatsApp tiap ~20 detik; poll tiap 3 detik selama modal terbuka.
-  const sesi = useQuery({
-    queryKey: ["wa", "sesi", qrUntuk?.id],
-    queryFn: async () => (await api.get<SesiWhatsApp>(`/whatsapp/accounts/${qrUntuk!.id}/session`)).data,
-    enabled: Boolean(qrUntuk),
-    refetchInterval: (q) => (q.state.data?.status === "connected" ? false : 3000),
-  });
-
-  const tersambung = Boolean(qrUntuk) && sesi.data?.status === "connected";
-
-  // Efek ini hanya memberi tahu dan menyegarkan daftar — tidak menyetel state.
-  // Penutupan modal diserahkan ke pengguna lewat tombol "Selesai".
-  React.useEffect(() => {
-    if (!tersambung) return;
-    notifikasi.sukses("Nomor tersambung", "Pesan mulai terarsip untuk nomor ini.");
-    qc.invalidateQueries({ queryKey: ["wa", "akun"] });
-  }, [tersambung, qc]);
-
-  const fa = useForm<FormAkun>({ defaultValues: { phoneNumber: "", label: "", assignedEmployeeId: "" } });
-
-  const daftarkan = useMutation({
-    mutationFn: async (v: FormAkun) =>
-      (await api.post<AkunWhatsApp>("/whatsapp/accounts", { phoneNumber: v.phoneNumber, label: v.label, ...(v.assignedEmployeeId ? { assignedEmployeeId: v.assignedEmployeeId } : {}) })).data,
-    onSuccess: (a) => { qc.invalidateQueries({ queryKey: ["wa", "akun"] }); notifikasi.sukses("Nomor didaftarkan", `${a.label} · ${a.phoneNumber}`); setFormBuka(false); fa.reset(); },
-    onError: (e) => notifikasi.galat(e, "Gagal mendaftarkan nomor"),
   });
 
   const sambungkan = useMutation({
@@ -192,262 +106,140 @@ export default function HalamanWhatsApp() {
 
   const putuskan = useMutation({
     mutationFn: async ({ akun, logout }: { akun: AkunWhatsApp; logout: boolean }) => api.post(`/whatsapp/accounts/${akun.id}/disconnect`, { logout }),
-    onSuccess: (_, v) => { qc.invalidateQueries({ queryKey: ["wa", "akun"] }); notifikasi.sukses(v.logout ? "Sesi di-logout" : "Sesi diputus", v.logout ? "Pemegang nomor harus scan QR ulang." : "Bisa disambungkan lagi tanpa scan."); setPutus(null); },
+    onSuccess: (_, v) => {
+      qc.invalidateQueries({ queryKey: ["wa"] });
+      notifikasi.sukses(v.logout ? "Sesi di-logout" : "Sesi diputus", v.logout ? "Pemegang nomor harus scan QR ulang." : "Bisa disambungkan lagi tanpa scan.");
+      setPutus(null);
+    },
     onError: (e) => notifikasi.galat(e),
   });
+
+  // --- Angka kepala halaman ---
+  const perusahaan = (akun.data ?? []).filter((a) => a.kind === "company");
+  const nomorTotal = (kepatuhan.data?.summary.total ?? 0) + perusahaan.length;
+  const nomorTersambung = (kepatuhan.data?.summary.connected ?? 0) + perusahaan.filter((a) => a.sessionStatus === "connected").length;
+  const perlu = nomorTotal - nomorTersambung;
+  const r = ringkasan.data;
+  // Nomor tercatat tersambung tapi tidak menerima apa pun sehari penuh hampir
+  // pasti sudah tidak benar-benar terpantau — itu yang paling perlu terlihat.
+  // Diukur terhadap waktu ringkasan diambil, bukan jam render, supaya hasil
+  // render tetap sama untuk data yang sama.
+  const sepi =
+    Boolean(r?.pesanTerakhir) && nomorTersambung > 0 && ringkasan.dataUpdatedAt - new Date(r!.pesanTerakhir!).getTime() > SEHARI_MS;
+
+  const bukaNomor = (s: SaringanNomor) => {
+    setSaringan(s);
+    setTab("nomor");
+  };
 
   return (
     <>
       <PageHeader
         title="Pemantauan WhatsApp"
-        description="Setiap karyawan terdaftar wajib menautkan WhatsApp-nya lewat aplikasi mobile; nomor perusahaan didaftarkan HR. Seluruh pesan teks terarsip terenkripsi."
-        actions={tab === "nomor" ? bolehBuat && <Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor</Button> : tab === "kepatuhan" ? bolehUbah && <Button onClick={() => ingatkan.mutate(undefined)} loading={ingatkan.isPending} disabled={!kepatuhan.data || kepatuhan.data.summary.connected === kepatuhan.data.summary.total}>{!ingatkan.isPending && <BellRing className="h-4 w-4" aria-hidden />} Ingatkan yang Belum</Button> : null}
+        description="Percakapan nomor karyawan dan nomor perusahaan, tersimpan terenkripsi. Membaca di sini tidak menandai pesan terbaca di ponsel."
       />
 
-      <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
-        {(["kepatuhan", "nomor", "arsip"] as const).map((t) => (
-          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
-            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}>
-            {t === "kepatuhan" ? "Kepatuhan Karyawan" : t === "nomor" ? "Semua Nomor" : "Arsip Percakapan"}
+      {/* gap-px di atas latar garis: pembatas antarsel rapi di 2 maupun 4 kolom. */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border lg:grid-cols-4">
+        <Angka
+          label="Nomor tersambung"
+          nilai={kepatuhan.isLoading ? "—" : `${nomorTersambung}/${nomorTotal}`}
+          keterangan={nomorTotal ? `${Math.round((nomorTersambung / nomorTotal) * 100)}% terpantau` : "Belum ada nomor"}
+          onClick={() => bukaNomor("tersambung")}
+        />
+        <Angka
+          label="Perlu tindakan"
+          nilai={kepatuhan.isLoading ? "—" : perlu}
+          nada={perlu > 0 ? "peringatan" : undefined}
+          keterangan={perlu > 0 ? "Lihat daftarnya" : "Semua nomor tersambung"}
+          onClick={() => bukaNomor("perlu")}
+        />
+        <Angka
+          label="Pesan hari ini"
+          nilai={r ? r.pesanHariIni.toLocaleString("id-ID") : "—"}
+          keterangan={r ? `${r.pesanTujuhHari.toLocaleString("id-ID")} dalam 7 hari · ${r.totalPesan.toLocaleString("id-ID")} total` : undefined}
+        />
+        <Angka
+          label="Pesan terakhir"
+          nilai={r?.pesanTerakhir ? relatifRingkas(r.pesanTerakhir) : "Belum ada"}
+          nada={sepi ? "bahaya" : undefined}
+          keterangan={sepi ? "Sepi >24 jam — periksa sambungan" : r?.pesanTerakhir ? formatTanggal(r.pesanTerakhir, "EEEE, d MMM HH:mm") : undefined}
+        />
+      </div>
+
+      <div className="flex w-fit gap-1 rounded-xl bg-surface-2 p-1" role="tablist">
+        {([
+          ["percakapan", "Percakapan"],
+          ["nomor", "Nomor"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+            className={cn("inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors", tab === id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground")}
+          >
+            {label}
+            {id === "nomor" && perlu > 0 && <span className="rounded-full bg-warning-soft px-1.5 text-xs tabular-nums text-warning">{perlu}</span>}
           </button>
         ))}
       </div>
 
-      {tab === "kepatuhan" && (
-        <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            {([
-              { kode: "connected", label: "Tersambung", icon: Link2, tone: "success" },
-              { kode: "disconnected", label: "Terputus", icon: Link2Off, tone: "danger" },
-              { kode: "pending_scan", label: "Menunggu scan", icon: ScanLine, tone: "warning" },
-              { kode: "never_linked", label: "Belum ditautkan", icon: UserX, tone: "danger" },
-            ] as const).map((s) => (
-              <button key={s.kode} type="button" aria-pressed={filterStatus === s.kode} onClick={() => setFilterStatus(filterStatus === s.kode ? "" : s.kode)} className="rounded-2xl text-left ring-2 ring-transparent transition-shadow aria-pressed:ring-primary focus-visible:outline-none focus-visible:ring-ring">
-                <StatCard label={s.label} value={kepatuhan.data ? kepatuhan.data.summary[s.kode === "pending_scan" ? "pendingScan" : s.kode === "never_linked" ? "neverLinked" : s.kode] : "—"} hint={kepatuhan.data ? `dari ${kepatuhan.data.summary.total} karyawan aktif` : undefined} icon={s.icon} tone={s.tone} />
-              </button>
-            ))}
-          </div>
-          <div className="sm:w-64"><Select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} aria-label="Departemen"><option value="">Semua departemen</option>{(departemen.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></div>
-          <Card>
-            {kepatuhan.isLoading ? <SkeletonBaris /> : !kepatuhan.data?.data.length ? <EmptyState icon={Smartphone} title="Tidak ada karyawan aktif" /> : (
-              <ul className="divide-y divide-border">
-                {kepatuhan.data.data.filter((b) => !filterStatus || b.status === filterStatus).map((b) => (
-                  <li key={b.employee.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 p-4 animate-fade-up">
-                    <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-lg", b.status === "connected" ? "bg-success-soft text-success" : b.status === "pending_scan" ? "bg-warning-soft text-warning" : "bg-danger-soft text-danger")} aria-hidden>{b.status === "connected" ? <Link2 className="h-4 w-4" /> : <Link2Off className="h-4 w-4" />}</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium">{b.employee.name} <span className="text-xs font-normal text-muted">{b.employee.nik}{b.employee.department ? ` · ${b.employee.department.name}` : ""}</span></p>
-                      <p className="text-xs text-muted tabular-nums">{b.phoneNumber ? `+${b.phoneNumber}` : "nomor belum diketahui"}{b.lastConnectedAt ? ` · tersambung ${formatRelatif(b.lastConnectedAt)}` : ""}{b.status === "disconnected" && b.lastDisconnectedAt ? ` · putus ${formatRelatif(b.lastDisconnectedAt)}` : ""}{b.status === "connected" ? (b.attendanceGroupName ? ` · foto absensi → ${b.attendanceGroupName}` : " · grup foto absensi belum dipilih") : ""}</p>
-                    </div>
-                    <Badge tone={nadaStatus(b.status)} dot>{labelStatus(b.status)}</Badge>
-                    {bolehUbah && b.status !== "connected" && <Button size="sm" variant="ghost" onClick={() => ingatkan.mutate([b.employee.id])} loading={ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id}>{!(ingatkan.isPending && ingatkan.variables?.[0] === b.employee.id) && <BellRing className="h-4 w-4" aria-hidden />} Ingatkan</Button>}
-                    {b.accountId && <Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan({ id: b.employee.id, name: b.employee.name }); setPage(1); setTab("arsip"); }}><Archive className="h-4 w-4" aria-hidden /> Arsip</Button>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </>
+      {tab === "percakapan" ? (
+        <PanelPercakapan
+          akun={akun.data ?? []}
+          accountId={accountId}
+          onAccountId={setAccountId}
+          seluruhIsi={seluruhIsi}
+          nomorTersambung={nomorTersambung}
+          nomorTotal={nomorTotal}
+          onLihatNomor={() => bukaNomor("perlu")}
+        />
+      ) : (
+        <PanelNomor
+          kepatuhan={kepatuhan.data?.data ?? []}
+          akun={akun.data ?? []}
+          departemen={departemen.data ?? []}
+          memuat={kepatuhan.isLoading || akun.isLoading}
+          saringan={saringan}
+          onSaringan={setSaringan}
+          bolehBuat={bolehBuat}
+          bolehUbah={bolehUbah}
+          seluruhIsi={seluruhIsi}
+          ingatkanUntuk={ingatkan.isPending ? (ingatkan.variables && ingatkan.variables.length === 1 ? ingatkan.variables[0] : "semua") : null}
+          sambungkanUntuk={sambungkan.isPending ? (sambungkan.variables?.id ?? null) : null}
+          onIngatkan={(ids) => ingatkan.mutate(ids)}
+          onSambungkan={(a) => sambungkan.mutate(a)}
+          onPutus={(a, logout) => setPutus({ akun: a, logout })}
+          onTarik={setTarikUntuk}
+          onLihatPercakapan={(id) => {
+            setAccountId(id);
+            setTab("percakapan");
+          }}
+          onDaftarkan={() => setFormBuka(true)}
+        />
       )}
 
-      {tab === "nomor" ? (
-        akun.isLoading ? <SkeletonBaris /> : !akun.data?.length ? (
-          <Card><EmptyState icon={Smartphone} title="Belum ada nomor" description="Nomor pribadi muncul begitu karyawan menautkan lewat aplikasi mobile. Nomor CS outlet atau reservasi hotel didaftarkan di sini." action={<Button onClick={() => setFormBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Daftarkan Nomor Perusahaan</Button>} /></Card>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {akun.data.map((a) => (
-              <Card key={a.id} className="animate-fade-up">
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <CardTitle className="truncate">{a.label} <Badge tone={a.kind === "personal" ? "info" : "neutral"}>{a.kind === "personal" ? "Pribadi" : "Perusahaan"}</Badge></CardTitle>
-                      <CardDescription className="tabular-nums">{a.phoneNumber ? `+${a.phoneNumber}` : "nomor terisi setelah dipindai"}</CardDescription>
-                    </div>
-                    <Badge tone={nadaStatus(a.sessionStatus)} dot>{labelStatus(a.sessionStatus)}</Badge>
-                  </div>
-                  <p className="text-xs text-muted">
-                    {a.assignedEmployee ? `Dipegang ${a.assignedEmployee.name}` : "Belum ada pemegang"}
-                    {a.lastConnectedAt ? ` · tersambung ${formatRelatif(a.lastConnectedAt)}` : ""}
-                  </p>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {!bolehUbah ? null : a.sessionStatus !== "connected" ? (
-                    <Button size="sm" onClick={() => sambungkan.mutate(a)} loading={sambungkan.isPending && sambungkan.variables?.id === a.id}>
-                      {!(sambungkan.isPending && sambungkan.variables?.id === a.id) && <QrCode className="h-4 w-4" aria-hidden />} Sambungkan
-                    </Button>
-                  ) : (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => setPutus({ akun: a, logout: false })}><Unplug className="h-4 w-4" aria-hidden /> Putus</Button>
-                      <Button size="sm" variant="ghost" className="text-danger" onClick={() => setPutus({ akun: a, logout: true })}><LogOut className="h-4 w-4" aria-hidden /> Logout</Button>
-                    </>
-                  )}
-                  {seluruhIsi && a.sessionStatus === "connected" && (
-                    <Button size="sm" variant="outline" onClick={() => setTarikUntuk(a)}>
-                      <History className="h-4 w-4" aria-hidden /> Tarik Riwayat Lama
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )
-      ) : tab === "arsip" ? (
-        <Card>
-          <div className="border-b border-border p-3">
-            {arsipKaryawan && <div className="mb-2 flex items-center gap-2 text-sm"><Badge tone="info">Arsip {arsipKaryawan.name}</Badge><Button size="sm" variant="ghost" onClick={() => { setArsipKaryawan(null); setPage(1); }}><Users className="h-4 w-4" aria-hidden /> Semua karyawan</Button></div>}
-            {arsipGrup && <div className="mb-2 flex items-center gap-2 text-sm"><Badge tone="info"><UsersRound className="h-3 w-3" aria-hidden /> {arsipGrup.nama}</Badge><Button size="sm" variant="ghost" onClick={() => { setArsipGrup(null); setPage(1); }}><X className="h-4 w-4" aria-hidden /> Semua percakapan</Button></div>}
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
-              <Input className="pl-9" placeholder="Cari kata dalam percakapan, mis. keluhan" value={cari} onChange={(e) => setCari(e.target.value)} aria-label="Cari percakapan" />
-            </div>
-            <p className="mt-2 text-xs text-muted">Pencarian per kata utuh — isi pesan tersimpan terenkripsi, jadi &quot;keluhan&quot; ditemukan, &quot;keluh&quot; tidak.</p>
-          </div>
-          {arsip.isLoading ? <SkeletonBaris /> : !arsip.data?.data.length ? (
-            <EmptyState icon={MessageCircle} title={cariTunda ? "Tidak ada yang cocok" : "Arsip masih kosong"} description={cariTunda ? "Coba kata lain, dalam bentuk kata utuh." : "Pesan akan muncul begitu ada nomor yang tersambung."} />
-          ) : (
-            <>
-              <ul className="divide-y divide-border">
-                {arsip.data.data.map((p) => (
-                  <li key={p.id} className="flex gap-3 p-4 animate-fade-up">
-                    <span className={`mt-0.5 shrink-0 rounded-lg p-1.5 ${p.direction === "incoming" ? "bg-info-soft text-info" : "bg-success-soft text-success"}`}>
-                      {p.direction === "incoming" ? <ArrowDownLeft className="h-4 w-4" aria-hidden /> : <ArrowUpRight className="h-4 w-4" aria-hidden />}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-                        <p className="text-sm font-medium truncate">
-                          {(() => {
-                            // Grup tidak punya nomor lawan bicara yang berarti:
-                            // angka JID-nya bukan nomor telepon siapa pun.
-                            const lawan = p.groupJid ? (p.groupName ?? "Grup") : `+${p.contactNumber}`;
-                            return p.direction === "incoming" ? `${lawan} → ${p.account.label}` : `${p.account.label} → ${lawan}`;
-                          })()}
-                        </p>
-                        <time className="text-xs text-muted tabular-nums">{formatTanggal(p.timestamp, "d MMM HH:mm")}</time>
-                      </div>
-                      {p.groupJid && (
-                        <button
-                          type="button"
-                          onClick={() => { setArsipGrup({ jid: p.groupJid!, nama: p.groupName ?? "Grup tanpa nama" }); setPage(1); }}
-                          className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                        >
-                          <UsersRound className="h-3 w-3" aria-hidden />
-                          {p.groupName ?? "Grup tanpa nama"}
-                          {p.participantNumber && <span className="text-muted">· +{p.participantNumber}</span>}
-                        </button>
-                      )}
-                      <p className="mt-1 text-sm whitespace-pre-wrap break-words">{p.messageBody || <span className="italic text-muted">[{p.messageType}]</span>}</p>
-                      <MediaPesan pesan={p} bolehBuka={seluruhIsi} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <Pagination pagination={arsip.data.pagination} onPage={setPage} />
-            </>
-          )}
-        </Card>
-      ) : null}
+      <DialogDaftarNomor open={formBuka} onClose={() => setFormBuka(false)} />
+      <DialogQr akun={qrUntuk} onClose={() => setQrUntuk(null)} />
+      {/* key: tiap nomor membuka dialog dengan isian bersih. */}
+      <DialogTarikRiwayat key={tarikUntuk?.id ?? "kosong"} akun={tarikUntuk} onClose={() => setTarikUntuk(null)} />
 
-      <Modal open={formBuka} onClose={() => setFormBuka(false)} title="Daftarkan Nomor Perusahaan" description="Nomor ini akan dipantau. Pastikan ini nomor milik perusahaan, bukan pribadi."
-        footer={<><Button variant="outline" onClick={() => setFormBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-akun" type="submit" loading={daftarkan.isPending}>{!daftarkan.isPending && <Plus className="h-4 w-4" aria-hidden />} Daftarkan</Button></>}>
-        <form id="form-akun" onSubmit={fa.handleSubmit((v) => daftarkan.mutate(v))} className="space-y-4" noValidate>
-          <Field label="Nomor WhatsApp" error={fa.formState.errors.phoneNumber?.message} hint="Format 08xx atau +62xx">
-            <Input inputMode="tel" placeholder="0811 1111 111" {...fa.register("phoneNumber", { required: "Nomor wajib diisi", minLength: { value: 8, message: "Nomor terlalu pendek" } })} />
-          </Field>
-          <Field label="Label" error={fa.formState.errors.label?.message}>
-            <Input placeholder="CS Outlet Kemang" {...fa.register("label", { required: "Label wajib diisi" })} />
-          </Field>
-          <Field label="Pemegang nomor" hint="Karyawan yang akan diberi tahu bila sesi terputus">
-            <Select {...fa.register("assignedEmployeeId")}>
-              <option value="">— Belum ditentukan —</option>
-              {(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name} · {k.nik}</option>)}
-            </Select>
-          </Field>
-        </form>
-      </Modal>
-
-      <Modal open={Boolean(qrUntuk)} onClose={() => setQrUntuk(null)} title="Pindai QR dengan WhatsApp" description={qrUntuk ? `${qrUntuk.label}${qrUntuk.phoneNumber ? ` · +${qrUntuk.phoneNumber}` : ""}` : undefined}>
-        <div className="flex flex-col items-center gap-4">
-          {tersambung ? (
-            <Alert tone="success" title="Tersambung" className="w-full" action={<Button size="sm" onClick={() => setQrUntuk(null)}><Check className="h-4 w-4" aria-hidden /> Selesai</Button>}>
-              Nomor ini kini terpantau. Pesan yang masuk akan muncul di arsip.
-            </Alert>
-          ) : sesi.data?.qr ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={sesi.data.qr} alt="Kode QR untuk menautkan WhatsApp" className="h-64 w-64 rounded-xl border border-border bg-white p-2" />
-          ) : (
-            <Skeleton className="h-64 w-64 rounded-xl" />
-          )}
-          <Alert tone="info" title="Di ponsel perusahaan" className="w-full">
-            Buka WhatsApp → Perangkat Tertaut → Tautkan perangkat, lalu arahkan kamera ke kode ini. QR diperbarui otomatis setiap ~20 detik.
-          </Alert>
-          {sesi.data?.catatan && <p className="text-xs text-muted">{sesi.data.catatan}</p>}
-        </div>
-      </Modal>
-
-      <ConfirmDialog open={Boolean(putus)} onClose={() => setPutus(null)} onConfirm={() => putus && putuskan.mutate(putus)} loading={putuskan.isPending} danger={putus?.logout}
+      <ConfirmDialog
+        open={Boolean(putus)}
+        onClose={() => setPutus(null)}
+        onConfirm={() => putus && putuskan.mutate(putus)}
+        loading={putuskan.isPending}
+        danger={putus?.logout}
         title={putus?.logout ? "Logout sesi WhatsApp?" : "Putus sesi sementara?"}
-        description={putus?.logout ? "Pairing dihapus di sisi WhatsApp. Pemegang nomor harus memindai QR lagi untuk menyambungkan." : "Sesi ditutup tanpa menghapus pairing, bisa disambungkan lagi tanpa scan ulang."}
-        confirmLabel={putus?.logout ? "Logout" : "Putus"} confirmIcon={putus?.logout ? LogOut : Unplug} />
-
-      <DialogTarikRiwayat
-        akun={tarikUntuk}
-        onClose={() => setTarikUntuk(null)}
-        onKirim={(jumlah, contactNumber) => tarikUntuk && tarikRiwayat.mutate({ akun: tarikUntuk, jumlah, contactNumber })}
-        loading={tarikRiwayat.isPending}
+        description={
+          putus?.logout
+            ? `${putus.akun.label}: pairing dihapus di sisi WhatsApp. Pemegang nomor harus memindai QR lagi untuk menyambungkan.`
+            : `${putus?.akun.label ?? ""}: sesi ditutup tanpa menghapus pairing, bisa disambungkan lagi tanpa scan ulang.`
+        }
+        confirmLabel={putus?.logout ? "Logout" : "Putus"}
+        confirmIcon={putus?.logout ? LogOut : Unplug}
       />
     </>
   );
 }
-
-/**
- * Menarik percakapan lama sebuah nomor.
- *
- * Bawaannya sistem hanya mengarsipkan percakapan sejak nomor dipantau.
- * Riwayat sebelum itu ditarik hanya kalau memang diperlukan, per nomor, dan
- * atas keputusan Super Admin — karena isinya percakapan dari masa sebelum
- * pemantauan berjalan.
- */
-const DialogTarikRiwayat = ({
-  akun,
-  onClose,
-  onKirim,
-  loading,
-}: {
-  akun: AkunWhatsApp | null;
-  onClose: () => void;
-  onKirim: (jumlah: number, contactNumber: string) => void;
-  loading: boolean;
-}) => {
-  const [jumlah, setJumlah] = React.useState("50");
-  const [kontak, setKontak] = React.useState("");
-
-  return (
-    <Modal
-      // key: tiap nomor membuka dialog dengan isian bersih.
-      key={akun?.id ?? "kosong"}
-      open={Boolean(akun)}
-      onClose={onClose}
-      title="Tarik Percakapan Lama"
-      description={akun ? `${akun.label}${akun.phoneNumber ? ` · +${akun.phoneNumber}` : ""}` : undefined}
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose} disabled={loading}><X className="h-4 w-4" aria-hidden /> Batal</Button>
-          <Button onClick={() => onKirim(Number(jumlah) || 50, kontak)} loading={loading}>
-            {!loading && <History className="h-4 w-4" aria-hidden />} Tarik
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <Alert tone="info" title="Permintaan ke WhatsApp, bukan pencarian di sistem">
-          WhatsApp mengirim pesannya bertahap lewat koneksi nomor ini, jadi arsip terisi beberapa saat setelah tombol ditekan. Berkas media yang sudah lama umumnya tidak bisa diunduh lagi — yang tersisa teksnya.
-        </Alert>
-        <Field label="Jumlah pesan per percakapan" hint="10–500. Makin besar makin lama WhatsApp mengirimkannya.">
-          <Input type="number" min={10} max={500} step={10} value={jumlah} onChange={(e) => setJumlah(e.target.value)} />
-        </Field>
-        <Field label="Nomor kontak tertentu (opsional)" hint="Kosongkan untuk seluruh percakapan yang sudah dikenal di nomor ini.">
-          <Input inputMode="tel" placeholder="mis. 081234567890" value={kontak} onChange={(e) => setKontak(e.target.value)} />
-        </Field>
-      </div>
-    </Modal>
-  );
-};

@@ -6,6 +6,8 @@ import {
   updateAccount,
   getConversations,
   getConversationMedia,
+  getThreads,
+  getRingkasan,
   tarikRiwayatAkun,
   getSessionEvents,
   markEventsNotified,
@@ -29,6 +31,7 @@ import {
   listAccountQuerySchema,
   listConversationQuerySchema,
   tarikRiwayatSchema,
+  listThreadQuerySchema,
   listSessionEventQuerySchema,
   markNotifiedSchema,
   purgeSchema,
@@ -131,6 +134,20 @@ router.get(
   requirePermission(...lihatAtauKelola('whatsapp')),
   validate(listConversationQuerySchema, 'query'),
   asyncHandler(getConversations)
+);
+
+// Utas percakapan dan ringkasan angka untuk halaman pemantauan. Penyaringan
+// baris grup (khusus Super Admin) berlaku sama seperti daftar pesan.
+router.get(
+  '/whatsapp/threads',
+  requirePermission(...lihatAtauKelola('whatsapp')),
+  validate(listThreadQuerySchema, 'query'),
+  asyncHandler(getThreads)
+);
+router.get(
+  '/whatsapp/ringkasan',
+  requirePermission(...lihatAtauKelola('whatsapp')),
+  asyncHandler(getRingkasan)
 );
 
 // Berkas media (foto, video, pesan suara, dokumen) — hanya Super Admin, dan
