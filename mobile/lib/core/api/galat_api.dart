@@ -6,17 +6,25 @@ import 'package:dio/dio.dart';
 /// `details: [{ field, message }]`. Kelas ini merapikan keduanya jadi satu
 /// kalimat, supaya layar tidak perlu tahu bentuk JSON-nya.
 class GalatApi implements Exception {
-  GalatApi(this.pesan, {this.kodeHttp, this.rincian = const []});
+  GalatApi(this.pesan, {this.kodeHttp, this.rincian = const [], this.kode});
 
   final String pesan;
   final int? kodeHttp;
   final List<String> rincian;
+
+  /// Kode galat untuk mesin (`code` di jawaban server), mis.
+  /// `idempotency_in_progress`.
+  final String? kode;
 
   bool get tidakTerautentikasi => kodeHttp == 401;
   bool get tidakBerhak => kodeHttp == 403;
   bool get tidakDitemukan => kodeHttp == 404;
   bool get konflik => kodeHttp == 409;
   bool get jaringan => kodeHttp == null;
+
+  /// Tidak ada jaringan, atau proxy menjawab bahwa backend sedang mati.
+  /// Saat ini layar boleh memakai data tersimpan.
+  bool get serverTakTerjangkau => jaringan || kodeHttp == 502 || kodeHttp == 503 || kodeHttp == 504;
 
   /// Pesan utama plus rincian validasi bila ada.
   String get pesanLengkap =>
@@ -40,9 +48,14 @@ class GalatApi implements Exception {
         );
       }
       final data = res.data;
-      String pesan = 'Terjadi kesalahan (${res.statusCode})';
+      String pesan = switch (res.statusCode) {
+        502 || 503 || 504 => 'Server sedang tidak bisa dihubungi. Coba lagi sebentar lagi.',
+        _ => 'Terjadi kesalahan (${res.statusCode})',
+      };
       final rincian = <String>[];
+      String? kode;
       if (data is Map) {
+        if (data['code'] is String) kode = data['code'] as String;
         final err = data['error'];
         if (err is String && err.isNotEmpty) pesan = err;
         final details = data['details'];
@@ -55,7 +68,7 @@ class GalatApi implements Exception {
           }
         }
       }
-      return GalatApi(pesan, kodeHttp: res.statusCode, rincian: rincian);
+      return GalatApi(pesan, kodeHttp: res.statusCode, rincian: rincian, kode: kode);
     }
     return GalatApi('Terjadi kesalahan tak terduga.');
   }

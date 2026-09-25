@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/klien_api.dart';
+import '../../core/api/status_jaringan.dart';
 import 'model_kinerja.dart';
 
 class RepoKinerja {
@@ -10,9 +11,9 @@ class RepoKinerja {
   /// Server sudah menyaring: yang bukan HR hanya menerima penilaian yang
   /// melibatkan dirinya, sebagai penilai maupun yang dinilai.
   Future<List<Penilaian>> daftar() async =>
-      (await _api.getDaftar('/performance/reviews', query: {'limit': 50})).map(Penilaian.dariJson).toList();
+      (await _api.getDaftar('/performance/reviews', query: {'limit': 50}, cache: 'kinerja')).map(Penilaian.dariJson).toList();
 
-  Future<Penilaian> rincian(String id) async => Penilaian.dariJson(await _api.getObjek('/performance/reviews/$id'));
+  Future<Penilaian> rincian(String id) async => Penilaian.dariJson(await _api.getObjek('/performance/reviews/$id', cache: 'kinerja-$id'));
 
   /// Nilai akhir dihitung server dari bobot kriteria; klien hanya mengirim
   /// skor mentah per kriteria.
@@ -35,10 +36,19 @@ class RepoKinerja {
 
   /// Umpan balik yang ditujukan ke pengguna sendiri (bawaan server).
   Future<List<UmpanBalik>> umpanBalik() async =>
-      (await _api.getDaftar('/feedback', query: {'limit': 50})).map(UmpanBalik.dariJson).toList();
+      (await _api.getDaftar('/feedback', query: {'limit': 50}, cache: 'kinerja-umpan-balik')).map(UmpanBalik.dariJson).toList();
 }
 
 final repoKinerjaProvider = Provider<RepoKinerja>((ref) => RepoKinerja(ref.watch(klienApiProvider)));
-final penilaianProvider = FutureProvider.autoDispose<List<Penilaian>>((ref) => ref.watch(repoKinerjaProvider).daftar());
-final penilaianDetailProvider = FutureProvider.autoDispose.family<Penilaian, String>((ref, id) => ref.watch(repoKinerjaProvider).rincian(id));
-final umpanBalikProvider = FutureProvider.autoDispose<List<UmpanBalik>>((ref) => ref.watch(repoKinerjaProvider).umpanBalik());
+final penilaianProvider = FutureProvider.autoDispose<List<Penilaian>>((ref) {
+  ref.watch(sambunganProvider);
+  return ref.watch(repoKinerjaProvider).daftar();
+});
+final penilaianDetailProvider = FutureProvider.autoDispose.family<Penilaian, String>((ref, id) {
+  ref.watch(sambunganProvider);
+  return ref.watch(repoKinerjaProvider).rincian(id);
+});
+final umpanBalikProvider = FutureProvider.autoDispose<List<UmpanBalik>>((ref) {
+  ref.watch(sambunganProvider);
+  return ref.watch(repoKinerjaProvider).umpanBalik();
+});

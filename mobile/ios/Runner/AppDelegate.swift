@@ -19,6 +19,16 @@ import CoreLocation
     // lokasi yang disimulasikan perangkat lunak per iOS 15).
     let kanal = FlutterMethodChannel(name: "id.nusantara.hrd/integritas", binaryMessenger: engineBridge.pluginRegistry.registrar(forPlugin: "integritas")!.messenger())
     kanal.setMethodCallHandler { [weak self] call, result in
+      // Bukti jam presensi offline: mach_continuous_time tetap berjalan saat
+      // ponsel tidur dan tidak ikut berubah bila jam ponsel diputar. iOS tidak
+      // punya hitungan boot; Dart memeriksa nyala ulang dari jam dinding.
+      if call.method == "jamMonotonik" {
+        var basis = mach_timebase_info_data_t()
+        mach_timebase_info(&basis)
+        let nanodetik = mach_continuous_time() * UInt64(basis.numer) / UInt64(basis.denom)
+        result(["monotonikMs": Int(nanodetik / 1_000_000)])
+        return
+      }
       guard call.method == "periksa" else { result(FlutterMethodNotImplemented); return }
       let dasar: [String: Any] = [
         "platform": "ios",

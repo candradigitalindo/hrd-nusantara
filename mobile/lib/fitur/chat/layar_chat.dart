@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../antrean/layar_antrean.dart';
+import '../antrean/mesin_antrean.dart';
 import '../auth/sesi_provider.dart';
 import 'model_chat.dart';
 import 'repo_chat.dart';
@@ -88,10 +90,13 @@ class _LayarRuangState extends ConsumerState<LayarRuang> {
     if (isi.isEmpty || _mengirim) return;
     setState(() => _mengirim = true);
     try {
-      await ref.read(repoChatProvider).kirim(widget.ruang.id, isi);
+      final h = await ref.read(repoChatProvider).kirim(widget.ruang, isi);
       _teks.clear();
-      ref.invalidate(pesanChatProvider(widget.ruang.id));
-      ref.invalidate(ruangChatProvider);
+      // Yang tertunda langsung tampil dari antrean dengan tanda "menunggu".
+      if (!h.tertunda) {
+        ref.invalidate(pesanChatProvider(widget.ruang.id));
+        ref.invalidate(ruangChatProvider);
+      }
     } catch (e) {
       if (mounted) tampilkanGalat(context, e, 'Pesan tidak terkirim');
     } finally {
@@ -124,6 +129,7 @@ class _LayarRuangState extends ConsumerState<LayarRuang> {
   Widget build(BuildContext context) {
     final pesan = ref.watch(pesanChatProvider(widget.ruang.id));
     final saya = ref.watch(penggunaProvider);
+    final tertunda = pesanTertunda(ref.watch(antreanProvider.select((s) => s.item)), widget.ruang.id, saya: saya?.id ?? '', namaSaya: saya?.nama ?? '');
     final skema = Theme.of(context).colorScheme;
     final moderator = widget.ruang.peranSaya == 'moderator' || (saya?.hr ?? false);
     return Scaffold(
@@ -136,47 +142,14 @@ class _LayarRuangState extends ConsumerState<LayarRuang> {
             child: pesan.when(
               loading: () => const Pemuat(),
               error: (e, _) => PanelGalat(galat: e, cobaLagi: () => ref.invalidate(pesanChatProvider(widget.ruang.id))),
-              data: (daftar) => daftar.isEmpty
+              data: (dariServer) => [...tertunda, ...dariServer].isEmpty
                   ? const KeadaanKosong(ikon: Icons.chat_bubble_outline, judul: 'Belum ada pesan', keterangan: 'Mulai percakapan.')
-                  : ListView.builder(
-                      controller: _gulir,
-                      reverse: true, // terbaru di bawah, daftar dari server sudah terbaru-dulu
-                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                      itemCount: daftar.length,
-                      itemBuilder: (_, i) {
-                        final p = daftar[i];
-                        final milikku = p.pengirimId == saya?.id;
-                        final gantiHari = i == daftar.length - 1 || formatTanggal(daftar[i + 1].waktu) != formatTanggal(p.waktu);
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (gantiHari) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Center(child: Text(formatTanggal(p.waktu, pola: 'EEEE, d MMM yyyy'), style: TextStyle(fontSize: 11, color: skema.onSurfaceVariant)))),
-                            Align(
-                              alignment: milikku ? Alignment.centerRight : Alignment.centerLeft,
-                              child: GestureDetector(
-                                onLongPress: (!p.dihapus && (milikku || moderator)) ? () => _hapus(p) : null,
-                                child: Container(
-                                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
-                                  margin: const EdgeInsets.symmetric(vertical: 3),
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: milikku ? skema.primary : skema.surfaceContainerHighest,
-                                    borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(milikku ? 16 : 4), bottomRight: Radius.circular(milikku ? 4 : 16)),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (!milikku) Text(p.pengirim, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skema.primary)),
-                                      Text(p.dihapus ? 'Pesan dihapus' : (p.isi ?? ''), style: TextStyle(color: milikku ? skema.onPrimary : skema.onSurface, fontStyle: p.dihapus ? FontStyle.italic : null)),
-                                      Text(formatWaktu(p.waktu), style: TextStyle(fontSize: 10, color: (milikku ? skema.onPrimary : skema.onSurfaceVariant).withValues(alpha: 0.7))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                  : _Percakapan(
+                      daftar: [...tertunda, ...dariServer],
+                      gulir: _gulir,
+                      sayaId: saya?.id,
+                      moderator: moderator,
+                      hapus: _hapus,
                     ),
             ),
           ),
@@ -206,6 +179,73 @@ class _LayarRuangState extends ConsumerState<LayarRuang> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Percakapan extends StatelessWidget {
+  const _Percakapan({required this.daftar, required this.gulir, required this.sayaId, required this.moderator, required this.hapus});
+  final List<PesanChat> daftar;
+  final ScrollController gulir;
+  final String? sayaId;
+  final bool moderator;
+  final void Function(PesanChat) hapus;
+
+  @override
+  Widget build(BuildContext context) {
+    final skema = Theme.of(context).colorScheme;
+    return ListView.builder(
+      controller: gulir,
+      reverse: true, // terbaru di bawah, daftar dari server sudah terbaru-dulu
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      itemCount: daftar.length,
+      itemBuilder: (_, i) {
+        final p = daftar[i];
+        final milikku = p.pengirimId == sayaId;
+        final gantiHari = i == daftar.length - 1 || formatTanggal(daftar[i + 1].waktu) != formatTanggal(p.waktu);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (gantiHari) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Center(child: Text(formatTanggal(p.waktu, pola: 'EEEE, d MMM yyyy'), style: TextStyle(fontSize: 11, color: skema.onSurfaceVariant)))),
+            Align(
+              alignment: milikku ? Alignment.centerRight : Alignment.centerLeft,
+              child: GestureDetector(
+                onLongPress: (!p.dihapus && !p.tertunda && (milikku || moderator)) ? () => hapus(p) : null,
+                onTap: p.tertunda ? () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LayarAntrean())) : null,
+                child: Container(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
+                  margin: const EdgeInsets.symmetric(vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    // Ditolak server: merah, supaya jelas pesan ini tidak sampai.
+                    color: p.ditolak != null ? skema.error : (milikku ? skema.primary : skema.surfaceContainerHighest),
+                    borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(milikku ? 16 : 4), bottomRight: Radius.circular(milikku ? 4 : 16)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!milikku) Text(p.pengirim, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: skema.primary)),
+                      Text(p.dihapus ? 'Pesan dihapus' : (p.isi ?? ''), style: TextStyle(color: milikku ? skema.onPrimary : skema.onSurface, fontStyle: p.dihapus ? FontStyle.italic : null)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(formatWaktu(p.waktu), style: TextStyle(fontSize: 10, color: (milikku ? skema.onPrimary : skema.onSurfaceVariant).withValues(alpha: 0.7))),
+                          if (p.tertunda) ...[
+                            const SizedBox(width: 4),
+                            Icon(p.ditolak != null ? Icons.error_outline : Icons.schedule, size: 12, color: p.ditolak != null ? skema.errorContainer : skema.onPrimary.withValues(alpha: 0.7)),
+                            const SizedBox(width: 2),
+                            Text(p.ditolak != null ? 'ditolak' : 'menunggu', style: TextStyle(fontSize: 10, color: skema.onPrimary.withValues(alpha: 0.85))),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

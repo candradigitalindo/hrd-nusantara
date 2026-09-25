@@ -33,13 +33,19 @@ class RuangChat {
 }
 
 class PesanChat {
-  const PesanChat({required this.id, required this.pengirimId, required this.pengirim, required this.dihapus, required this.waktu, this.isi});
+  const PesanChat({required this.id, required this.pengirimId, required this.pengirim, required this.dihapus, required this.waktu, this.isi, this.tertunda = false, this.ditolak});
   final String id;
   final String pengirimId;
   final String pengirim;
   final String? isi;
   final bool dihapus;
   final DateTime waktu;
+
+  /// Masih di antrean kirim (ditulis saat offline).
+  final bool tertunda;
+
+  /// Alasan server menolak kiriman tertunda ini, bila ditolak.
+  final String? ditolak;
 
   factory PesanChat.dariJson(Map<String, dynamic> j) => PesanChat(
         id: j['id'] as String,

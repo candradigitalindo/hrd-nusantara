@@ -36,8 +36,13 @@ void main() {
   });
 
   test('badan bukan JSON tetap menghasilkan pesan yang bisa dibaca', () {
+    expect(GalatApi.dari(_respons(500, '<html>Internal Server Error</html>')).pesan, 'Terjadi kesalahan (500)');
+
+    // 502–504 dari proxy: backend mati; layar boleh memakai data tersimpan.
     final g = GalatApi.dari(_respons(502, '<html>Bad Gateway</html>'));
-    expect(g.pesan, 'Terjadi kesalahan (502)');
+    expect(g.pesan, 'Server sedang tidak bisa dihubungi. Coba lagi sebentar lagi.');
+    expect(g.serverTakTerjangkau, isTrue);
+    expect(GalatApi.dari(_respons(500, {'error': 'x'})).serverTakTerjangkau, isFalse);
   });
 
   test('401 dikenali sebagai sesi habis', () {

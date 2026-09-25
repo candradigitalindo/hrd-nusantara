@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../antrean/layar_antrean.dart';
 import 'model_pengumuman.dart';
 import 'repo_pengumuman.dart';
 
@@ -78,11 +79,15 @@ class _LayarDetailPengumumanState extends ConsumerState<LayarDetailPengumuman> {
   Future<void> _tandai({required bool konfirmasi, bool diam = false}) async {
     if (!diam) setState(() => _proses = true);
     try {
-      await ref.read(repoPengumumanProvider).tandaiBaca(_p.id, konfirmasi: konfirmasi);
-      ref.invalidate(pengumumanProvider);
+      final h = await ref.read(repoPengumumanProvider).tandaiBaca(_p, konfirmasi: konfirmasi);
+      if (!h.tertunda) ref.invalidate(pengumumanProvider);
       if (!mounted) return;
       setState(() => _p = _p.salin(sudahDibaca: true, dikonfirmasiPada: konfirmasi ? DateTime.now() : null));
-      if (konfirmasi) tampilkanPesan(context, 'Konfirmasi tercatat', rincian: 'HR melihat bahwa Anda sudah membaca dan memahami pengumuman ini.');
+      if (konfirmasi && h.tertunda) {
+        tampilkanTertunda(context, 'Konfirmasi');
+      } else if (konfirmasi) {
+        tampilkanPesan(context, 'Konfirmasi tercatat', rincian: 'HR melihat bahwa Anda sudah membaca dan memahami pengumuman ini.');
+      }
     } catch (e) {
       if (!diam && mounted) tampilkanGalat(context, e);
     } finally {

@@ -20,7 +20,7 @@ class PertanyaanSurvei {
 }
 
 class Survei {
-  const Survei({required this.id, required this.judul, required this.anonim, required this.status, required this.selesai, required this.sudahIsi, required this.pertanyaan, this.deskripsi, this.mulai});
+  const Survei({required this.id, required this.judul, required this.anonim, required this.status, required this.selesai, required this.sudahIsi, required this.pertanyaan, this.deskripsi, this.mulai, this.jawabanTertunda = false});
   final String id;
   final String judul;
   final String? deskripsi;
@@ -31,7 +31,23 @@ class Survei {
   final bool sudahIsi;
   final List<PertanyaanSurvei> pertanyaan;
 
-  bool get bisaDiisi => status == 'published' && !sudahIsi;
+  /// Jawaban sudah diisi di ponsel ini tapi masih di antrean kirim.
+  final bool jawabanTertunda;
+
+  bool get bisaDiisi => status == 'published' && !sudahIsi && !jawabanTertunda;
+
+  Survei denganJawabanTertunda() => Survei(
+        id: id,
+        judul: judul,
+        anonim: anonim,
+        status: status,
+        selesai: selesai,
+        sudahIsi: sudahIsi,
+        pertanyaan: pertanyaan,
+        deskripsi: deskripsi,
+        mulai: mulai,
+        jawabanTertunda: true,
+      );
 
   factory Survei.dariJson(Map<String, dynamic> j) => Survei(
         id: j['id'] as String,

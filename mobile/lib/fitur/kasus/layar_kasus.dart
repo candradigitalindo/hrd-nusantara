@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../antrean/layar_antrean.dart';
 import 'model_kasus.dart';
 import 'repo_kasus.dart';
 
@@ -61,6 +62,7 @@ class LayarKasus extends ConsumerWidget {
                   ),
                 ),
               ),
+              const DaftarTertunda(jenis: {'keluhan-ajukan'}),
               const JudulBagian('Riwayat'),
               if (daftar.isEmpty)
                 const KeadaanKosong(
@@ -215,14 +217,18 @@ class _LayarAjukanKeluhanState extends ConsumerState<LayarAjukanKeluhan> {
     if (!_form.currentState!.validate()) return;
     setState(() => _mengirim = true);
     try {
-      final k = await ref.read(repoKasusProvider).ajukanKeluhan(
+      final h = await ref.read(repoKasusProvider).ajukanKeluhan(
             judul: _judul.text.trim(),
             uraian: _uraian.text.trim(),
             tanggalKejadian: _tanggal == null ? null : DateFormat('yyyy-MM-dd').format(_tanggal!),
           );
-      ref.invalidate(kasusProvider);
       if (!mounted) return;
-      tampilkanPesan(context, 'Keluhan terkirim', rincian: '${k.judul} · HR akan meninjaunya.');
+      if (h.tertunda) {
+        tampilkanTertunda(context, 'Keluhan');
+      } else {
+        ref.invalidate(kasusProvider);
+        tampilkanPesan(context, 'Keluhan terkirim', rincian: '${Kasus.dariJson(h.jawaban).judul} · HR akan meninjaunya.');
+      }
       Navigator.of(context).pop();
     } catch (e) {
       if (mounted) tampilkanGalat(context, e, 'Keluhan belum terkirim');

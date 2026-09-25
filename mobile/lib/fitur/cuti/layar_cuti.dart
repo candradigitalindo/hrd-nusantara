@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../antrean/layar_antrean.dart';
+import '../antrean/mesin_antrean.dart';
 import 'layar_ajukan_cuti.dart';
 import 'model_cuti.dart';
 import 'repo_cuti.dart';
@@ -24,10 +26,12 @@ class LayarCuti extends ConsumerWidget {
     );
     if (ya != true || !context.mounted) return;
     try {
-      await ref.read(repoCutiProvider).batalkan(c.id);
+      final h = await ref.read(repoCutiProvider).batalkan(c);
+      if (!context.mounted) return;
+      if (h.tertunda) return tampilkanTertunda(context, 'Pembatalan ${c.jenisNama}');
       ref.invalidate(riwayatCutiProvider);
       ref.invalidate(saldoCutiProvider);
-      if (context.mounted) tampilkanPesan(context, 'Pengajuan dibatalkan', rincian: c.jenisNama);
+      tampilkanPesan(context, 'Pengajuan dibatalkan', rincian: c.jenisNama);
     } catch (e) {
       if (context.mounted) tampilkanGalat(context, e, 'Tidak bisa dibatalkan');
     }
@@ -38,6 +42,8 @@ class LayarCuti extends ConsumerWidget {
     final saldo = ref.watch(saldoCutiProvider);
     final riwayat = ref.watch(riwayatCutiProvider);
     final skema = Theme.of(context).colorScheme;
+    // Pengajuan yang pembatalannya masih di antrean kirim.
+    final batalTertunda = ref.watch(antreanProvider.select((s) => s.item.where((i) => i.jenis == 'cuti-batal' && !i.gagal).map((i) => i.info['cutiId']).toSet()));
     return Scaffold(
       appBar: AppBar(title: const Text('Cuti & Izin')),
       floatingActionButton: FloatingActionButton.extended(
@@ -94,6 +100,7 @@ class LayarCuti extends ConsumerWidget {
                       ),
                     ),
             ),
+            const DaftarTertunda(jenis: {'cuti-ajukan', 'cuti-batal'}),
             const JudulBagian('Riwayat pengajuan'),
             riwayat.when(
               loading: () => const Pemuat(),
@@ -118,7 +125,9 @@ class LayarCuti extends ConsumerWidget {
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   LencanaStatus(daftar[i].status),
-                                  if (daftar[i].bisaDibatalkan)
+                                  if (batalTertunda.contains(daftar[i].id))
+                                    Text('Pembatalan belum terkirim', style: TextStyle(fontSize: 11, color: skema.onSurfaceVariant))
+                                  else if (daftar[i].bisaDibatalkan)
                                     TextButton.icon(
                                       style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, minimumSize: const Size(0, 28)),
                                       onPressed: () => _batalkan(context, ref, daftar[i]),

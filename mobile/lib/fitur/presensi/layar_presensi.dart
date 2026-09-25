@@ -14,6 +14,7 @@ class LayarPresensi extends ConsumerWidget {
   Future<void> _absen(BuildContext context, WidgetRef ref, {required bool pulang}) async {
     final hasil = await LayarAbsen.buka(context, pulang: pulang);
     if (hasil == null || !context.mounted) return;
+    if (hasil.tertunda) return tampilkanAbsenTertunda(context, hasil, pulang: pulang);
     final grup = ref.read(tautanWhatsAppProvider).value;
     final keGrup = grup?.adaGrup == true && grup?.tersambung == true ? ' · foto dikirim ke grup ${grup!.grupNama}' : '';
     if (pulang) {
@@ -52,7 +53,7 @@ class LayarPresensi extends ConsumerWidget {
                 padding: const EdgeInsets.all(18),
                 child: hariIni.when(
                   loading: () => const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
-                  error: (e, _) => PanelGalat(galat: e, cobaLagi: () => ref.invalidate(presensiHariIniProvider)),
+                  error: (e, _) => PanelGalat(galat: e, cobaLagi: () => ref.invalidate(riwayatPresensiProvider)),
                   data: (p) => Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -60,11 +61,37 @@ class LayarPresensi extends ConsumerWidget {
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          Expanded(child: _Jam(label: 'Masuk', waktu: p?.jamMasuk, rincian: p?.menitTerlambat != null && p!.menitTerlambat! > 0 ? 'terlambat ${p.menitTerlambat} mnt' : (p?.metodeMasuk != null ? labelMetode[p!.metodeMasuk] : null))),
+                          Expanded(
+                            child: _Jam(
+                              label: 'Masuk',
+                              waktu: p?.jamMasuk,
+                              rincian: p?.masukTertunda == true
+                                  ? 'belum terkirim'
+                                  : (p?.menitTerlambat != null && p!.menitTerlambat! > 0 ? 'terlambat ${p.menitTerlambat} mnt' : (p?.metodeMasuk != null ? labelMetode[p!.metodeMasuk] : null)),
+                            ),
+                          ),
                           Container(width: 1, height: 44, color: skema.outlineVariant),
-                          Expanded(child: _Jam(label: 'Pulang', waktu: p?.jamPulang, rincian: p?.menitKerja != null ? formatDurasiMenit(p!.menitKerja) : null)),
+                          Expanded(child: _Jam(label: 'Pulang', waktu: p?.jamPulang, rincian: p?.pulangTertunda == true ? 'belum terkirim' : (p?.menitKerja != null ? formatDurasiMenit(p!.menitKerja) : null))),
                         ],
                       ),
+                      if (p?.tertunda == true)
+                        Container(
+                          margin: const EdgeInsets.only(top: 12),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(color: skema.secondaryContainer, borderRadius: BorderRadius.circular(10)),
+                          child: Row(
+                            children: [
+                              Icon(Icons.outbox_outlined, size: 20, color: skema.onSecondaryContainer),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Diambil saat offline dan masih di antrean kirim. Dikirim otomatis begitu tersambung; waktu yang tercatat tetap waktu di atas.',
+                                  style: TextStyle(fontSize: 12, color: skema.onSecondaryContainer),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       const SizedBox(height: 16),
                       if (p == null)
                         FilledButton.icon(onPressed: () => _absen(context, ref, pulang: false), icon: const Icon(Icons.login), label: const Text('Check-in Sekarang'))

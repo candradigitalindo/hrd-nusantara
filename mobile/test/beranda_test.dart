@@ -63,6 +63,7 @@ void main() {
       presensiHariIniProvider.overrideWith((ref) async => presensiPada(0, telat: true, terbuka: true)),
       shiftHariIniProvider.overrideWith((ref) async => shiftPada(0)),
       jadwalProvider.overrideWith((ref) async => [for (var i = -7; i <= 14; i++) if (!libur.contains(i)) shiftPada(i)]),
+      lokasiKerjaProvider.overrideWith((ref) async => []),
       riwayatPresensiProvider.overrideWith((ref) async => [for (var i = -29; i < 0; i++) if (!libur.contains(i) && i % 7 != 0) presensiPada(i, telat: i == -1 || i == -8), presensiPada(0, telat: true, terbuka: true)]),
       saldoCutiProvider.overrideWith((ref) async => [
             SaldoCuti.dariJson({'leaveType': {'id': 'T1', 'name': 'Cuti Tahunan'}, 'year': hariIni.year, 'entitledDays': 12, 'usedDays': 4, 'remainingDays': 8, 'collectiveLeaveDays': 0}),
@@ -121,6 +122,7 @@ void main() {
       presensiHariIniProvider.overrideWith((ref) async => null),
       shiftHariIniProvider.overrideWith((ref) async => null),
       jadwalProvider.overrideWith((ref) async => <Shift>[]),
+      lokasiKerjaProvider.overrideWith((ref) async => []),
       riwayatPresensiProvider.overrideWith((ref) async => <Presensi>[]),
       pengumumanProvider.overrideWith((ref) async => <Pengumuman>[]),
       surveiProvider.overrideWith((ref) async => <Survei>[]),

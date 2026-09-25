@@ -36,6 +36,8 @@ class Presensi {
     this.namaLokasi,
     this.shiftMulai,
     this.shiftSelesai,
+    this.masukTertunda = false,
+    this.pulangTertunda = false,
   });
 
   final String id;
@@ -54,7 +56,31 @@ class Presensi {
   final String? shiftMulai;
   final String? shiftSelesai;
 
+  /// Diambil saat offline dan belum sampai ke server: masih di antrean kirim.
+  final bool masukTertunda;
+  final bool pulangTertunda;
+
   bool get masihTerbuka => jamMasuk != null && jamPulang == null;
+  bool get tertunda => masukTertunda || pulangTertunda;
+
+  /// Presensi server yang check-out-nya masih di antrean kirim.
+  Presensi denganPulangTertunda(DateTime jam) => Presensi(
+        id: id,
+        status: status,
+        tanggal: tanggal,
+        jamMasuk: jamMasuk,
+        jamPulang: jam,
+        metodeMasuk: metodeMasuk,
+        menitTerlambat: menitTerlambat,
+        lemburDisetujui: lemburDisetujui,
+        wajahTerverifikasi: wajahTerverifikasi,
+        catatan: catatan,
+        namaLokasi: namaLokasi,
+        shiftMulai: shiftMulai,
+        shiftSelesai: shiftSelesai,
+        masukTertunda: masukTertunda,
+        pulangTertunda: true,
+      );
 
   factory Presensi.dariJson(Map<String, dynamic> j) => Presensi(
         id: j['id'] as String,

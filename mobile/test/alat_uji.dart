@@ -1,11 +1,19 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hrd_nusantara/core/api/klien_api.dart';
+import 'package:hrd_nusantara/core/api/status_jaringan.dart';
+import 'package:hrd_nusantara/core/penyimpanan/penyimpanan_sesi.dart';
 import 'package:hrd_nusantara/core/tema.dart';
+import 'package:hrd_nusantara/fitur/antrean/model_antrean.dart';
+import 'package:hrd_nusantara/fitur/antrean/penyimpanan_antrean.dart';
 
 /// Folder tujuan potret layar. Kosong = tes tidak memotret apa pun.
 ///   flutter test --dart-define=POTRET_DIR=/tmp/potret
@@ -59,7 +67,8 @@ void ukuranPonsel(WidgetTester tester, {double tinggi = 844}) {
 }
 
 /// Aplikasi minimal dengan tema, lokal id_ID, dan provider yang ditimpa.
-Widget aplikasiUji(Widget layar, {List<Override> overrides = const []}) => ProviderScope(
+/// [builder] sama dengan MaterialApp.builder di app.dart (mis. BingkaiJaringan).
+Widget aplikasiUji(Widget layar, {List<Override> overrides = const [], TransitionBuilder? builder}) => ProviderScope(
       overrides: overrides,
       child: MaterialApp(
         theme: temaTerang(),
@@ -70,6 +79,7 @@ Widget aplikasiUji(Widget layar, {List<Override> overrides = const []}) => Provi
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
         ],
+        builder: builder,
         home: layar,
       ),
     );
@@ -97,3 +107,54 @@ Future<void> potret(WidgetTester tester, String nama) async {
   goldenFileComparator = _PenulisPotret(Directory(potretDir));
   await expectLater(find.byType(MaterialApp), matchesGoldenFile('$nama.png'));
 }
+
+/// Server tiruan: [jawab] menentukan jawaban per permintaan; [putus] meniru
+/// ponsel tanpa sinyal.
+class ServerAntrean implements HttpClientAdapter {
+  bool putus = false;
+  (int, Object?) Function(RequestOptions o) jawab = (_) => (201, {'ok': true});
+  /// Menahan jawaban kiriman (bukan /health) sampai Future-nya selesai.
+  Future<void> Function()? tahan;
+  final diterima = <String>[];
+  /// Semua percobaan kiriman (juga yang gagal karena putus), untuk memeriksa
+  /// kunci dan badannya.
+  final percobaan = <RequestOptions>[];
+
+  @override
+  Future<ResponseBody> fetch(RequestOptions o, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+    if (o.uri.path != '/health') percobaan.add(o);
+    if (putus) throw DioException.connectionError(requestOptions: o, reason: 'jaringan mati');
+    if (o.uri.path != '/health') {
+      diterima.add('${o.method} ${o.uri.path} ${o.headers['Idempotency-Key'] ?? '-'}');
+      await tahan?.call();
+    }
+    final (kode, isi) = o.uri.path == '/health' ? (200, {'status': 'ok'}) : jawab(o);
+    return ResponseBody.fromString(jsonEncode(isi), kode, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// Antrean di memori untuk tes; yang berkas diuji terpisah di bawah.
+class AntreanMemori extends PenyimpananAntrean {
+  AntreanMemori() : super(PenyimpananSesi());
+  final isi = <String, ItemAntrean>{};
+
+  @override
+  Future<List<ItemAntrean>> semua() async => (isi.values.toList()..sort((a, b) => a.id.compareTo(b.id)));
+  @override
+  Future<void> simpan(ItemAntrean item) async => isi[item.id] = item;
+  @override
+  Future<void> hapus(String id) async => isi.remove(id);
+}
+
+/// Klien API sungguhan di atas [server] tiruan, melapor ke status jaringan.
+Override klienTiruan(ServerAntrean server) => klienApiProvider.overrideWith((ref) => KlienApi(
+      penyimpanan: PenyimpananSesi(),
+      dio: Dio()..httpClientAdapter = server,
+      baseUrl: 'https://hrd.contoh/api',
+      jaringan: ref.read(statusJaringanProvider.notifier),
+    ));

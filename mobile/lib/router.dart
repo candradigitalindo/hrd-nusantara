@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'fitur/antrean/layar_antrean.dart';
 import 'fitur/auth/layar_login.dart';
 import 'fitur/auth/sesi_provider.dart';
 import 'fitur/beranda/cangkang.dart';
@@ -68,6 +69,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/survei', builder: (_, _) => const LayarSurvei()),
       GoRoute(path: '/chat', builder: (_, _) => const LayarChat()),
       GoRoute(path: '/whatsapp', builder: (_, _) => const LayarWhatsApp()),
+      GoRoute(path: '/antrean', builder: (_, _) => const LayarAntrean()),
     ],
   );
 });

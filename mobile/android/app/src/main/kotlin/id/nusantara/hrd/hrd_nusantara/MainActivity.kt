@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -41,10 +42,23 @@ class MainActivity : FlutterActivity() {
                         "networkLocation" to lokasiJaringan(),
                     )
                 )
+                // Bukti jam presensi offline: jam monotonik tetap berjalan saat
+                // ponsel tidur dan tidak ikut berubah bila jam ponsel diputar;
+                // hitungan boot memberi tahu kalau ponsel sempat dinyalakan ulang.
+                "jamMonotonik" -> result.success(
+                    mapOf(
+                        "monotonikMs" to SystemClock.elapsedRealtime(),
+                        "hitunganBoot" to hitunganBoot(),
+                    )
+                )
                 else -> result.notImplemented()
             }
         }
     }
+
+    private fun hitunganBoot(): Int? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        try { Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT) } catch (_: Exception) { null }
+    } else null
 
     private fun opsiPengembangAktif(): Boolean = try {
         Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../antrean/layar_antrean.dart';
 import 'model_cuti.dart';
 import 'repo_cuti.dart';
 
@@ -59,13 +59,17 @@ class _LayarAjukanCutiState extends ConsumerState<LayarAjukanCuti> {
       return;
     }
     setState(() => _mengirim = true);
-    final f = DateFormat('yyyy-MM-dd');
     try {
-      final c = await ref.read(repoCutiProvider).ajukan(jenisId: j.id, mulai: f.format(_mulai!), selesai: f.format(_selesai!), alasan: _alasan.text.trim(), lampiranUrl: _lampiran.text.trim());
-      ref.invalidate(riwayatCutiProvider);
-      ref.invalidate(saldoCutiProvider);
+      final h = await ref.read(repoCutiProvider).ajukan(jenis: j, mulai: _mulai!, selesai: _selesai!, alasan: _alasan.text.trim(), lampiranUrl: _lampiran.text.trim());
       if (!mounted) return;
-      tampilkanPesan(context, 'Pengajuan terkirim', rincian: '${c.jenisNama} ${c.totalHari} hari · menunggu persetujuan atasan');
+      if (h.tertunda) {
+        tampilkanTertunda(context, 'Pengajuan ${j.nama}');
+      } else {
+        ref.invalidate(riwayatCutiProvider);
+        ref.invalidate(saldoCutiProvider);
+        final c = Cuti.dariJson(h.jawaban);
+        tampilkanPesan(context, 'Pengajuan terkirim', rincian: '${c.jenisNama} ${c.totalHari} hari · menunggu persetujuan atasan');
+      }
       Navigator.of(context).pop();
     } catch (e) {
       if (mounted) tampilkanGalat(context, e, 'Pengajuan ditolak sistem');

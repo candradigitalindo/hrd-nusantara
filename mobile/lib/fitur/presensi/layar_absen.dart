@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../core/api/galat_api.dart';
+import '../../core/api/status_jaringan.dart';
+import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
 import '../whatsapp/repo_whatsapp.dart';
 import 'integritas_lokasi.dart';
@@ -9,7 +12,16 @@ import 'layanan_lokasi.dart';
 import 'layar_kamera_wajah.dart';
 import 'layar_pindai_qr.dart';
 import 'model_presensi.dart';
+import 'pengirim_presensi.dart';
 import 'repo_presensi.dart';
+
+/// Pesan untuk presensi yang disimpan di antrean (ponsel offline).
+void tampilkanAbsenTertunda(BuildContext context, Presensi hasil, {required bool pulang}) => tampilkanPesan(
+      context,
+      '${pulang ? 'Check-out' : 'Check-in'} ${formatWaktu(pulang ? hasil.jamPulang : hasil.jamMasuk)} disimpan',
+      rincian: 'Belum terkirim karena ponsel offline. Dikirim otomatis begitu tersambung; lihat Antrean kirim.',
+      nada: Nada.info,
+    );
 
 /// Lembar pilih metode lalu kirim presensi masuk atau pulang.
 class LayarAbsen extends ConsumerStatefulWidget {
@@ -51,6 +63,8 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
       final perluFotoStempel = tautan?.adaGrup == true && tautan?.tersambung == true;
       String? fotoStempel;
       PermintaanAbsen permintaan;
+      String? namaLokasi;
+      DateTime? waktuGps;
       switch (metode) {
         case MetodeAbsen.qr:
           final token = await LayarPindaiQr.buka(context);
@@ -74,7 +88,14 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
             await _tolakKecurangan(integritas);
             return _batal();
           }
-          final daftar = await ref.read(repoPresensiProvider).lokasiKerja();
+          final List<LokasiKerja> daftar;
+          try {
+            // Dari data tersimpan bila offline (lihat KlienApi).
+            daftar = await ref.read(repoPresensiProvider).lokasiKerja();
+          } on GalatApi catch (g) {
+            if (!g.serverTakTerjangkau) rethrow;
+            throw GalatLokasi('Daftar lokasi kerja belum tersimpan di ponsel ini. Buka aplikasi sekali saat ada sinyal, lalu coba lagi.');
+          }
           final terdekat = lokasiTerdekat(daftar, posisi.latitude, posisi.longitude);
           if (terdekat == null) throw GalatLokasi('Belum ada lokasi kerja terdaftar. Hubungi HR.');
           if (!terdekat.diDalamRadius) {
@@ -89,6 +110,8 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
             foto = await LayarKameraWajah.buka(context);
             if (foto == null) return _batal();
           }
+          namaLokasi = terdekat.lokasi.nama;
+          waktuGps = posisi.waktu;
           permintaan = PermintaanAbsen(
             metode: metode,
             latitude: posisi.latitude,
@@ -101,11 +124,11 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
           );
       }
       if (!mounted) return;
-      setState(() => _langkah = metode == MetodeAbsen.wajah ? 'Memverifikasi wajah…' : 'Mengirim…');
-      final repo = ref.read(repoPresensiProvider);
-      final hasil = widget.pulang ? await repo.pulang(permintaan) : await repo.masuk(permintaan);
-      ref.invalidate(presensiHariIniProvider);
-      ref.invalidate(riwayatPresensiProvider);
+      final offline = !ref.read(statusJaringanProvider).terhubung;
+      setState(() => _langkah = offline ? 'Menyimpan untuk dikirim nanti…' : (metode == MetodeAbsen.wajah ? 'Memverifikasi wajah…' : 'Mengirim…'));
+      final hasil = await ref.read(pengirimPresensiProvider).kirim(permintaan, pulang: widget.pulang, namaLokasi: namaLokasi, waktuGps: waktuGps);
+      // Yang tertunda tampil dari antrean; yang tercatat dimuat ulang dari server.
+      if (!hasil.tertunda) ref.invalidate(riwayatPresensiProvider);
       if (!mounted) return;
       Navigator.of(context).pop(hasil);
     } on GalatLokasi catch (e) {

@@ -10,6 +10,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   camera: ^0.12.0+2
+  cryptography: ^2.9.0
   dio: ^5.11.1
   firebase_core: ^4.15.0
   firebase_messaging: ^16.7.0
@@ -23,6 +24,7 @@ dependencies:
   intl: ^0.20.2
   mobile_scanner: ^7.4.2
   package_info_plus: ^10.2.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

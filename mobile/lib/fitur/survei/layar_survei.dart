@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../antrean/layar_antrean.dart';
 import 'model_survei.dart';
 import 'repo_survei.dart';
 
@@ -37,7 +38,13 @@ class LayarSurvei extends ConsumerWidget {
                           onTap: s.bisaDiisi ? () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => LayarIsiSurvei(s))) : null,
                           title: Text(s.judul, style: const TextStyle(fontWeight: FontWeight.w700)),
                           subtitle: Text('${s.pertanyaan.length} pertanyaan · sampai ${formatTanggalSaja(s.selesai)}${s.anonim ? ' · anonim' : ''}'),
-                          trailing: s.sudahIsi ? const LencanaStatus('completed', label: 'Sudah diisi') : s.status == 'closed' ? const LencanaStatus('closed') : const Icon(Icons.chevron_right),
+                          trailing: s.jawabanTertunda
+                              ? const LencanaStatus(null, label: 'Belum terkirim', nada: Nada.peringatan)
+                              : s.sudahIsi
+                                  ? const LencanaStatus('completed', label: 'Sudah diisi')
+                                  : s.status == 'closed'
+                                      ? const LencanaStatus('closed')
+                                      : const Icon(Icons.chevron_right),
                         ),
                       );
                     },
@@ -84,10 +91,14 @@ class _LayarIsiSurveiState extends ConsumerState<LayarIsiSurvei> {
             if (p.tipe == 'text') 'textValue': (_jawaban[p.id] as String).trim(),
             if (p.tipe == 'choice') 'choiceValue': _jawaban[p.id],
           }).toList();
-      await ref.read(repoSurveiProvider).kirim(s.id, jawaban);
-      ref.invalidate(surveiProvider);
+      final h = await ref.read(repoSurveiProvider).kirim(s, jawaban);
       if (!mounted) return;
-      tampilkanPesan(context, 'Terima kasih, jawaban terkirim', rincian: s.anonim ? 'Jawaban Anda anonim dan tidak bisa ditelusuri ke nama.' : null);
+      if (h.tertunda) {
+        tampilkanTertunda(context, 'Jawaban survei');
+      } else {
+        ref.invalidate(surveiProvider);
+        tampilkanPesan(context, 'Terima kasih, jawaban terkirim', rincian: s.anonim ? 'Jawaban Anda anonim dan tidak bisa ditelusuri ke nama.' : null);
+      }
       Navigator.of(context).pop();
     } catch (e) {
       if (mounted) tampilkanGalat(context, e, 'Jawaban belum terkirim');

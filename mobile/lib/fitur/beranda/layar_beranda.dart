@@ -51,6 +51,9 @@ class LayarBeranda extends ConsumerWidget {
     // ref.watch bersyarat sengaja: bagian yang tidak tampil tidak perlu
     // memanggil API-nya (server toh akan menolak dengan 403).
     final presensi = bolehPresensi ? ref.watch(presensiHariIniProvider) : null;
+    // Dimuat sejak beranda dibuka, supaya daftar lokasi kerja sudah tersimpan
+    // di ponsel sebelum karyawan berada di lokasi tanpa sinyal.
+    if (bolehPresensi) ref.watch(lokasiKerjaProvider);
     final shift = bolehPresensi ? ref.watch(shiftHariIniProvider) : null;
     final jadwal = bolehPresensi ? ref.watch(jadwalProvider) : null;
     final riwayat = bolehPresensi ? ref.watch(riwayatPresensiProvider) : null;
@@ -559,6 +562,8 @@ class _KartuPresensiHariIni extends ConsumerWidget {
               : (shift.isLoading
                     ? ('Memuat…', Nada.netral)
                     : ('Hari libur', Nada.netral)))
+        : hariIni.tertunda
+        ? (hariIni.masihTerbuka ? 'Sedang bekerja · belum terkirim' : 'Lengkap · belum terkirim', Nada.peringatan)
         : hariIni.masihTerbuka
         ? ('Sedang bekerja', Nada.info)
         : ('Lengkap', Nada.sukses);
@@ -709,7 +714,9 @@ class _KartuPresensiHariIni extends ConsumerWidget {
                             context,
                             pulang: h != null,
                           );
-                          if (hasil != null && context.mounted) {
+                          if (hasil != null && context.mounted && hasil.tertunda) {
+                            tampilkanAbsenTertunda(context, hasil, pulang: h != null);
+                          } else if (hasil != null && context.mounted) {
                             tampilkanPesan(
                               context,
                               h == null

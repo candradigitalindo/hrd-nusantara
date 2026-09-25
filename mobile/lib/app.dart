@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/konfigurasi.dart';
 import 'core/tema.dart';
+import 'core/widget/bingkai_jaringan.dart';
+import 'fitur/antrean/layar_antrean.dart';
+import 'fitur/antrean/mesin_antrean.dart';
 import 'fitur/auth/sesi_provider.dart';
 import 'fitur/notifikasi/layanan_push.dart';
 import 'router.dart';
@@ -44,6 +47,19 @@ class _AplikasiHrdState extends ConsumerState<AplikasiHrd> {
       supportedLocales: const [Locale('id', 'ID'), Locale('en', 'US')],
       localizationsDelegates: const [GlobalMaterialLocalizations.delegate, GlobalWidgetsLocalizations.delegate, GlobalCupertinoLocalizations.delegate],
       routerConfig: router,
+      builder: (context, child) => PendengarAntrean(
+        child: Consumer(
+          builder: (context, ref, _) {
+            final antrean = ref.watch(antreanProvider);
+            return BingkaiJaringan(
+              menunggu: antrean.menunggu,
+              ditolak: antrean.gagal,
+              bukaAntrean: () => router.push('/antrean'),
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
+        ),
+      ),
     );
   }
 }

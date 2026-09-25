@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/api/klien_api.dart';
 import '../../core/widget/widget_umum.dart';
 import '../../firebase_options.dart';
+import '../antrean/mesin_antrean.dart';
 import '../auth/sesi_provider.dart';
 
 /// Versi terpasang (versionName + versionCode dari manifest APK), supaya
@@ -16,11 +17,18 @@ class LayarProfil extends ConsumerWidget {
   const LayarProfil({super.key});
 
   Future<void> _keluar(BuildContext context, WidgetRef ref) async {
+    final antrean = ref.read(antreanProvider);
+    final tertunda = antrean.menunggu + antrean.gagal;
     final ya = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Keluar dari aplikasi?'),
-        content: const Text('Notifikasi ke ponsel ini dihentikan sampai Anda masuk lagi.'),
+        content: Text([
+          'Notifikasi ke ponsel ini dihentikan sampai Anda masuk lagi.',
+          // Antrean tidak dibuang saat keluar, tapi baru terkirim setelah
+          // pemiliknya masuk lagi di ponsel yang sama.
+          if (tertunda > 0) '$tertunda kiriman belum sampai ke server. Kiriman itu tetap tersimpan di ponsel ini dan baru dikirim setelah Anda masuk lagi.',
+        ].join('\n\n')),
         actions: [
           TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: const Text('Batal')),
           FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.logout), label: const Text('Keluar')),
@@ -102,6 +110,22 @@ class LayarProfil extends ConsumerWidget {
                 ListTile(leading: const Icon(Icons.phone_android_outlined), title: const Text('Tautan WhatsApp'), subtitle: const Text('Wajib tersambung · pindai QR lewat web'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/whatsapp')),
                 const Divider(),
                 ListTile(leading: const Icon(Icons.lock_reset), title: const Text('Ganti password'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LayarGantiPassword()))),
+                const Divider(),
+                Consumer(builder: (context, ref, _) {
+                  final antrean = ref.watch(antreanProvider);
+                  return ListTile(
+                    leading: const Icon(Icons.outbox_outlined),
+                    title: const Text('Antrean kirim'),
+                    subtitle: Text(
+                      antrean.menunggu + antrean.gagal == 0
+                          ? 'Semua data sudah terkirim'
+                          : [if (antrean.menunggu > 0) '${antrean.menunggu} menunggu', if (antrean.gagal > 0) '${antrean.gagal} ditolak'].join(' · '),
+                      style: antrean.gagal > 0 ? TextStyle(color: skema.error) : null,
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/antrean'),
+                  );
+                }),
               ],
             ),
           ),
