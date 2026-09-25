@@ -114,6 +114,18 @@ export interface Jabatan {
   _count: { employees: number };
 }
 
+export interface LokasiKerja {
+  id: string;
+  name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  isActive: boolean;
+  /** Isi QR presensi; hanya dikirim ke HR/Super Admin. */
+  qrSecret?: string;
+}
+
 export interface BuktiJamOffline {
   capturedAt: string;
   serverTimeEstimate?: string | null;

@@ -179,3 +179,24 @@ describe('PUT /api/work-locations/:id', () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe('GET /api/work-locations/:id/qr', () => {
+  let tokenKaryawan: string;
+
+  beforeEach(async () => {
+    await makeEmployee({ email: 'budi@resto.id', nik: 'K-1' });
+    tokenKaryawan = await login(app, 'budi@resto.id');
+  });
+
+  it('HR mendapat gambar QR berisi token lokasi untuk dicetak; karyawan ditolak', async () => {
+    const lokasi = await makeWorkLocation({ name: 'Outlet Sudirman' });
+
+    const qr = await request(app).get(`/api/work-locations/${lokasi.id}/qr`).set(auth(hrToken));
+    expect(qr.status).toBe(200);
+    expect(qr.body.name).toBe('Outlet Sudirman');
+    expect(qr.body.dataUrl).toMatch(/^data:image\/png;base64,/);
+
+    expect((await request(app).get(`/api/work-locations/${lokasi.id}/qr`).set(auth(tokenKaryawan))).status).toBe(403);
+    expect((await request(app).get(`/api/work-locations/${'0'.repeat(26)}/qr`).set(auth(hrToken))).status).toBe(404);
+  });
+});

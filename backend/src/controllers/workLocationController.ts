@@ -1,6 +1,7 @@
 // src/controllers/workLocationController.ts
 import { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
+import { toDataURL } from 'qrcode';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
@@ -107,6 +108,20 @@ export const updateWorkLocation = async (req: Request, res: Response) => {
     }
     throw error;
   }
+};
+
+/**
+ * Gambar QR lokasi untuk dicetak dan ditempel di titik presensi. Isinya
+ * token absensi, jadi hanya untuk yang boleh melihat token (HR / Super
+ * Admin) dan dibuat di server — tidak pernah lewat layanan QR pihak luar.
+ */
+export const getWorkLocationQr = async (req: Request, res: Response) => {
+  if (!canSeeSecret(req.user!.role)) {
+    return res.status(403).json({ error: 'Hanya HR yang boleh melihat QR presensi' });
+  }
+  const location = await prisma.workLocation.findUnique({ where: { id: req.params.id } });
+  if (!location) return res.status(404).json({ error: 'Lokasi kerja tidak ditemukan' });
+  res.json({ name: location.name, dataUrl: await toDataURL(location.qrSecret, { width: 720, margin: 2, errorCorrectionLevel: 'M' }) });
 };
 
 /** Memutar ulang token QR, misalnya setelah QR lama bocor atau difoto orang. */

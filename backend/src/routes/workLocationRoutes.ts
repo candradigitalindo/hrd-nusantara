@@ -6,6 +6,7 @@ import {
   getWorkLocationById,
   updateWorkLocation,
   rotateQrSecret,
+  getWorkLocationQr,
 } from '../controllers/workLocationController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -39,6 +40,13 @@ router.put(
   validate(idParamSchema, 'params'),
   validate(updateWorkLocationSchema),
   asyncHandler(updateWorkLocation)
+);
+
+router.get(
+  '/:id/qr',
+  requirePermission(...lihatAtauKelola('lokasi')),
+  validate(idParamSchema, 'params'),
+  asyncHandler(getWorkLocationQr)
 );
 
 router.post(
