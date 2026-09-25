@@ -229,5 +229,23 @@ export const LABEL_INTEGRITAS: Record<string, string> = {
   stale_position: "Posisi GPS basi",
   impossible_speed: "Perpindahan terlalu cepat dari presensi sebelumnya",
   integrity_missing: "Aplikasi tidak mengirim laporan integritas",
+  clock_mismatch: "Jam ponsel tidak sesuai saat presensi offline",
+  clock_unverified: "Presensi offline tanpa pembanding jam",
 };
 export const BLOKIR_INTEGRITAS = new Set(["mock_location", "mock_app_installed", "rooted_device"]);
+
+/**
+ * Presensi offline dari antrean mobile: waktu tercatat = saat diambil di
+ * ponsel, `tersinkron` = saat server menerimanya. "Terkirim 2 jam 15 mnt
+ * kemudian" membantu HR menilai wajar tidaknya (mis. lokasi tanpa sinyal).
+ */
+export const jedaTerkirim = (waktu: string | null | undefined, tersinkron: string | null | undefined): string | null => {
+  if (!waktu || !tersinkron) return null;
+  const menit = Math.max(0, Math.round((new Date(tersinkron).getTime() - new Date(waktu).getTime()) / 60_000));
+  if (menit < 1) return "terkirim segera";
+  const jam = Math.floor(menit / 60);
+  const hari = Math.floor(jam / 24);
+  if (hari > 0) return `terkirim ${hari} hari ${jam % 24} jam kemudian`;
+  if (jam > 0) return `terkirim ${jam} jam${menit % 60 ? ` ${menit % 60} mnt` : ""} kemudian`;
+  return `terkirim ${menit} mnt kemudian`;
+};

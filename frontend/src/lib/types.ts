@@ -114,6 +114,12 @@ export interface Jabatan {
   _count: { employees: number };
 }
 
+export interface BuktiJamOffline {
+  capturedAt: string;
+  serverTimeEstimate?: string | null;
+  gpsTime?: string | null;
+}
+
 export interface Presensi {
   id: string;
   employeeId: string;
@@ -132,6 +138,12 @@ export interface Presensi {
   /** Pengiriman foto absensi ber-stempel ke grup WhatsApp: sent | failed | skipped. */
   stampStatus: string | null;
   stampNote: string | null;
+  /** Presensi offline: kapan server menerima masuk/pulang yang diambil saat ponsel tanpa sinyal. null = dikirim langsung. */
+  checkInSyncedAt: string | null;
+  checkOutSyncedAt: string | null;
+  /** Laporan integritas dari ponsel; untuk presensi offline memuat bukti jamnya (`offline.capturedAt` = jam ponsel). */
+  integrityReport?: { offline?: BuktiJamOffline } | null;
+  checkOutIntegrityReport?: { offline?: BuktiJamOffline } | null;
   status: string;
   notes: string | null;
   employee: { id: string; nik: string; name: string; departmentId: string | null };
