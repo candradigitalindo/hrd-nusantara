@@ -66,6 +66,8 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>NSCameraUsageDescription</key>
 	<string>Kamera dipakai untuk verifikasi wajah saat presensi dan memindai QR lokasi kerja.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

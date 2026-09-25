@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/galat_api.dart';
 import '../../core/konfigurasi.dart';
+import '../../core/widget/lambang.dart';
 import '../../core/widget/widget_umum.dart';
 import 'sesi_provider.dart';
 
@@ -62,17 +63,12 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        width: 64,
-                        height: 64,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(color: skema.primary, borderRadius: BorderRadius.circular(18)),
-                        child: const Icon(Icons.event_available_rounded, color: Colors.white, size: 34),
-                      ),
+                      // Center: kolom ini stretch, tanpa pembungkus lambangnya ikut melebar selebar form.
+                      const Center(child: LambangAplikasi(ukuran: 72)),
                       const SizedBox(height: 20),
-                      Text(namaAplikasi, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
+                      Text(namaAplikasi, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
-                      Text('Masuk dengan akun karyawan Anda', style: TextStyle(color: skema.onSurfaceVariant)),
+                      Text('Masuk dengan akun karyawan Anda', textAlign: TextAlign.center, style: TextStyle(color: skema.onSurfaceVariant)),
                       const SizedBox(height: 28),
                       TextFormField(
                         controller: _username,

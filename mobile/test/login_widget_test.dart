@@ -3,11 +3,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hrd_nusantara/core/api/klien_api.dart';
 import 'package:hrd_nusantara/core/penyimpanan/penyimpanan_sesi.dart';
+import 'package:hrd_nusantara/core/widget/lambang.dart';
 import 'package:hrd_nusantara/fitur/auth/layar_login.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'alat_uji.dart';
+
 void main() {
+  setUpAll(muatFontAsli);
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
+  testWidgets('tampilan login di ponsel: lambang merek di tengah, tidak melebar', (tester) async {
+    ukuranPonsel(tester);
+    await tester.pumpWidget(aplikasiUji(const LayarLogin()));
+    await tester.pumpAndSettle();
+
+    final lambang = find.byType(LambangAplikasi);
+    expect(lambang, findsOneWidget);
+    expect(tester.getSize(lambang), const Size(72, 72));
+    expect(tester.getCenter(lambang).dx, 390 / 2);
+    await potret(tester, 'login');
+  });
 
   testWidgets('validasi form sebelum memanggil server', (tester) async {
     await tester.pumpWidget(

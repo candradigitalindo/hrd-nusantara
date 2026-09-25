@@ -62,10 +62,12 @@ const tulis = (relatif, isi) => {
   return relatif;
 };
 
-const png = async (svg, ukuran, relatif) => {
+const png = async (svg, ukuran, relatif, { tanpaAlfa = false } = {}) => {
   const tujuan = join(akar, relatif);
   mkdirSync(dirname(tujuan), { recursive: true });
-  await sharp(Buffer.from(svg), { density: 384 }).resize(ukuran, ukuran).png({ compressionLevel: 9 }).toFile(tujuan);
+  let gambar = sharp(Buffer.from(svg), { density: 384 }).resize(ukuran, ukuran);
+  if (tanpaAlfa) gambar = gambar.flatten({ background: HIJAU }).removeAlpha();
+  await gambar.png({ compressionLevel: 9 }).toFile(tujuan);
   return `${relatif} (${ukuran}px)`;
 };
 
@@ -118,11 +120,13 @@ const main = async () => {
   }
 
   // ---- iOS: ukuran diambil dari Contents.json yang sudah ada ----
+  // Tanpa kanal alfa sama sekali: App Store menolak ikon 1024 yang RGBA
+  // (ITMS-90717) walaupun semua pikselnya opak.
   const setIkon = 'mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset';
   const daftar = JSON.parse(readFileSync(join(akar, setIkon, 'Contents.json'), 'utf8'));
   for (const item of daftar.images) {
     const ukuran = Math.round(parseFloat(item.size) * parseFloat(item.scale));
-    hasil.push(await png(svgPetakSiku, ukuran, `${setIkon}/${item.filename}`));
+    hasil.push(await png(svgPetakSiku, ukuran, `${setIkon}/${item.filename}`, { tanpaAlfa: true }));
   }
 
   console.log(hasil.join('\n'));

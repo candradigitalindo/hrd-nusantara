@@ -1,0 +1,114 @@
+# Build iOS di runner macOS GitHub: server produksi (Linux) tidak bisa
+# membangun iOS, dan iPhone tidak memasang berkas unduhan seperti APK.
+#
+# - Push ke main yang menyentuh mobile/: build tanpa tanda tangan, sekadar
+#   memastikan aplikasi masih terkompilasi untuk iOS.
+# - Manual (Actions → Rilis iOS → Run workflow, centang "unggah"): archive
+#   bertanda tangan lalu diunggah ke App Store Connect untuk dirilis sebagai
+#   Custom App. Butuh secrets akun Apple — lihat mobile/README.md, "Rilis iOS".
+name: Rilis iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/rilis-ios.yml']
+  workflow_dispatch:
+    inputs:
+      unggah:
+        description: Tandatangani dan unggah ke App Store Connect
+        type: boolean
+        default: false
+
+concurrency:
+  group: rilis-ios-${{ github.ref }}
+  # Build pemeriksa boleh digantikan push yang lebih baru; unggahan tidak.
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      API_URL: https://hrd.nbp.co.id/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Versi
+        id: versi
+        run: |
+          # Nomor build sama dengan rilis.sh (menit sejak epoch): selalu naik dan
+          # sejalan dengan versionCode Android. Nama versi iOS hanya boleh x.y.z,
+          # jadi stempel waktu tidak ikut di nama seperti di Android.
+          NAMA=$(sed -nE 's/^version: *([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' pubspec.yaml)
+          [ -n "$NAMA" ] || { echo "::error::version di pubspec.yaml tidak terbaca"; exit 1; }
+          NOMOR=$(( $(date +%s) / 60 ))
+          echo "nama=$NAMA" >> "$GITHUB_OUTPUT"
+          echo "nomor=$NOMOR" >> "$GITHUB_OUTPUT"
+          echo "Versi $NAMA · build $NOMOR"
+          xcodebuild -version
+
+      - name: Build tanpa tanda tangan
+        if: ${{ !inputs.unggah }}
+        run: >-
+          flutter build ios --release --no-codesign
+          --build-name=${{ steps.versi.outputs.nama }}
+          --build-number=${{ steps.versi.outputs.nomor }}
+          --dart-define=API_URL="$API_URL"
+
+      - name: Archive, tandatangani, dan unggah ke App Store Connect
+        if: ${{ inputs.unggah }}
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          NAMA: ${{ steps.versi.outputs.nama }}
+          NOMOR: ${{ steps.versi.outputs.nomor }}
+        run: |
+          for s in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            [ -n "${!s}" ] || { echo "::error::Secret $s belum diisi (lihat mobile/README.md, Rilis iOS)"; exit 1; }
+          done
+
+          # Tanda tangan dikelola Xcode lewat kunci API App Store Connect: sertifikat
+          # distribusi dan profil dibuat/diambil otomatis, tanpa .p12 di secrets.
+          KUNCI="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$KUNCI"
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$KUNCI" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+
+          # --config-only menulis Generated.xcconfig (versi, dart-define) dan
+          # menjalankan pod install; Dart dikompilasi di dalam xcodebuild archive.
+          flutter build ios --config-only --release --build-name="$NAMA" --build-number="$NOMOR" --dart-define=API_URL="$API_URL"
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/ios/Runner.xcarchive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" "${AUTH[@]}" archive
+
+          # destination=upload: ekspor langsung mengirim build ke App Store Connect.
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath build/ios/Runner.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath build/ios/ekspor "${AUTH[@]}"
+
+          echo "Versi $NAMA (build $NOMOR) terunggah ke App Store Connect; tunggu status Processing selesai sebelum dikirim ke review." >> "$GITHUB_STEP_SUMMARY"
