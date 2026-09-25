@@ -46,6 +46,17 @@ for arg in "$@"; do
   esac
 done
 
+# Kunci rilis tetap. Android hanya memasang pembaruan di atas aplikasi lama
+# bila APK-nya ditandatangani kunci yang sama; kunci debug dibuat ulang di
+# setiap container, jadi build tanpa kunci ini tidak bisa jadi pembaruan.
+# Sidik sertifikatnya dipatok di sini supaya kunci yang tertukar ketahuan.
+SIDIK_KUNCI_RILIS=24a52c28c50e1c92d7033ff7d6d41e3e86f5b5f8360664cdaf69de4ba36fc9d6
+if [[ ! -f android/key.properties ]]; then
+  echo "android/key.properties tidak ada: APK tanpa kunci rilis tidak bisa memperbarui aplikasi yang terpasang." >&2
+  echo "Pulihkan key.properties + android/app/upload-keystore.jks dari cadangan (lihat README, Kunci rilis)." >&2
+  exit 1
+fi
+
 if ! command -v flutter >/dev/null 2>&1; then
   if (( DALAM_DOCKER )); then
     echo "flutter tidak ditemukan di dalam image $IMAGE" >&2
@@ -108,6 +119,18 @@ if [[ -n "$AAPT2" ]]; then
   fi
 fi
 
+APKSIGNER=$(ls "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"/build-tools/*/apksigner 2>/dev/null | tail -1 || true)
+SIDIK="(apksigner tidak ada, tidak diperiksa)"
+if [[ -n "$APKSIGNER" ]]; then
+  SIDIK=$("$APKSIGNER" verify --print-certs "$KELUARAN" | sed -nE 's/.*certificate SHA-256 digest: ([0-9a-f]+).*/\1/p' | head -1)
+  if [[ "$SIDIK" != "$SIDIK_KUNCI_RILIS" ]]; then
+    echo "APK ditandatangani kunci lain (${SIDIK:-tidak terbaca}), bukan kunci rilis $SIDIK_KUNCI_RILIS." >&2
+    echo "Ponsel yang sudah terpasang akan menolaknya sebagai pembaruan; build dibatalkan." >&2
+    rm -f "$KELUARAN"
+    exit 1
+  fi
+fi
+
 cat <<INFO
 
 APK siap: $KELUARAN
@@ -115,6 +138,7 @@ APK siap: $KELUARAN
   versionCode : $NOMOR_APK
   Ukuran      : ${UKURAN} MB ($ABI)
   SHA-256     : $SHA
+  Kunci       : $SIDIK
 INFO
 
 # --- Unggah ------------------------------------------------------------------

@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Kunci rilis tetap (android/key.properties + app/upload-keystore.jks, di luar
+// git). Android hanya memasang pembaruan di atas aplikasi lama bila kuncinya
+// sama; kunci debug dibuat ulang di setiap container Docker, jadi tidak bisa
+// dipakai untuk rilis. Tanpa berkas ini build rilis jatuh ke kunci debug
+// (untuk `flutter run --release`), dan rilis.sh menolak membangun.
+val kunciRilis = rootProject.file("key.properties").takeIf { it.exists() }?.let { berkas ->
+    Properties().apply { berkas.inputStream().use { load(it) } }
 }
 
 android {
@@ -32,11 +43,20 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (kunciRilis != null) {
+            create("release") {
+                keyAlias = kunciRilis.getProperty("keyAlias")
+                keyPassword = kunciRilis.getProperty("keyPassword")
+                storeFile = file(kunciRilis.getProperty("storeFile"))
+                storePassword = kunciRilis.getProperty("storePassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (kunciRilis != null) "release" else "debug")
         }
     }
 }
