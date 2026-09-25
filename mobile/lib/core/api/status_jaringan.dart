@@ -31,6 +31,7 @@ class PemantauJaringan extends Notifier<StatusJaringan> {
   static const _jeda = [5, 10, 20, 30];
   Timer? _timer;
   int _percobaan = 0;
+  bool _dibuang = false;
 
   @override
   StatusJaringan build() {
@@ -41,6 +42,9 @@ class PemantauJaringan extends Notifier<StatusJaringan> {
       },
     );
     ref.onDispose(() {
+      // Permintaan yang masih berjalan bisa melapor sesudah ini; jangan
+      // sampai ia menjadwalkan pemeriksaan baru untuk pemantau yang sudah dibuang.
+      _dibuang = true;
       _timer?.cancel();
       siklus.dispose();
     });
@@ -48,19 +52,21 @@ class PemantauJaringan extends Notifier<StatusJaringan> {
   }
 
   void berhasil() {
-    if (state.terhubung) return;
+    if (_dibuang || state.terhubung) return;
     _timer?.cancel();
     _percobaan = 0;
     state = StatusJaringan(sambungan: state.sambungan + 1);
   }
 
   void terputus() {
+    if (_dibuang) return;
     if (state.terhubung) state = StatusJaringan(terhubung: false, sambungan: state.sambungan);
     _jadwalkan();
   }
 
   /// Sebuah layar menampilkan data tersimpan yang diambil pada [diambilPada].
   void tampilkanSimpanan(DateTime diambilPada) {
+    if (_dibuang) return;
     final lama = state.dataPer;
     state = StatusJaringan(
       terhubung: false,
@@ -74,7 +80,7 @@ class PemantauJaringan extends Notifier<StatusJaringan> {
   Future<void> periksaSekarang() => ref.read(klienApiProvider).cekServer();
 
   void _jadwalkan() {
-    if (_timer?.isActive ?? false) return;
+    if (_dibuang || (_timer?.isActive ?? false)) return;
     _timer = Timer(Duration(seconds: _jeda[min(_percobaan, _jeda.length - 1)]), () async {
       _percobaan++;
       await periksaSekarang();

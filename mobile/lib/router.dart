@@ -28,10 +28,15 @@ class _PemicuSesi extends ChangeNotifier {
   }
 }
 
+/// Navigator akar, untuk dialog yang muncul dari luar layar mana pun
+/// (mis. persetujuan Pemantauan Lokasi dari MaterialApp.builder).
+final kunciNavigatorAkar = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   final pemicu = _PemicuSesi(ref);
   ref.onDispose(pemicu.dispose);
   return GoRouter(
+    navigatorKey: kunciNavigatorAkar,
     initialLocation: '/',
     refreshListenable: pemicu,
     redirect: (context, state) {

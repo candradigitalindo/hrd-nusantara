@@ -212,6 +212,41 @@ antrean kirim menyusul di tahap berikutnya.
 - Kebijakan (terima otomatis + tanda, batas 72 jam, sesi 30 hari) masih
   diatur lewat env backend, belum dari halaman pengaturan web.
 
+## Pemantauan Lokasi
+
+Diatur dan dibuka **hanya oleh Super Admin**, di web: Kehadiran & Cuti →
+Pemantauan Lokasi. Aksesnya diperiksa lewat lingkup peran `SUPER_ADMIN`, bukan
+izin, jadi tidak bisa diberikan ke peran kustom. Pengaturannya:
+
+- aktif/nonaktif (bawaan nonaktif);
+- waktu pemantauan: 24 jam, atau hanya selama presensi hari ini terbuka;
+- interval kirim: 1–240 menit;
+- masa simpan riwayat: 1–365 hari. Titik yang lebih tua dihapus otomatis
+  tiap jam dan saat pengaturan disimpan.
+
+Setiap pembukaan peta atau riwayat seseorang tercatat di jejak audit.
+
+Di ponsel (`lib/fitur/pemantauan/`):
+
+- `PemantauLokasi` berjalan hanya bila pemantauan aktif, karyawan sudah
+  membaca pemberitahuan ("Saya mengerti"), dan izin lokasi diberikan.
+- Di Android memakai layanan latar depan geolocator, dengan notifikasi tetap
+  "Pemantauan lokasi aktif" (izin `FOREGROUND_SERVICE_LOCATION`,
+  `ACCESS_BACKGROUND_LOCATION`). Di iOS memakai mode latar `location` dan izin
+  "Selalu".
+- Hanya satu titik per interval yang diambil. Titik disimpan terenkripsi di
+  ponsel lalu dikirim berkelompok ke `POST /location-tracking/pings`. Titik
+  yang terkumpul saat offline terkirim begitu tersambung, dan server
+  mengabaikan titik dobel.
+- Keadaan persetujuan dan izin dilaporkan ke `PUT /location-tracking/status`,
+  supaya Super Admin tahu kenapa seseorang tidak mengirim lokasi. Status di
+  Profil → Privasi.
+- Keterbatasan:
+  - Kalau aplikasi ditutup paksa (diusap dari daftar aplikasi) atau ponsel
+    dinyalakan ulang, pengiriman berhenti sampai aplikasi dibuka lagi.
+  - Mode hemat baterai sebagian merek Android juga bisa menghentikannya.
+  - Kolom "Tidak melapor" di web membantu menemukan kasus ini.
+
 ## Foto absensi ke grup WhatsApp
 
 Bila karyawan sudah memilih grup tujuan (di web, halaman WhatsApp Saya),

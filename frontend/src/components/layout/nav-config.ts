@@ -1,6 +1,7 @@
 import {
   CalendarRange,
   MapPin,
+  Radar,
   LayoutDashboard,
   Users,
   Building2,
@@ -40,6 +41,11 @@ export interface MenuNav {
   izin: string | string[];
   /** Tampil di bar bawah ponsel (maksimal 4). */
   utama?: boolean;
+  /**
+   * Hanya untuk lingkup Super Admin, apa pun izin perannya — untuk data yang
+   * tidak boleh dibagikan lewat matriks hak akses (mis. Pemantauan Lokasi).
+   */
+  hanyaSuperAdmin?: boolean;
 }
 
 /** Kategori di sidebar; kategori beranggota satu ditampilkan sebagai tautan biasa. */
@@ -81,6 +87,7 @@ export const KELOMPOK: KelompokMenu[] = [
       { href: "/presensi", label: "Presensi", icon: CalendarCheck, izin: ["presensi.lihat", "presensi_tim.lihat"], utama: true },
       { href: "/shift", label: "Jadwal Shift", icon: CalendarRange, izin: ["shift.lihat", "shift.buat", "shift.ubah", "shift.hapus"] },
       { href: "/lokasi", label: "Lokasi Kerja", icon: MapPin, izin: ["lokasi.lihat", "lokasi.buat", "lokasi.ubah"] },
+      { href: "/pemantauan", label: "Pemantauan Lokasi", icon: Radar, izin: [], hanyaSuperAdmin: true },
       { href: "/cuti", label: "Cuti & Izin", icon: CalendarOff, izin: ["cuti.lihat", "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat", "pengaturan_cuti.buat", "pengaturan_cuti.ubah"], utama: true },
     ],
   },
@@ -137,6 +144,7 @@ export const MENU: MenuNav[] = KELOMPOK.flatMap((k) => k.item);
 /** Apakah pengguna memegang salah satu izin yang membuka menu ini. */
 export const bolehBukaMenu = (m: MenuNav, saya: PenggunaSesi | undefined) => {
   if (!saya) return false;
+  if (m.hanyaSuperAdmin) return saya.role === "SUPER_ADMIN";
   const daftar = Array.isArray(m.izin) ? m.izin : [m.izin];
   return daftar.some((k) => saya.permissions.includes(k));
 };

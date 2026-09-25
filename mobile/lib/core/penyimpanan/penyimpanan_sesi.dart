@@ -15,6 +15,7 @@ class PenyimpananSesi {
   static const _kunciTokenPush = 'hrd_token_push';
   static const _kunciCache = 'hrd_kunci_cache';
   static const _kunciAntrean = 'hrd_kunci_antrean';
+  static const _awalanSetujuPantau = 'hrd_setuju_pantau_';
 
   Future<String?> bacaToken() => _storage.read(key: _kunciToken);
   Future<void> simpanToken(String token) => _storage.write(key: _kunciToken, value: token);
@@ -52,6 +53,12 @@ class PenyimpananSesi {
   Future<String?> bacaKunciAntrean() => _storage.read(key: _kunciAntrean);
   Future<void> simpanKunciAntrean(String? kunci) =>
       kunci == null ? _storage.delete(key: _kunciAntrean) : _storage.write(key: _kunciAntrean, value: kunci);
+
+  /// Persetujuan Pemantauan Lokasi, per akun (ponsel bisa dipakai bergantian).
+  Future<bool> bacaSetujuPantau(String karyawanId) async => (await _storage.read(key: '$_awalanSetujuPantau$karyawanId')) != null;
+  Future<void> simpanSetujuPantau(String karyawanId, bool setuju) => setuju
+      ? _storage.write(key: '$_awalanSetujuPantau$karyawanId', value: DateTime.now().toUtc().toIso8601String())
+      : _storage.delete(key: '$_awalanSetujuPantau$karyawanId');
 
   Future<void> hapusSemua() async {
     await _storage.delete(key: _kunciToken);

@@ -126,6 +126,30 @@ export interface LokasiKerja {
   qrSecret?: string;
 }
 
+export interface PengaturanPemantauan {
+  enabled: boolean;
+  /** always = 24 jam; while_working = hanya selama presensi terbuka. */
+  mode: "always" | "while_working";
+  intervalMinutes: number;
+  retentionDays: number;
+  updatedAt: string | null;
+}
+
+export interface TitikPantauan {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  isMocked: boolean;
+  recordedAt: string;
+  receivedAt: string;
+}
+
+export interface PosisiKaryawan {
+  employee: { id: string; nik: string; name: string; department: string | null };
+  last: TitikPantauan | null;
+  status: { consentAt: string | null; permission: string | null; platform: string | null; appVersion: string | null; updatedAt: string } | null;
+}
+
 export interface BuktiJamOffline {
   capturedAt: string;
   serverTimeEstimate?: string | null;

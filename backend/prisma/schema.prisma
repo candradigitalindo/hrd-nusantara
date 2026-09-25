@@ -124,29 +124,32 @@ model Employee {
   whatsappConversations        WhatsAppConversation[]
 
   // Bidirectional relations that need explicit back-link
-  createdJobPostings    JobPosting[] // Employee yang membuat lowongan
-  authoredAnnouncements Announcement[] // Employee yang membuat pengumuman
-  sentChatMessages      ChatMessage[] // Employee yang mengirim pesan
+  createdJobPostings     JobPosting[] // Employee yang membuat lowongan
+  authoredAnnouncements  Announcement[] // Employee yang membuat pengumuman
+  sentChatMessages       ChatMessage[] // Employee yang mengirim pesan
   // Assuming Employee can be a member of many rooms - requires junction table
   // memberships          RoomMembership[] // Example junction table
-  createdSurveys        Survey[] // Employee yang membuat survei
-  respondedSurveys      SurveyResponse[] // Employee yang merespon survei
+  createdSurveys         Survey[] // Employee yang membuat survei
+  respondedSurveys       SurveyResponse[] // Employee yang merespon survei
   // Complaint/Disciplinary Action reporting/handling
-  reportedComplaints    ComplaintOrDisciplinaryAction[] @relation(name: "ReportedByRelation")
-  handledComplaints     ComplaintOrDisciplinaryAction[] @relation(name: "HandledByRelation")
-  scheduledShifts       ShiftSchedule[] // Employee yang dijadwalkan shift
-  conductedInterviews   Interview[] // Employee yang melakukan wawancara
-  evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
-  deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
-  mobileSessions        MobileSession[]
-  idempotencyKeys       IdempotencyKey[]
-  documents             EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
-  mobileReleases        MobileRelease[]                 @relation("MobileReleaseUploader")
-  cbtQuestions          CbtQuestion[]                   @relation("CbtQuestionAuthor")
-  cbtTests              CbtTest[]                       @relation("CbtTestAuthor")
-  cbtAssignments        CbtAssignment[]                 @relation("CbtPeserta")
-  cbtAssignedBy         CbtAssignment[]                 @relation("CbtAssigner")
-  cbtGradedAttempts     CbtAttempt[]                    @relation("CbtGrader")
+  reportedComplaints     ComplaintOrDisciplinaryAction[] @relation(name: "ReportedByRelation")
+  handledComplaints      ComplaintOrDisciplinaryAction[] @relation(name: "HandledByRelation")
+  scheduledShifts        ShiftSchedule[] // Employee yang dijadwalkan shift
+  conductedInterviews    Interview[] // Employee yang melakukan wawancara
+  evaluatedTests         PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
+  deviceTokens           DeviceToken[] // Perangkat yang menerima notifikasi push
+  mobileSessions         MobileSession[]
+  idempotencyKeys        IdempotencyKey[]
+  locationPings          LocationPing[]
+  locationTrackingStatus LocationTrackingStatus?
+  locationTrackingEdits  LocationTrackingSetting[]       @relation("LocationTrackingSettingEditor")
+  documents              EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
+  mobileReleases         MobileRelease[]                 @relation("MobileReleaseUploader")
+  cbtQuestions           CbtQuestion[]                   @relation("CbtQuestionAuthor")
+  cbtTests               CbtTest[]                       @relation("CbtTestAuthor")
+  cbtAssignments         CbtAssignment[]                 @relation("CbtPeserta")
+  cbtAssignedBy          CbtAssignment[]                 @relation("CbtAssigner")
+  cbtGradedAttempts      CbtAttempt[]                    @relation("CbtGrader")
 
   @@index([departmentId])
   @@index([positionId])
@@ -1836,6 +1839,60 @@ model MobileSession {
   createdAt DateTime @default(now())
 
   @@index([employeeId, revokedAt])
+}
+
+/// Pengaturan Pemantauan Lokasi — satu baris (id "utama"), hanya diubah
+/// Super Admin. Selama nonaktif, aplikasi mobile tidak mengirim lokasi.
+model LocationTrackingSetting {
+  id              String    @id @default("utama")
+  enabled         Boolean   @default(false)
+  /// always = 24 jam; while_working = hanya selama presensi terbuka.
+  mode            String    @default("always")
+  /// Jarak antar pengiriman lokasi dari ponsel.
+  intervalMinutes Int       @default(15)
+  /// Titik yang lebih tua dari ini dihapus otomatis.
+  retentionDays   Int       @default(30)
+  updatedBy       Employee? @relation("LocationTrackingSettingEditor", fields: [updatedById], references: [id])
+  updatedById     String?
+  updatedAt       DateTime  @updatedAt
+}
+
+/// Satu titik lokasi karyawan yang dikirim aplikasi mobile saat Pemantauan
+/// Lokasi aktif. Hanya Super Admin yang bisa membacanya.
+model LocationPing {
+  id         String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  /// Koordinat terenkripsi (fieldCrypto.encryptJson), seperti koordinat presensi.
+  location       String
+  accuracyMeters Float?
+  /// Lokasi ditandai palsu oleh sistem operasi ponsel.
+  isMocked       Boolean @default(false)
+
+  /// Waktu pembacaan di ponsel; bisa jauh sebelum diterima bila ponsel offline.
+  recordedAt DateTime
+  receivedAt DateTime @default(now())
+
+  /// Satu pembacaan tidak tercatat dua kali walau dikirim ulang.
+  @@unique([employeeId, recordedAt])
+  @@index([recordedAt])
+}
+
+/// Keadaan pemantauan di ponsel tiap karyawan — untuk menjelaskan kenapa
+/// seseorang tidak mengirim lokasi (belum setuju, izin ditolak, dsb.).
+model LocationTrackingStatus {
+  id         String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String   @unique
+
+  /// Kapan karyawan menyatakan telah membaca pemberitahuan pemantauan.
+  consentAt  DateTime?
+  /// granted_always, granted_while_in_use, denied, denied_forever, service_off
+  permission String?
+  platform   String?
+  appVersion String?
+  updatedAt  DateTime  @updatedAt
 }
 
 /// Kunci anti-dobel (header Idempotency-Key) untuk kiriman dari antrean

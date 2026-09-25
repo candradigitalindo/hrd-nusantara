@@ -14,6 +14,7 @@ import employeeRoutes from './routes/employeeRoutes';
 import workLocationRoutes from './routes/workLocationRoutes';
 import shiftRoutes from './routes/shiftRoutes';
 import attendanceRoutes from './routes/attendanceRoutes';
+import locationTrackingRoutes from './routes/locationTrackingRoutes';
 import faceEnrollmentRoutes from './routes/faceEnrollmentRoutes';
 import leaveRoutes from './routes/leaveRoutes';
 import payrollRoutes from './routes/payrollRoutes';
@@ -85,7 +86,14 @@ export const createApp = () => {
       // membuatnya gagal karena alasan yang tidak sedang diuji.
       // Pengerjaan CBT dikecualikan: batasnya dihitung per peserta di
       // cbtRoutes, karena satu ruangan ujian tampak sebagai satu IP.
-      skip: (req) => env.NODE_ENV === 'test' || req.path.startsWith('/cbt/saya/') || req.path.startsWith('/cbt/publik/'),
+      // Kiriman lokasi berkala juga: seluruh karyawan di satu wifi outlet
+      // tampak sebagai satu IP, dan kirimannya akan memenuhi batas ini
+      // sampai permintaan lain ikut ditolak.
+      skip: (req) =>
+        env.NODE_ENV === 'test' ||
+        req.path.startsWith('/cbt/saya/') ||
+        req.path.startsWith('/cbt/publik/') ||
+        req.path === '/location-tracking/pings',
       message: { error: 'Terlalu banyak permintaan. Coba lagi nanti.' },
     })
   );
@@ -123,6 +131,7 @@ export const createApp = () => {
   app.use('/api/work-locations', workLocationRoutes);
   app.use('/api/shifts', shiftRoutes);
   app.use('/api/attendance', attendanceRoutes);
+  app.use('/api/location-tracking', locationTrackingRoutes);
   // Rute pendaftaran wajah memakai dua prefiks (/employees/:id/... dan
   // /face-enrollments/:id), jadi dipasang di akar /api.
   // Departemen dan jabatan memakai dua prefiks, jadi dipasang di akar /api.

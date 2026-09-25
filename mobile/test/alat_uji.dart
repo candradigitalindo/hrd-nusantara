@@ -14,6 +14,7 @@ import 'package:hrd_nusantara/core/penyimpanan/penyimpanan_sesi.dart';
 import 'package:hrd_nusantara/core/tema.dart';
 import 'package:hrd_nusantara/fitur/antrean/model_antrean.dart';
 import 'package:hrd_nusantara/fitur/antrean/penyimpanan_antrean.dart';
+import 'package:hrd_nusantara/fitur/pemantauan/layanan_pemantauan.dart';
 
 /// Folder tujuan potret layar. Kosong = tes tidak memotret apa pun.
 ///   flutter test --dart-define=POTRET_DIR=/tmp/potret
@@ -158,3 +159,16 @@ Override klienTiruan(ServerAntrean server) => klienApiProvider.overrideWith((ref
       baseUrl: 'https://hrd.contoh/api',
       jaringan: ref.read(statusJaringanProvider.notifier),
     ));
+
+/// Pemantauan Lokasi dengan keadaan tetap: tidak membaca izin, penyimpanan,
+/// maupun server — untuk tes layar yang hanya menampilkan statusnya.
+class PemantauTetap extends PemantauLokasi {
+  PemantauTetap([this.awal = const StatusPemantauan()]);
+  final StatusPemantauan awal;
+  @override
+  StatusPemantauan build() => awal;
+  @override
+  Future<void> segarkan() async {}
+  @override
+  Future<void> setujui() async => state = state.salin(setuju: true, izin: 'granted_always', berjalan: true);
+}

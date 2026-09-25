@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Pemantauan Lokasi: layanan latar depan geolocator (notifikasi tetap selama
+         pemantauan berjalan). BACKGROUND_LOCATION untuk izin "Izinkan sepanjang waktu". -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Deteksi fake GPS: memindai aplikasi terpasang yang meminta ACCESS_MOCK_LOCATION.
          Aplikasi ini didistribusikan sebagai APK internal (bukan Play Store); bila
          suatu saat dipublikasikan ke Play, izin ini wajib dibenarkan atau dihapus

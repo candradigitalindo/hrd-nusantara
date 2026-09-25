@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hrd_nusantara/fitur/auth/sesi_provider.dart';
+import 'package:hrd_nusantara/fitur/pemantauan/layanan_pemantauan.dart';
 import 'package:hrd_nusantara/fitur/profil/layar_profil.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -23,7 +24,10 @@ void main() {
 
   testWidgets('profil: data diri, menu sesuai izin, dan versi build terpasang', (tester) async {
     ukuranPonsel(tester, tinggi: 1300);
-    await tester.pumpWidget(aplikasiUji(const LayarProfil(), overrides: [penggunaProvider.overrideWithValue(pengguna)]));
+    await tester.pumpWidget(aplikasiUji(const LayarProfil(), overrides: [
+      penggunaProvider.overrideWithValue(pengguna),
+      pemantauLokasiProvider.overrideWith(PemantauTetap.new),
+    ]));
     await tester.pumpAndSettle();
 
     expect(find.text('Budi Santoso Putra'), findsOneWidget);
