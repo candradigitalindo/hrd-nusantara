@@ -34,6 +34,11 @@ const envSchema = z.object({
     .min(32, 'JWT_SECRET minimal 32 karakter. Generate dengan: openssl rand -base64 48'),
   JWT_EXPIRES_IN: z.string().default('8h'),
 
+  // Umur sesi aplikasi mobile (refresh token), dihitung dari pemakaian
+  // terakhir. Token akses tetap JWT_EXPIRES_IN; sesi ini yang menukarnya
+  // tanpa login ulang, supaya antrean offline tetap bisa terkirim.
+  MOBILE_SESSION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
 
   /**
@@ -66,6 +71,10 @@ const envSchema = z.object({
 
   // Presensi terbuka yang lebih tua dari ini dianggap lupa check-out.
   ATTENDANCE_MAX_SHIFT_HOURS: z.coerce.number().int().min(4).max(48).default(16),
+
+  // Presensi offline dari antrean mobile ditolak bila baru sampai lebih
+  // lama dari ini setelah diambil; koreksinya lewat HR.
+  ATTENDANCE_OFFLINE_MAX_HOURS: z.coerce.number().int().min(1).max(720).default(72),
 
   // --- Pengenalan wajah ---
   // Bobot model disimpan sendiri; tidak ada layanan luar yang dihubungi.

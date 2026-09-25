@@ -4,6 +4,7 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { decryptBytes, encryptJson, decryptJson } from '../utils/fieldCrypto';
 import { evaluateIntegrity, type PreviousFix } from '../utils/locationIntegrity';
+import { evaluateOfflineTime } from '../utils/offlineAttendance';
 import { jadwalkanStempel } from '../services/whatsapp/attendanceStamp';
 
 type Koordinat = { lat: number; lng: number };
@@ -65,6 +66,8 @@ const attendanceSelect = {
   stampStatus: true,
   stampSentAt: true,
   stampNote: true,
+  checkInSyncedAt: true,
+  checkOutSyncedAt: true,
   status: true,
   notes: true,
   createdAt: true,
@@ -129,6 +132,32 @@ const fotoStempel = (input: { faceImage?: string; photo?: string }): Buffer | nu
     return null;
   }
 };
+
+/**
+ * Waktu yang dicatat untuk sebuah presensi: jam server saat ini, atau —
+ * untuk kiriman dari antrean offline mobile — waktu saat diambil di ponsel
+ * setelah bukti jamnya diperiksa (utils/offlineAttendance.ts).
+ */
+const waktuPresensi = (offline: CheckInInput['offline'], now: Date) => {
+  if (!offline) return { ok: true as const, waktu: now, offline: false, flags: [] };
+  const hasil = evaluateOfflineTime(
+    {
+      capturedAt: new Date(offline.capturedAt),
+      serverTimeEstimate: offline.serverTimeEstimate ? new Date(offline.serverTimeEstimate) : null,
+      gpsTime: offline.gpsTime ? new Date(offline.gpsTime) : null,
+    },
+    { now, maxHours: env.ATTENDANCE_OFFLINE_MAX_HOURS }
+  );
+  return hasil.ok ? { ...hasil, offline: true } : hasil;
+};
+
+/**
+ * Laporan integritas yang disimpan untuk audit, beserta bukti jam presensi
+ * offline apa adanya: bila ditandai clock_mismatch, HR bisa melihat jam
+ * berapa yang ditunjukkan ponsel dibanding yang dicatat.
+ */
+const laporanIntegritas = (input: CheckInInput | CheckOutInput): Prisma.InputJsonValue | undefined =>
+  input.integrity || input.offline ? { ...(input.integrity ?? {}), ...(input.offline ? { offline: input.offline } : {}) } : undefined;
 
 const findOpenAttendance = (employeeId: string) =>
   prisma.attendance.findFirst({
@@ -320,10 +349,29 @@ export const checkIn = async (req: Request, res: Response) => {
   const employeeId = req.user!.id;
   const now = new Date();
 
+  const ditentukan = waktuPresensi(input.offline, now);
+  if (!ditentukan.ok) return res.status(422).json({ error: ditentukan.alasan });
+  const { waktu } = ditentukan;
+
+  // Kiriman offline tiba belakangan: yang tercatat sesudah waktunya (mis.
+  // HR sudah mengoreksi presensi hari itu) tidak boleh ditimpa atau diapit.
+  if (ditentukan.offline) {
+    const bertabrakan = await prisma.attendance.findFirst({
+      where: { employeeId, OR: [{ checkInTime: { gte: waktu } }, { checkOutTime: { gt: waktu } }] },
+      select: { id: true },
+    });
+    if (bertabrakan) {
+      return res.status(409).json({
+        error: 'Waktu presensi offline ini bertabrakan dengan presensi yang sudah tercatat',
+        attendanceId: bertabrakan.id,
+      });
+    }
+  }
+
   const terbuka = await findOpenAttendance(employeeId);
 
   if (terbuka) {
-    const umurJam = (now.getTime() - terbuka.checkInTime.getTime()) / 3_600_000;
+    const umurJam = (waktu.getTime() - terbuka.checkInTime.getTime()) / 3_600_000;
 
     if (umurJam < env.ATTENDANCE_MAX_SHIFT_HOURS) {
       return res.status(409).json({
@@ -353,7 +401,7 @@ export const checkIn = async (req: Request, res: Response) => {
     usesGps: pakaiGps,
     position: input.latitude !== undefined && input.longitude !== undefined ? { latitude: input.latitude, longitude: input.longitude } : undefined,
     previous: pakaiGps ? await posisiTerakhir(employeeId) : null,
-    now,
+    now: waktu,
   });
   if (integritas.blocked) return tolakIntegritas(res, integritas.reason, integritas.flags, 'Check-in');
 
@@ -373,17 +421,18 @@ export const checkIn = async (req: Request, res: Response) => {
     }
   }
 
-  const shift = await findShiftForCheckIn(employeeId, now);
+  const shift = await findShiftForCheckIn(employeeId, waktu);
 
   const penilaian = shift
-    ? evaluateCheckIn(shift.start, now, env.ATTENDANCE_LATE_TOLERANCE_MINUTES)
+    ? evaluateCheckIn(shift.start, waktu, env.ATTENDANCE_LATE_TOLERANCE_MINUTES)
     : { lateMinutes: 0, status: 'present' as const };
 
   const attendance = await prisma.attendance.create({
     data: {
       id: generateULID(),
       employeeId,
-      checkInTime: now,
+      checkInTime: waktu,
+      checkInSyncedAt: ditentukan.offline ? now : null,
       checkInMethod: input.method,
       // Koordinat disimpan terenkripsi; geofence sudah dihitung dari nilai
       // masukan di atas, jadi tidak ada yang membutuhkannya dalam bentuk terbuka.
@@ -398,8 +447,8 @@ export const checkIn = async (req: Request, res: Response) => {
       lateMinutes: penilaian.lateMinutes,
       status: penilaian.status,
       notes: input.notes,
-      integrityFlags: integritas.flags,
-      integrityReport: input.integrity ?? undefined,
+      integrityFlags: [...integritas.flags, ...ditentukan.flags],
+      integrityReport: laporanIntegritas(input),
     },
     select: attendanceSelect,
   });
@@ -416,7 +465,8 @@ export const checkIn = async (req: Request, res: Response) => {
       jenis: 'masuk',
       nama: attendance.employee.name,
       nik: attendance.employee.nik,
-      waktu: now,
+      waktu,
+      diterimaServer: ditentukan.offline ? now : undefined,
       lokasi: attendance.workLocation?.name ?? null,
       latitude: input.latitude,
       longitude: input.longitude,
@@ -433,9 +483,16 @@ export const checkOut = async (req: Request, res: Response) => {
   const employeeId = req.user!.id;
   const now = new Date();
 
+  const ditentukan = waktuPresensi(input.offline, now);
+  if (!ditentukan.ok) return res.status(422).json({ error: ditentukan.alasan });
+  const { waktu } = ditentukan;
+
   const terbuka = await findOpenAttendance(employeeId);
   if (!terbuka) {
     return res.status(404).json({ error: 'Tidak ada presensi terbuka. Lakukan check-in dulu.' });
+  }
+  if (waktu.getTime() <= terbuka.checkInTime.getTime()) {
+    return res.status(422).json({ error: 'Waktu check-out lebih awal dari check-in. Periksa jam ponsel Anda.' });
   }
 
   // Lokasi saat check-out mengikuti lokasi check-in kalau klien tidak
@@ -455,7 +512,7 @@ export const checkOut = async (req: Request, res: Response) => {
     usesGps: pakaiGpsKeluar,
     position: input.latitude !== undefined && input.longitude !== undefined ? { latitude: input.latitude, longitude: input.longitude } : undefined,
     previous: pakaiGpsKeluar && masuk ? { latitude: masuk.lat, longitude: masuk.lng, at: terbuka.checkInTime } : null,
-    now,
+    now: waktu,
   });
   if (integritasKeluar.blocked) return tolakIntegritas(res, integritasKeluar.reason, integritasKeluar.flags, 'Check-out');
 
@@ -478,7 +535,7 @@ export const checkOut = async (req: Request, res: Response) => {
 
   const penilaian = evaluateCheckOut({
     checkInTime: terbuka.checkInTime,
-    checkOutTime: now,
+    checkOutTime: waktu,
     shiftEnd: window?.end ?? null,
     breakHours: shift ? shift.breakDuration.toNumber() : 0,
     toleranceMinutes: env.ATTENDANCE_LATE_TOLERANCE_MINUTES,
@@ -488,7 +545,8 @@ export const checkOut = async (req: Request, res: Response) => {
   const attendance = await prisma.attendance.update({
     where: { id: terbuka.id },
     data: {
-      checkOutTime: now,
+      checkOutTime: waktu,
+      checkOutSyncedAt: ditentukan.offline ? now : null,
       checkOutMethod: input.method,
       checkOutLocation: koordinatTerenkripsi(input.latitude, input.longitude),
       workedMinutes: penilaian.workedMinutes,
@@ -498,8 +556,8 @@ export const checkOut = async (req: Request, res: Response) => {
       overtimeHours: new Prisma.Decimal(penilaian.overtimeHours),
       ...(input.notes ? { notes: input.notes } : {}),
       // Penanda check-out digabung dengan penanda check-in, tanpa duplikat.
-      integrityFlags: [...new Set([...terbuka.integrityFlags, ...integritasKeluar.flags])],
-      checkOutIntegrityReport: input.integrity ?? undefined,
+      integrityFlags: [...new Set([...terbuka.integrityFlags, ...integritasKeluar.flags, ...ditentukan.flags])],
+      checkOutIntegrityReport: laporanIntegritas(input),
     },
     select: attendanceSelect,
   });
@@ -514,7 +572,8 @@ export const checkOut = async (req: Request, res: Response) => {
       jenis: 'pulang',
       nama: attendance.employee.name,
       nik: attendance.employee.nik,
-      waktu: now,
+      waktu,
+      diterimaServer: ditentukan.offline ? now : undefined,
       lokasi: attendance.workLocation?.name ?? null,
       latitude: input.latitude,
       longitude: input.longitude,
@@ -548,6 +607,7 @@ const buildAttendanceWhere = (
     where.overtimeApproved = false;
   }
   if (query.flaggedOnly) where.integrityFlags = { isEmpty: false };
+  if (query.offlineOnly) where.OR = [{ checkInSyncedAt: { not: null } }, { checkOutSyncedAt: { not: null } }];
 
   if (query.startDate || query.endDate) {
     const rentang = businessDayRange(

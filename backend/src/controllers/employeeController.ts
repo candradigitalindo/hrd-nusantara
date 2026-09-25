@@ -7,6 +7,7 @@ import { randomInt } from 'crypto';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
+import { cabutSesi } from '../services/sesiMobile';
 import { generateULID } from '../utils/generateULID';
 import type {
   CreateEmployeeInput,
@@ -392,6 +393,7 @@ export const deactivateEmployee = async (req: Request, res: Response) => {
       },
       select: employeeSelect,
     });
+    await cabutSesi({ employeeId: id }, 'deactivated');
     res.json({ message: 'Karyawan dinonaktifkan', employee });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -473,6 +475,8 @@ export const resetPassword = async (req: Request, res: Response) => {
     where: { id },
     data: { password: await bcrypt.hash(sandi, env.BCRYPT_ROUNDS), mustChangePassword: true },
   });
+  // Ponsel yang masih login dengan sandi lama harus login ulang.
+  await cabutSesi({ employeeId: id }, 'password_reset');
 
   res.locals.audit = {
     action: 'employee.reset_sandi',

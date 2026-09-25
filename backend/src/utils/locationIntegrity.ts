@@ -20,6 +20,9 @@ export const INTEGRITY_FLAGS = [
   'stale_position',
   'impossible_speed',
   'integrity_missing',
+  // Presensi offline (utils/offlineAttendance.ts).
+  'clock_mismatch',
+  'clock_unverified',
 ] as const;
 export type IntegrityFlag = (typeof INTEGRITY_FLAGS)[number];
 
@@ -40,6 +43,8 @@ export const LABEL_FLAG: Record<IntegrityFlag, string> = {
   stale_position: 'posisi GPS basi (bukan pembacaan baru)',
   impossible_speed: 'perpindahan terlalu cepat dari presensi sebelumnya',
   integrity_missing: 'aplikasi tidak mengirim laporan integritas',
+  clock_mismatch: 'jam ponsel tidak sesuai jam server/GPS saat presensi offline',
+  clock_unverified: 'presensi offline tanpa pembanding jam (ponsel dinyalakan ulang?)',
 };
 
 export interface IntegrityReport {

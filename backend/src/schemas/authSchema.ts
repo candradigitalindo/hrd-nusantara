@@ -12,6 +12,14 @@ export const loginSchema = z
     // Field lama: bila dipakai, isinya memang harus email.
     email: z.email('Format email tidak valid').toLowerCase().optional(),
     password: z.string().min(1, 'Password wajib diisi'),
+    /** Hanya aplikasi mobile: meminta sesi perangkat + refresh token. */
+    device: z
+      .object({
+        platform: z.enum(['android', 'ios']),
+        name: z.string().trim().max(100).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((d) => Boolean(d.username || d.email), {
@@ -30,5 +38,10 @@ export const changePasswordSchema = z
     path: ['newPassword'],
   });
 
+export const refreshTokenSchema = z
+  .object({ refreshToken: z.string().trim().min(20).max(200) })
+  .strict();
+
 export type LoginInput = z.infer<typeof loginSchema>;
+export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

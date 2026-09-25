@@ -99,6 +99,24 @@ export const integritySchema = z
   })
   .strict();
 
+const waktuIso = z.iso.datetime({ offset: true });
+
+/**
+ * Presensi yang diambil saat ponsel offline dan dikirim belakangan dari
+ * antrean. Waktu yang dicatat ditentukan dari bukti ini (lihat
+ * utils/offlineAttendance.ts), bukan jam server saat kiriman tiba.
+ */
+export const offlineSchema = z
+  .object({
+    /** Jam ponsel saat presensi diambil. */
+    capturedAt: waktuIso,
+    /** Jam server saat terakhir online + jam monotonik perangkat sejak itu. */
+    serverTimeEstimate: waktuIso.nullable().optional(),
+    /** Waktu pembacaan GPS (bukan jam ponsel). */
+    gpsTime: waktuIso.nullable().optional(),
+  })
+  .strict();
+
 export const checkInSchema = z
   .object({
     method: z.enum(ATTENDANCE_METHODS),
@@ -110,6 +128,7 @@ export const checkInSchema = z
     integrity: integritySchema.optional(),
     /// Foto untuk stempel absensi ke grup WhatsApp, bila metodenya bukan wajah.
     photo: base64ImageField.optional(),
+    offline: offlineSchema.optional(),
   })
   .strict()
   .superRefine(requireByMethod);
@@ -124,6 +143,7 @@ export const checkOutSchema = z
     notes: z.string().trim().max(500).optional(),
     integrity: integritySchema.optional(),
     photo: base64ImageField.optional(),
+    offline: offlineSchema.optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
@@ -152,6 +172,11 @@ export const listAttendanceQuerySchema = z.object({
     .transform((value) => value === 'true'),
   /// Hanya presensi yang punya penanda kecurangan lokasi.
   flaggedOnly: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  /// Hanya presensi yang masuk atau pulangnya diambil offline dan dikirim belakangan.
+  offlineOnly: z
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),

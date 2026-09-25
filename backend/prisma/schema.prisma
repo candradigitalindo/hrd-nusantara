@@ -138,6 +138,8 @@ model Employee {
   conductedInterviews   Interview[] // Employee yang melakukan wawancara
   evaluatedTests        PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
   deviceTokens          DeviceToken[] // Perangkat yang menerima notifikasi push
+  mobileSessions        MobileSession[]
+  idempotencyKeys       IdempotencyKey[]
   documents             EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
   mobileReleases        MobileRelease[]                 @relation("MobileReleaseUploader")
   cbtQuestions          CbtQuestion[]                   @relation("CbtQuestionAuthor")
@@ -232,7 +234,8 @@ model Attendance {
   livenessScore           Float?
   /// Penanda kecurangan lokasi (src/utils/locationIntegrity.ts): mock_location,
   /// mock_app_installed, rooted_device, emulator, developer_options,
-  /// network_mismatch, stale_position, impossible_speed, integrity_missing.
+  /// network_mismatch, stale_position, impossible_speed, integrity_missing,
+  /// serta clock_mismatch / clock_unverified untuk presensi offline.
   /// Kosong = tidak ada yang mencurigakan.
   integrityFlags          String[]  @default([])
   /// Laporan integritas mentah dari aplikasi mobile, disimpan untuk jejak
@@ -245,6 +248,12 @@ model Attendance {
   stampStatus             String?
   stampSentAt             DateTime?
   stampNote               String?
+
+  /// Presensi offline dari antrean mobile: checkInTime/checkOutTime adalah
+  /// waktu saat diambil di ponsel, kolom ini kapan server menerimanya.
+  /// null = dikirim langsung saat online.
+  checkInSyncedAt  DateTime?
+  checkOutSyncedAt DateTime?
 
   status    String   @default("present") // present, late, absent, no_checkout
   notes     String?
@@ -684,12 +693,12 @@ model Candidate {
   /// Dipakai menilai saluran rekrutmen mana yang paling menghasilkan.
   source String?
 
-  expectedSalary  Decimal? @db.Decimal(15, 2)
+  expectedSalary Decimal? @db.Decimal(15, 2)
 
   /// Surat lamaran yang ditulis pelamar sendiri lewat portal karier.
   /// Dipisahkan dari `notes` yang merupakan catatan internal HR: yang satu
   /// ditulis pelamar dan boleh ia baca kembali, yang lain tidak.
-  coverLetter     String?
+  coverLetter String?
 
   notes           String?
   rejectionReason String?
@@ -1796,6 +1805,62 @@ model PerformanceFormTemplate {
 /// Dipisah dari Employee karena satu orang bisa memasang aplikasi di beberapa
 /// perangkat, dan tiap pemasangan punya token sendiri yang bisa kedaluwarsa
 /// sendiri-sendiri.
+/// Sesi aplikasi mobile yang bisa diperpanjang: token akses JWT tetap
+/// berumur pendek (JWT_EXPIRES_IN), refresh token menukarnya dengan yang baru
+/// tanpa login ulang — supaya antrean presensi offline tetap bisa terkirim.
+/// Refresh token berputar setiap dipakai dan hanya hash-nya yang disimpan.
+model MobileSession {
+  id String @id
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  /// sha256 refresh token yang berlaku sekarang.
+  tokenHash         String    @unique
+  /// sha256 token sebelum putaran terakhir. Dipakai lagi sesaat setelah
+  /// berputar = jawaban putaran hilang di jaringan (dilayani); dipakai lagi
+  /// lebih lama dari itu = token dicuri (sesi dicabut).
+  previousTokenHash String?   @unique
+  rotatedAt         DateTime?
+
+  platform   String? // android, ios
+  deviceName String?
+
+  lastUsedAt   DateTime  @default(now())
+  /// Bergeser maju setiap dipakai (MOBILE_SESSION_DAYS sejak pemakaian terakhir).
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  /// logout, password_changed, password_reset, deactivated, token_reuse
+  revokeReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([employeeId, revokedAt])
+}
+
+/// Kunci anti-dobel (header Idempotency-Key) untuk kiriman dari antrean
+/// offline mobile: kiriman ulang yang jawabannya dulu hilang di jaringan
+/// menerima jawaban yang sama, tanpa membuat presensi/cuti/pesan kedua.
+model IdempotencyKey {
+  id String @id
+
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+
+  key   String
+  /// "POST /api/attendance/check-in" — kunci yang sama untuk rute lain ditolak.
+  route String
+
+  /// null = masih diproses.
+  statusCode   Int?
+  responseBody Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([employeeId, key])
+  @@index([createdAt])
+}
+
 model DeviceToken {
   id String @id
 

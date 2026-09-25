@@ -2,11 +2,11 @@
 import { Request, Response } from 'express';
 import { normalizePhoneNumber } from '../utils/whatsappRules';
 import bcrypt from 'bcryptjs';
-import jwt, { SignOptions } from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { ACTIVE_STATUSES } from '../middleware/auth';
-import type { LoginInput, ChangePasswordInput } from '../schemas/authSchema';
+import type { LoginInput, ChangePasswordInput, RefreshTokenInput } from '../schemas/authSchema';
+import { buatSesi, cabutSesi, cabutSesiDariToken, putarSesi, tandaTanganAkses } from '../services/sesiMobile';
 import { izinEfektif } from '../services/roles/resolve';
 import { denganAliasKlienLama } from '../utils/permissions';
 
@@ -48,7 +48,7 @@ const cariAkunLogin = (pengenal: string) => {
 };
 
 export const login = async (req: Request, res: Response) => {
-  const { username, email, password } = req.body as LoginInput;
+  const { username, email, password, device } = req.body as LoginInput;
   const pengenal = (username ?? email ?? '').trim();
 
   const employee = await cariAkunLogin(pengenal);
@@ -75,9 +75,10 @@ export const login = async (req: Request, res: Response) => {
     return res.status(403).json({ error: 'Akun Anda sudah tidak aktif. Hubungi HR.' });
   }
 
-  const token = jwt.sign({ sub: employee.id, role: employee.role }, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
-  });
+  // Aplikasi mobile menyebut perangkatnya dan menerima sesi yang bisa
+  // diperpanjang; web tetap memakai token akses saja.
+  const sesiMobile = device ? await buatSesi(employee.id, device) : null;
+  const token = tandaTanganAkses(employee, sesiMobile?.sesi.id);
 
   // Pencatatan waktu login sengaja tidak boleh menggagalkan login.
   //
@@ -106,6 +107,9 @@ export const login = async (req: Request, res: Response) => {
   res.json({
     token,
     expiresIn: env.JWT_EXPIRES_IN,
+    ...(sesiMobile
+      ? { refreshToken: sesiMobile.refreshToken, refreshExpiresAt: sesiMobile.sesi.expiresAt }
+      : {}),
     user: {
       id: employee.id,
       nik: employee.nik,
@@ -172,6 +176,41 @@ export const changePassword = async (req: Request, res: Response) => {
     // Sandi dari HR sudah diganti sendiri: kunci "wajib ganti" dilepas.
     data: { password: await bcrypt.hash(newPassword, env.BCRYPT_ROUNDS), mustChangePassword: false },
   });
+  // Perangkat lain yang masih login dengan sandi lama ikut keluar; perangkat
+  // yang dipakai mengganti sandi tetap masuk.
+  await cabutSesi({ employeeId: employee.id, idKecuali: req.sessionId }, 'password_changed');
 
   res.json({ message: 'Password berhasil diubah' });
+};
+
+/** Menukar refresh token sesi mobile dengan token akses baru (dan refresh token baru). */
+export const refresh = async (req: Request, res: Response) => {
+  const { refreshToken } = req.body as RefreshTokenInput;
+  const hasil = await putarSesi(refreshToken);
+
+  if (!hasil.ok) {
+    if (hasil.dicabutKarenaDipakaiUlang) {
+      res.locals.audit = {
+        action: 'auth.sesi.token_dipakai_ulang',
+        entity: 'Employee',
+        entityId: hasil.employeeId,
+        summary: 'Refresh token lama dipakai lagi; sesi perangkat dicabut',
+      };
+    }
+    return res.status(hasil.status).json({ error: hasil.error });
+  }
+
+  res.json({
+    token: hasil.token,
+    expiresIn: env.JWT_EXPIRES_IN,
+    refreshToken: hasil.refreshToken,
+    refreshExpiresAt: hasil.refreshExpiresAt,
+  });
+};
+
+/** Mengakhiri sesi mobile. Selalu 204: token yang sudah mati tidak perlu dilaporkan. */
+export const logout = async (req: Request, res: Response) => {
+  const { refreshToken } = req.body as RefreshTokenInput;
+  await cabutSesiDariToken(refreshToken);
+  res.status(204).end();
 };

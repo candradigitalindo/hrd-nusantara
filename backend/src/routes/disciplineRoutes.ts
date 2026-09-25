@@ -8,6 +8,7 @@ import {
   updateCaseStatus,
 } from '../controllers/disciplineController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
+import { idempotensi } from '../middleware/idempotensi';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -23,7 +24,7 @@ const router = express.Router();
 router.use(authenticateToken);
 
 // Keluhan boleh diajukan siapa pun — itulah gunanya.
-router.post('/complaints', requirePermission('kasus.lihat', ...kelola('kasus')), validate(createComplaintSchema), asyncHandler(createComplaint));
+router.post('/complaints', requirePermission('kasus.lihat', ...kelola('kasus')), idempotensi, validate(createComplaintSchema), asyncHandler(createComplaint));
 
 // Tindakan disiplin: HR dan manajer. Batas departemen manajer di controller.
 router.post('/disciplinary-actions', requirePermission('kasus.buat'), validate(createDisciplinarySchema), asyncHandler(createDisciplinaryAction));

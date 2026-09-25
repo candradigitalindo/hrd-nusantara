@@ -26,6 +26,8 @@ declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
+      /** Sesi mobile (services/sesiMobile.ts) bila token berasal darinya. */
+      sessionId?: string;
     }
   }
 }
@@ -33,6 +35,8 @@ declare global {
 export interface JwtPayload {
   sub: string;
   role: Role;
+  /** Id MobileSession; hanya ada pada token dari aplikasi mobile. */
+  sid?: string;
 }
 
 /**
@@ -94,6 +98,16 @@ export const authenticateToken = asyncHandler(
 
     if (!ACTIVE_STATUSES.has(user.status)) {
       return res.status(403).json({ error: 'Akun Anda sudah tidak aktif' });
+    }
+
+    // Token dari sesi mobile ikut mati saat sesinya dicabut (logout, ganti
+    // atau reset sandi), tanpa menunggu token aksesnya kedaluwarsa.
+    if (payload.sid) {
+      const sesi = await prisma.mobileSession.findUnique({ where: { id: payload.sid }, select: { revokedAt: true } });
+      if (!sesi || sesi.revokedAt) {
+        return res.status(401).json({ error: 'Sesi sudah diakhiri. Silakan login lagi.' });
+      }
+      req.sessionId = payload.sid;
     }
 
     // Izin dibaca ulang setiap permintaan, bukan disimpan di token: suntingan

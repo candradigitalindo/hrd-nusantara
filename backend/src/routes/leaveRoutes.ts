@@ -34,6 +34,7 @@ import {
   getMyWorkPattern,
 } from '../controllers/workPatternController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
+import { idempotensi } from '../middleware/idempotensi';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -149,7 +150,7 @@ router.get(
 
 // Pengajuan selalu untuk diri sendiri: identitas diambil dari token, tidak
 // dari body, supaya tidak ada yang bisa mengajukan cuti atas nama orang lain.
-router.post('/leaves', requirePermission('cuti.lihat'), validate(createLeaveSchema), asyncHandler(createLeave));
+router.post('/leaves', requirePermission('cuti.lihat'), idempotensi, validate(createLeaveSchema), asyncHandler(createLeave));
 
 router.get('/leaves/:id', requirePermission('cuti.lihat', 'cuti_tim.lihat', 'cuti_tim.ubah'), validate(idParamSchema, 'params'), asyncHandler(getLeaveById));
 
@@ -165,6 +166,7 @@ router.patch(
 router.patch(
   '/leaves/:id/cancel',
   requirePermission('cuti.lihat'),
+  idempotensi,
   validate(idParamSchema, 'params'),
   validate(cancelLeaveSchema),
   asyncHandler(cancelLeave)

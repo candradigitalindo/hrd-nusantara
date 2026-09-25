@@ -10,6 +10,7 @@ import {
   getAttendanceReport,
 } from '../controllers/attendanceController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
+import { idempotensi } from '../middleware/idempotensi';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -26,8 +27,8 @@ router.use(authenticateToken);
 
 // Presensi selalu untuk diri sendiri — identitas diambil dari token,
 // bukan dari body, supaya tidak ada yang bisa mengabsenkan orang lain.
-router.post('/check-in', requirePermission('presensi.lihat'), validate(checkInSchema), asyncHandler(checkIn));
-router.post('/check-out', requirePermission('presensi.lihat'), validate(checkOutSchema), asyncHandler(checkOut));
+router.post('/check-in', requirePermission('presensi.lihat'), idempotensi, validate(checkInSchema), asyncHandler(checkIn));
+router.post('/check-out', requirePermission('presensi.lihat'), idempotensi, validate(checkOutSchema), asyncHandler(checkOut));
 
 // Rute literal didaftarkan sebelum '/:id'.
 router.get('/me', requirePermission('presensi.lihat'), validate(listAttendanceQuerySchema, 'query'), asyncHandler(getMyAttendance));

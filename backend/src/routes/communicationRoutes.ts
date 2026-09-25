@@ -20,6 +20,7 @@ import {
   deleteMessage,
 } from '../controllers/communicationController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
+import { idempotensi } from '../middleware/idempotensi';
 import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
@@ -75,6 +76,7 @@ router.patch(
 router.post(
   '/announcements/:id/read',
   requirePermission('pengumuman.lihat', ...kelola('pengumuman')),
+  idempotensi,
   validate(idParamSchema, 'params'),
   validate(markReadSchema),
   asyncHandler(markAnnouncementRead)
@@ -99,6 +101,7 @@ router.patch(
 router.post(
   '/surveys/:id/submit',
   requirePermission('pengumuman.lihat', ...kelola('survei')),
+  idempotensi,
   validate(idParamSchema, 'params'),
   validate(submitSurveySchema),
   asyncHandler(submitSurvey)
@@ -130,6 +133,7 @@ router.get(
 router.post(
   '/chat/rooms/:id/messages',
   requirePermission('chat.lihat'),
+  idempotensi,
   validate(idParamSchema, 'params'),
   validate(sendMessageSchema),
   asyncHandler(sendMessage)

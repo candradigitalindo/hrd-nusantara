@@ -27,6 +27,8 @@ export interface DataStempel {
   status: string;
   menitTerlambat?: number;
   menitKerja?: number;
+  /** Presensi offline: kapan server menerimanya (waktu di atas = saat diambil). */
+  diterimaServer?: Date;
 }
 
 const LABEL_METODE: Record<string, string> = { gps: 'GPS', qr: 'QR', face: 'Wajah' };
@@ -46,7 +48,7 @@ const durasi = (menit: number) => {
 /** Baris teks pada pita stempel (urutan = urutan tampil). */
 export const barisStempel = (d: DataStempel): string[] => [
   `${d.jenis === 'masuk' ? 'CHECK-IN' : 'CHECK-OUT'} · ${d.nama} (${d.nik})`,
-  formatWaktuStempel(d.waktu),
+  `${formatWaktuStempel(d.waktu)}${d.diterimaServer ? ' · offline' : ''}`,
   `${d.lokasi ?? 'Lokasi tidak tercatat'}${d.latitude !== undefined && d.longitude !== undefined ? ` · ${d.latitude.toFixed(5)}, ${d.longitude.toFixed(5)}` : ''}`,
   `${LABEL_METODE[d.metode] ?? d.metode}${d.wajahTerverifikasi ? ' · wajah terverifikasi' : ''} · ${LABEL_STATUS[d.status] ?? d.status}${
     d.menitTerlambat ? ` ${d.menitTerlambat} mnt` : ''
@@ -60,6 +62,7 @@ export const teksKeterangan = (d: DataStempel): string =>
     `🕒 ${formatWaktuStempel(d.waktu)}`,
     `📍 ${barisStempel(d)[2]}`,
     `📱 ${barisStempel(d)[3]}`,
+    ...(d.diterimaServer ? [`📶 Diambil offline, terkirim ${formatWaktuStempel(d.diterimaServer)}`] : []),
     'Dikirim otomatis oleh HRD Nusantara',
   ].join('\n');
 

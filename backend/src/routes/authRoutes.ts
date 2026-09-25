@@ -1,11 +1,11 @@
 // src/routes/authRoutes.ts
 import express from 'express';
 import rateLimit from 'express-rate-limit';
-import { login, me, changePassword } from '../controllers/authController';
+import { login, me, changePassword, refresh, logout } from '../controllers/authController';
 import { authenticateToken, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { env } from '../config/env';
-import { loginSchema, changePasswordSchema } from '../schemas/authSchema';
+import { loginSchema, changePasswordSchema, refreshTokenSchema } from '../schemas/authSchema';
 
 const router = express.Router();
 
@@ -22,6 +22,9 @@ const loginLimiter = rateLimit({
 });
 
 router.post('/login', loginLimiter, validate(loginSchema), asyncHandler(login));
+// Tanpa token akses: justru dipakai saat token akses sudah kedaluwarsa.
+router.post('/refresh', validate(refreshTokenSchema), asyncHandler(refresh));
+router.post('/logout', validate(refreshTokenSchema), asyncHandler(logout));
 router.get('/me', authenticateToken, asyncHandler(me));
 router.post(
   '/change-password',
