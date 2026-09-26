@@ -17,13 +17,13 @@
 // Pabrik soketnya bisa diganti (buatSoket) supaya seluruh alur — QR, putus,
 // sambung ulang, pesan masuk — bisa diuji tanpa benar-benar menghubungi
 // WhatsApp.
-import path from 'path';
 import { env } from '../../config/env';
 import { ingestMessage, applySessionEvent, claimPhoneNumber, type BerkasMedia } from './ingest';
 import { simpanMediaWhatsApp } from '../../utils/whatsappMedia';
 import { normalizeBaileysMessage, nomorDariJid, type PesanBaileys } from './baileysMessage';
 import { normalizePhoneNumber } from '../../utils/whatsappRules';
 import { putuskanReconnect } from './reconnect';
+import { hapusKredensialTersimpan } from './authStore';
 import { prisma } from '../../lib/prisma';
 
 /** Penunjuk satu pesan di WhatsApp; dipakai sebagai titik awal penarikan riwayat. */
@@ -76,10 +76,8 @@ export interface SesiDibuat {
   simpanKredensial: () => Promise<void>;
 }
 
-export type PembuatSoket = (konteks: {
-  accountId: string;
-  authDir: string;
-}) => Promise<SesiDibuat>;
+/** Kredensialnya dimuat sendiri oleh pembuat soket dari database (authStore.ts). */
+export type PembuatSoket = (konteks: { accountId: string }) => Promise<SesiDibuat>;
 
 export type StatusSesi = 'connecting' | 'pending_scan' | 'connected' | 'disconnected';
 
@@ -139,8 +137,6 @@ export const tungguEventSelesai = async () => {
     await Promise.all([...pekerjaanTertunda]);
   }
 };
-
-const direktoriAuth = (accountId: string) => path.join(env.WHATSAPP_SESSION_DIR, accountId);
 
 const bersihkanTimer = (sesi: Sesi) => {
   if (sesi.timer) {
@@ -335,29 +331,50 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   }
 
   const kode = pembaruan.lastDisconnect?.error?.output?.statusCode;
-  const keputusan = putuskanReconnect(kode, sesi.percobaan);
+  const keputusan = putuskanReconnect(kode, sesi.percobaan, {
+    menungguScan: sesi.status === 'pending_scan',
+  });
   sesi.catatanTerakhir = keputusan.catatan;
 
-  await applySessionEvent({
-    accountId: sesi.accountId,
-    status: keputusan.perluScanUlang ? 'scan_required' : 'disconnected',
-    note: keputusan.catatan,
-  });
+  if (keputusan.perluScanUlang) {
+    // Kredensial yang sudah tidak sah dibuang. Kalau disisakan, sambungan
+    // berikutnya mencoba masuk dengan identitas yang sudah ditolak, ditolak
+    // lagi, dan QR untuk menautkan ulang tidak pernah muncul.
+    try {
+      await hapusKredensialTersimpan(sesi.accountId);
+    } catch (error) {
+      // Kejadiannya tetap harus tercatat walau penghapusan gagal.
+      catat(`gagal membuang kredensial ${sesi.accountId}`, error);
+    }
+  }
+
+  // QR yang kedaluwarsa bukan sesi yang putus. Mencatatnya sebagai kejadian
+  // memberi tahu pemegang nomor bahwa sesinya terputus, belasan kali, untuk
+  // nomor yang belum pernah tertaut.
+  if (!keputusan.tahapQr) {
+    await applySessionEvent({
+      accountId: sesi.accountId,
+      status: keputusan.perluScanUlang ? 'scan_required' : 'disconnected',
+      note: keputusan.catatan,
+    });
+  }
 
   if (!keputusan.sambungUlang) {
     // Tidak ada percobaan berikutnya: timer sisa percobaan sebelumnya dibuang
     // supaya state sesi tidak menyisakan jejak yang membingungkan.
     bersihkanTimer(sesi);
     sesi.status = keputusan.perluScanUlang ? 'pending_scan' : 'disconnected';
-    // Kredensial yang sudah tidak sah tidak ada gunanya disimpan, dan
-    // menyisakannya membuat percobaan berikutnya gagal dengan alasan yang
-    // membingungkan.
-    if (keputusan.perluScanUlang) sesi.qr = null;
+    if (keputusan.perluScanUlang) {
+      sesi.qr = null;
+      sesi.qrDibuatPada = null;
+    }
     catat(`${sesi.phoneNumber ?? sesi.accountId} berhenti: ${keputusan.catatan}`);
     return;
   }
 
-  sesi.status = 'connecting';
+  // Saat QR diganti, halaman tetap menampilkan tempat QR, bukan "menyambung
+  // ulang": dari sisi orang yang memindai, tidak ada yang putus.
+  sesi.status = keputusan.tahapQr ? 'pending_scan' : 'connecting';
   sesi.percobaan += 1;
   bersihkanTimer(sesi);
   sesi.timer = setTimeout(() => {
@@ -379,6 +396,8 @@ const lepasTautan = async (sesi: Sesi, catatan: string) => {
   } catch (error) {
     catat(`gagal melepas tautan ${sesi.accountId}`, error);
   }
+  // Tautan ke ponsel yang salah tidak boleh dibuka lagi saat restart.
+  await hapusKredensialTersimpan(sesi.accountId);
   sesi.status = 'pending_scan';
   sesi.qr = null;
   sesi.qrDibuatPada = null;
@@ -389,10 +408,7 @@ const lepasTautan = async (sesi: Sesi, catatan: string) => {
 const bukaSoket = async (sesi: Sesi) => {
   if (!buatSoket) throw new Error('Pembuat soket WhatsApp belum dipasang');
 
-  const { sock, simpanKredensial } = await buatSoket({
-    accountId: sesi.accountId,
-    authDir: direktoriAuth(sesi.accountId),
-  });
+  const { sock, simpanKredensial } = await buatSoket({ accountId: sesi.accountId });
 
   sesi.sock = sock;
   sesi.ditutupSengaja = false;
@@ -543,6 +559,11 @@ export const disconnectAccount = async (
       catat(`gagal menutup sesi ${sesi.phoneNumber ?? sesi.accountId}`, error);
     }
   }
+
+  // Tautan yang sudah di-logout tidak sah lagi, jadi kredensialnya dibuang.
+  // Memutus tanpa logout sengaja menyisakannya supaya bisa disambung lagi
+  // tanpa scan.
+  if (opsi.logout) await hapusKredensialTersimpan(sesi.accountId);
 
   sesi.status = opsi.logout ? 'pending_scan' : 'disconnected';
   sesi.qr = null;

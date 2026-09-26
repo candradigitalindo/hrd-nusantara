@@ -4,7 +4,8 @@ import { prisma, resetDatabase, makeEmployee } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
-import { decryptField } from '../src/utils/fieldCrypto';
+import { decryptField, encryptField } from '../src/utils/fieldCrypto';
+import { generateULID } from '../src/utils/generateULID';
 import {
   getSession,
   setPembuatSoket,
@@ -13,7 +14,7 @@ import {
   type SesiDibuat,
   type KunciPesanWhatsApp,
 } from '../src/services/whatsapp/session';
-import { ALASAN_PUTUS } from '../src/services/whatsapp/reconnect';
+import { ALASAN_PUTUS, MAKS_PUTARAN_QR } from '../src/services/whatsapp/reconnect';
 import * as ingest from '../src/services/whatsapp/ingest';
 
 const app = bikinApp();
@@ -323,6 +324,175 @@ describe('Perubahan keadaan sesi', () => {
     // sesinya masih sah, hanya perlu disambungkan ulang.
     const kejadian = await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id } });
     expect(kejadian.map((k) => k.eventType)).toEqual(['disconnected']);
+  });
+});
+
+/** Kredensial tersimpan seperti milik nomor yang sudah tertaut. */
+const simpanKredensialTertaut = async (accountId: string) => {
+  await prisma.whatsAppAuthKey.createMany({
+    data: [
+      {
+        id: generateULID(),
+        accountId,
+        category: 'creds',
+        keyId: '',
+        value: encryptField('{"me":{"id":"628111111111:7@s.whatsapp.net"}}'),
+      },
+      { id: generateULID(), accountId, category: 'session', keyId: '628222222222.0', value: encryptField('{}') },
+    ],
+  });
+};
+const jumlahKredensial = (accountId: string) => prisma.whatsAppAuthKey.count({ where: { accountId } });
+
+/** Sambung ulang dengan jeda 0 tetap lewat setTimeout. */
+const tungguSambungUlang = async () => {
+  await new Promise((selesai) => setTimeout(selesai, 20));
+  await tungguEventSelesai();
+};
+
+describe('Kredensial tersimpan', () => {
+  it('dibuang saat sesi di-logout dari ponsel, supaya sambungan berikutnya memunculkan QR', async () => {
+    const id = await buatAkun();
+    await simpanKredensialTertaut(id);
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    soketTerakhir!.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.loggedOut } } },
+    });
+    await tungguEventSelesai();
+
+    // Sebelum diperbaiki: kredensial yang sudah ditolak tetap tersimpan.
+    // Menekan "Sambungkan" mencoba masuk lagi dengan identitas itu, ditolak
+    // lagi, dan QR tidak pernah muncul.
+    expect(await jumlahKredensial(id)).toBe(0);
+  });
+
+  it('dibuang saat WhatsApp menyatakannya rusak', async () => {
+    const id = await buatAkun();
+    await simpanKredensialTertaut(id);
+    await sambungkan(id);
+
+    soketTerakhir!.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.badSession } } },
+    });
+    await tungguEventSelesai();
+
+    expect(await jumlahKredensial(id)).toBe(0);
+  });
+
+  it('tetap disimpan saat putus karena jaringan', async () => {
+    const id = await buatAkun();
+    await simpanKredensialTertaut(id);
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    soketTerakhir!.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.connectionClosed } } },
+    });
+    await tungguEventSelesai();
+
+    expect(await jumlahKredensial(id)).toBe(2);
+  });
+
+  it('dibuang saat HR logout, tetap ada saat HR hanya memutus sementara', async () => {
+    const dilogout = await buatAkun();
+    const diputus = await buatAkun({ phoneNumber: '08133333333', label: 'Reservasi' });
+    for (const id of [dilogout, diputus]) {
+      await simpanKredensialTertaut(id);
+      await sambungkan(id);
+    }
+
+    await request(app).post(`/api/whatsapp/accounts/${dilogout}/disconnect`).set(auth(hrToken)).send({ logout: true });
+    await request(app).post(`/api/whatsapp/accounts/${diputus}/disconnect`).set(auth(hrToken)).send({ logout: false });
+
+    expect(await jumlahKredensial(dilogout)).toBe(0);
+    expect(await jumlahKredensial(diputus)).toBe(2);
+  });
+});
+
+describe('QR yang tidak dipindai', () => {
+  const qrKedaluwarsa = async (soket: SoketPalsu) => {
+    soket.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.timedOut } } },
+    });
+    await tungguSambungUlang();
+  };
+
+  it('diganti QR baru tanpa dicatat sebagai sesi yang putus', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const pertama = soketTerakhir!;
+    pertama.pancarkan('connection.update', { qr: 'QR-1' });
+    await tungguEventSelesai();
+
+    await qrKedaluwarsa(pertama);
+
+    expect(soketTerakhir).not.toBe(pertama);
+    expect(getSession(id)?.status).toBe('pending_scan');
+    expect(getSession(id)?.sedangSambungUlang).toBe(false);
+
+    // Sebelum diperbaiki: tiap QR yang kedaluwarsa tercatat "terputus" dan
+    // diberitahukan ke pemegang nomor, walau nomornya belum pernah tertaut.
+    const kejadian = await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id } });
+    expect(kejadian.map((k) => k.eventType)).toEqual(['scan_required']);
+  });
+
+  it('berhenti membuat QR setelah beberapa putaran, tanpa menandai nomornya terputus', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+
+    for (let putaran = 1; putaran <= MAKS_PUTARAN_QR; putaran += 1) {
+      const soket = soketTerakhir!;
+      soket.pancarkan('connection.update', { qr: `QR-${putaran}` });
+      await tungguEventSelesai();
+      await qrKedaluwarsa(soket);
+    }
+
+    const sesi = getSession(id);
+    expect(sesi?.status).toBe('pending_scan');
+    expect(sesi?.qrTersedia).toBe(false);
+    expect(sesi?.catatan).toContain('QR baru');
+
+    // Tidak ada soket baru lagi.
+    const terakhir = soketTerakhir;
+    await tungguSambungUlang();
+    expect(soketTerakhir).toBe(terakhir);
+
+    // Sebelum diperbaiki: 10 percobaan selama ±35 menit, lalu akun tercatat
+    // "disconnected" dan dibuka lagi di setiap deploy.
+    const akun = await prisma.whatsAppAccount.findUniqueOrThrow({ where: { id } });
+    expect(akun.sessionStatus).toBe('pending_scan');
+    expect(akun.lastDisconnectedAt).toBeNull();
+    const kejadian = await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id } });
+    expect(kejadian.map((k) => k.eventType)).toEqual(['scan_required']);
+  });
+
+  it('QR yang dipindai tetap tersambung lewat restart yang diminta WhatsApp', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const pertama = soketTerakhir!;
+    pertama.pancarkan('connection.update', { qr: 'QR-1' });
+    await tungguEventSelesai();
+
+    // Setelah QR dipindai, WhatsApp menutup koneksi dengan 515 dan meminta
+    // dibuka lagi. Ini terjadi saat status masih pending_scan.
+    pertama.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: ALASAN_PUTUS.restartRequired } } },
+    });
+    await tungguSambungUlang();
+    expect(soketTerakhir).not.toBe(pertama);
+
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    expect(getSession(id)?.status).toBe('connected');
   });
 });
 

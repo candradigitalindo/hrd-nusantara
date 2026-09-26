@@ -30,13 +30,12 @@ ketiga dan tanpa biaya lisensi.
 
 ## Menyalakan
 
-Empat variabel di `.env`:
+Tiga variabel di `.env`:
 
 ```dotenv
 WHATSAPP_MONITORING_ENABLED=true
 WHATSAPP_BAILEYS_ENABLED=true
 FIELD_ENCRYPTION_KEY="<openssl rand -base64 32>"
-WHATSAPP_SESSION_DIR=./whatsapp-sessions
 ```
 
 `FIELD_ENCRYPTION_KEY` **wajib** kalau pemantauan dinyalakan: backend menolak
@@ -149,8 +148,19 @@ POST /api/whatsapp/compliance/remind          -> { employeeIds?: [] }  push peng
 
 4. Setelah dipindai, `status` menjadi `connected` dan pesan mulai masuk.
 
-Kredensialnya tersimpan di `WHATSAPP_SESSION_DIR`, jadi **deploy ulang tidak
-menuntut scan ulang** — backend menyambungkan kembali sendiri saat mulai.
+Kredensialnya tersimpan di database (tabel `WhatsAppAuthKey`, terenkripsi
+dengan `FIELD_ENCRYPTION_KEY`), jadi **deploy ulang tidak menuntut scan ulang**
+— backend menyambungkan kembali sendiri saat mulai. Satu nomor tertaut bisa
+punya ribuan baris kunci; semuanya ikut terhapus bila akunnya dihapus.
+
+Kredensial dibuang begitu tautannya tidak sah lagi: di-logout dari ponsel,
+di-logout HR, atau ditolak WhatsApp sebagai rusak. Sambungan berikutnya
+langsung memunculkan QR baru, bukan mencoba masuk dengan identitas yang sudah
+ditolak.
+
+QR yang tidak dipindai ditutup WhatsApp setelah ±2,5 menit. Backend membuat QR
+baru dua kali lagi (±8 menit seluruhnya), lalu berhenti sampai QR diminta
+lagi. Pergantian QR tidak dicatat sebagai sesi yang putus.
 
 ## Memutus
 

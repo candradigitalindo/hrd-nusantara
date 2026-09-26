@@ -4,7 +4,7 @@ import {
   waktuDariTimestamp,
   normalizeBaileysMessage,
 } from '../src/services/whatsapp/baileysMessage';
-import { putuskanReconnect, ALASAN_PUTUS, MAKS_PERCOBAAN } from '../src/services/whatsapp/reconnect';
+import { putuskanReconnect, ALASAN_PUTUS, MAKS_PERCOBAAN, MAKS_PUTARAN_QR } from '../src/services/whatsapp/reconnect';
 
 const NOMOR_SENDIRI = '628111111111';
 
@@ -246,5 +246,38 @@ describe('Kebijakan sambung ulang', () => {
     // Gangguan yang tidak dikenali lebih sering putus jaringan biasa
     // daripada sesi mati; diam berarti nomor berhenti terpantau senyap.
     expect(putuskanReconnect(undefined, 0).sambungUlang).toBe(true);
+  });
+
+  it('putus sesi yang tersambung dicatat sebagai kejadian', () => {
+    expect(putuskanReconnect(ALASAN_PUTUS.timedOut, 0).tahapQr).toBe(false);
+    expect(putuskanReconnect(ALASAN_PUTUS.loggedOut, 0).tahapQr).toBe(false);
+  });
+});
+
+describe('Kebijakan QR yang tidak dipindai', () => {
+  it('membuat QR baru segera, bukan menunggu jeda gangguan jaringan', () => {
+    const k = putuskanReconnect(ALASAN_PUTUS.timedOut, 0, { menungguScan: true });
+
+    expect(k.sambungUlang).toBe(true);
+    expect(k.jedaMs).toBe(0);
+    expect(k.tahapQr).toBe(true);
+  });
+
+  it('berhenti setelah beberapa putaran dan menunggu QR diminta lagi', () => {
+    // QR yang dibuat terus untuk layar yang tidak dibuka siapa pun hanya
+    // membebani server WhatsApp dan mengisi arsip kejadian.
+    const k = putuskanReconnect(ALASAN_PUTUS.timedOut, MAKS_PUTARAN_QR - 1, { menungguScan: true });
+
+    expect(k.sambungUlang).toBe(false);
+    expect(k.perluScanUlang).toBe(true);
+    expect(k.tahapQr).toBe(true);
+    expect(putuskanReconnect(ALASAN_PUTUS.timedOut, MAKS_PUTARAN_QR - 2, { menungguScan: true }).sambungUlang).toBe(true);
+  });
+
+  it('restart setelah QR dipindai tetap disambung ulang seperti biasa', () => {
+    const k = putuskanReconnect(ALASAN_PUTUS.restartRequired, 0, { menungguScan: true });
+
+    expect(k.sambungUlang).toBe(true);
+    expect(k.tahapQr).toBe(false);
   });
 });

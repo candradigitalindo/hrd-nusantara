@@ -153,11 +153,6 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
-  // Kredensial sesi WhatsApp disimpan di sini. Isinya setara dengan akses
-  // penuh ke akun WhatsApp itu, jadi harus di luar direktori yang disajikan
-  // ke publik dan tidak boleh ikut masuk git.
-  WHATSAPP_SESSION_DIR: z.string().default('./whatsapp-sessions'),
-
   // Berapa lama arsip percakapan disimpan sebelum boleh dihapus. 0 berarti
   // tanpa batas — sengaja dijadikan bawaan, karena menghapus arsip secara
   // diam-diam adalah kerusakan yang tidak bisa dibatalkan. Berapa lamanya

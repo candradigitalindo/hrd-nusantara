@@ -129,13 +129,18 @@ core saat ada presensi berbarengan.
 ## WhatsApp: kapan boleh dan tidak boleh deploy
 
 Dinyalakan lewat `WHATSAPP_MONITORING_ENABLED=true` dan
-`WHATSAPP_BAILEYS_ENABLED=true` di `.env.prod`. Kredensial sesi hidup di volume
-`hrd_whatsappsessions`, dan saat boot backend membuka ulang semua akun yang
-berstatus `connected` atau `disconnected` — jadi nomor yang sudah pernah
-tertaut **tersambung sendiri** setelah `deploy.sh`, tanpa scan ulang.
+`WHATSAPP_BAILEYS_ENABLED=true` di `.env.prod`. Kredensial sesi disimpan di
+database (tabel `WhatsAppAuthKey`, terenkripsi dengan `FIELD_ENCRYPTION_KEY`),
+jadi ikut cadangan `pg_dump`. Saat boot backend membuka ulang akun yang pernah
+tertaut dan kredensialnya masih tersimpan — nomor-nomor itu **tersambung
+sendiri** setelah `deploy.sh`, tanpa scan ulang.
 
-Yang **tidak** dibuka ulang adalah akun `pending_scan`: belum ada kredensial
-yang bisa dipulihkan. Restart backend saat seseorang sedang memindai QR
+Kredensial dihapus begitu tautannya tidak sah lagi (di-logout dari ponsel atau
+oleh HR, kredensial rusak), sehingga sambungan berikutnya langsung memunculkan
+QR baru.
+
+Yang **tidak** dibuka ulang adalah akun yang belum pernah tertaut atau sedang
+menunggu scan: belum ada kredensial yang bisa dipulihkan. Restart backend saat seseorang sedang memindai QR
 membuat QR-nya mati diam-diam — halaman *WhatsApp Saya* tetap berbunyi
 "Pindai kode QR" tapi tidak menampilkan apa pun. Pemulihannya sepele
 (tombol *Minta kode baru*), tapi lebih baik dihindari:
@@ -169,7 +174,6 @@ Volume bernama, semuanya berawalan `hrd_`:
 |---|---|---|
 | `hrd_pgdata` | Seluruh database | Semua data HRD hilang |
 | `hrd_uploads` | Foto pendaftaran wajah, dokumen karyawan, APK rilis | Pendaftaran wajah harus diulang |
-| `hrd_whatsappsessions` | Kredensial sesi WhatsApp | Tiap nomor harus scan QR ulang |
 | `hrd_redisdata` | Cache dan daftar token dicabut | Token yang sudah dicabut hidup lagi |
 
 Cadangan database:

@@ -7,33 +7,50 @@
 // dimuat pada instance yang hanya melayani API biasa. Sisa sistem cukup
 // mengenal antarmuka SoketWhatsApp, jadi pergantian versi pustaka —
 // 7.x masih berstatus RC — berhenti di berkas ini.
-import fs from 'fs/promises';
 import type { PembuatSoket, SoketWhatsApp } from './session';
+import { muatAuthState, type AlatBaileys } from './authStore';
 
-export const buatPembuatSoketBaileys = (): PembuatSoket => async ({ authDir }) => {
+export const buatPembuatSoketBaileys = (): PembuatSoket => async ({ accountId }) => {
   const baileys = await import('baileys');
   const makeWASocket = (baileys as unknown as { default?: unknown }).default ?? baileys.makeWASocket;
-  const { useMultiFileAuthState, fetchLatestBaileysVersion, Browsers, downloadMediaMessage } = baileys;
+  const {
+    fetchLatestBaileysVersion,
+    Browsers,
+    downloadMediaMessage,
+    makeCacheableSignalKeyStore,
+    BufferJSON,
+    initAuthCreds,
+    proto,
+  } = baileys;
 
-  // Kredensial sesi: setara akses penuh ke akun WhatsApp itu. 0700 supaya
-  // pengguna lain di server yang sama tidak bisa membacanya.
-  await fs.mkdir(authDir, { recursive: true, mode: 0o700 });
-
-  const { state, saveCreds } = await useMultiFileAuthState(authDir);
+  // Kredensial sesi di database, terenkripsi: setara akses penuh ke akun
+  // WhatsApp itu. Lihat authStore.ts.
+  const { state, saveCreds } = await muatAuthState(accountId, {
+    BufferJSON,
+    initAuthCreds,
+    proto,
+  } as unknown as AlatBaileys);
 
   // Versi protokol diambil dari WhatsApp, bukan dipatok: versi yang basi
   // ditolak sambungannya dan gejalanya menyesatkan ("connection closed").
   const { version } = await fetchLatestBaileysVersion();
 
   const { default: pino } = await import('pino');
+  // Log Baileys sangat berisik dan memuat isi pesan. Menuliskannya ke log
+  // server berarti isi percakapan bocor ke tempat yang tidak terenkripsi,
+  // persis yang dihindari oleh enkripsi kolom.
+  const logger = pino({ level: 'silent' });
 
   const sock = (makeWASocket as (opsi: unknown) => unknown)({
     version,
-    auth: state,
-    // Log Baileys sangat berisik dan memuat isi pesan. Menuliskannya ke log
-    // server berarti isi percakapan bocor ke tempat yang tidak terenkripsi,
-    // persis yang dihindari oleh enkripsi kolom.
-    logger: pino({ level: 'silent' }),
+    auth: {
+      creds: state.creds,
+      // Kunci Signal dibaca untuk hampir setiap pesan. Cache di memori di
+      // depan database menjaga jumlah kueri tetap kecil walau banyak nomor
+      // tersambung bersamaan.
+      keys: (makeCacheableSignalKeyStore as (simpanan: unknown, log: unknown) => unknown)(state.keys, logger),
+    },
+    logger,
     browser: Browsers.ubuntu('HRD Nusantara'),
     // Jangan menandai nomor sebagai online: kalau ditandai, WhatsApp berhenti
     // mengirim notifikasi ke ponsel pemegang nomor, dan pemantauan jadi
@@ -63,7 +80,7 @@ export const buatPembuatSoketBaileys = (): PembuatSoket => async ({ authDir }) =
       'buffer',
       {},
       {
-        logger: pino({ level: 'silent' }),
+        logger,
         // Berkas yang kedaluwarsa di server WhatsApp diminta ulang lewat
         // ponsel pemegang nomor; tanpa ini media lama gagal diunduh.
         reuploadRequest: soket.updateMediaMessage?.bind(soket),

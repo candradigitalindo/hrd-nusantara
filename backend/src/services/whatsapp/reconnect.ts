@@ -23,6 +23,13 @@ export const ALASAN_PUTUS = {
 } as const;
 
 export const MAKS_PERCOBAAN = 10;
+
+/**
+ * Berapa kali QR dibuat untuk satu permintaan sambung. WhatsApp menutup tiap
+ * QR yang tidak dipindai setelah ±2,5 menit, jadi tiga putaran memberi orang
+ * di depan layar sekitar delapan menit.
+ */
+export const MAKS_PUTARAN_QR = 3;
 const JEDA_AWAL_MS = 1_000;
 const JEDA_MAKS_MS = 60_000;
 
@@ -32,6 +39,17 @@ export interface KeputusanReconnect {
   perluScanUlang: boolean;
   jedaMs: number;
   catatan: string;
+  /**
+   * Keputusan ini tentang QR yang belum dipindai, bukan sesi yang putus.
+   * Belum ada sesi, jadi tidak ada kejadian putus yang perlu dicatat atau
+   * diberitahukan.
+   */
+  tahapQr: boolean;
+}
+
+export interface OpsiReconnect {
+  /** Koneksi tertutup saat QR sedang ditampilkan dan belum dipindai. */
+  menungguScan?: boolean;
 }
 
 /**
@@ -40,7 +58,8 @@ export interface KeputusanReconnect {
  */
 export const putuskanReconnect = (
   kode: number | undefined,
-  percobaan: number
+  percobaan: number,
+  opsi: OpsiReconnect = {}
 ): KeputusanReconnect => {
   const jeda = Math.min(JEDA_AWAL_MS * 2 ** Math.max(0, percobaan), JEDA_MAKS_MS);
 
@@ -48,27 +67,45 @@ export const putuskanReconnect = (
     // Sesi sudah tidak sah lagi. Menyambung ulang dengan kredensial yang
     // sama hanya akan ditolak berulang-ulang.
     case ALASAN_PUTUS.loggedOut:
-      return { sambungUlang: false, perluScanUlang: true, jedaMs: 0, catatan: 'Sesi di-logout dari perangkat. Perlu scan QR ulang.' };
+      return { sambungUlang: false, perluScanUlang: true, jedaMs: 0, catatan: 'Sesi di-logout dari perangkat. Perlu scan QR ulang.', tahapQr: false };
     case ALASAN_PUTUS.badSession:
-      return { sambungUlang: false, perluScanUlang: true, jedaMs: 0, catatan: 'Kredensial sesi rusak. Perlu scan QR ulang.' };
+      return { sambungUlang: false, perluScanUlang: true, jedaMs: 0, catatan: 'Kredensial sesi rusak. Perlu scan QR ulang.', tahapQr: false };
     case ALASAN_PUTUS.multideviceMismatch:
-      return { sambungUlang: false, perluScanUlang: true, jedaMs: 0, catatan: 'Ketidakcocokan multi-perangkat. Perlu scan QR ulang.' };
+      return { sambungUlang: false, perluScanUlang: true, jedaMs: 0, catatan: 'Ketidakcocokan multi-perangkat. Perlu scan QR ulang.', tahapQr: false };
 
     // Nomor diblokir WhatsApp. Mencoba terus justru memperburuk keadaan.
     case ALASAN_PUTUS.forbidden:
-      return { sambungUlang: false, perluScanUlang: false, jedaMs: 0, catatan: 'Nomor ditolak WhatsApp (forbidden). Perlu ditangani manual.' };
+      return { sambungUlang: false, perluScanUlang: false, jedaMs: 0, catatan: 'Nomor ditolak WhatsApp (forbidden). Perlu ditangani manual.', tahapQr: false };
 
     // Perangkat lain mengambil alih sesi. Kalau di sini disambung ulang,
     // keduanya akan saling memutus tanpa henti.
     case ALASAN_PUTUS.connectionReplaced:
-      return { sambungUlang: false, perluScanUlang: false, jedaMs: 0, catatan: 'Sesi diambil alih perangkat lain.' };
+      return { sambungUlang: false, perluScanUlang: false, jedaMs: 0, catatan: 'Sesi diambil alih perangkat lain.', tahapQr: false };
 
     // Baileys memang meminta proses disambung ulang setelah pairing.
     case ALASAN_PUTUS.restartRequired:
-      return { sambungUlang: true, perluScanUlang: false, jedaMs: 0, catatan: 'Restart diminta oleh WhatsApp.' };
+      return { sambungUlang: true, perluScanUlang: false, jedaMs: 0, catatan: 'Restart diminta oleh WhatsApp.', tahapQr: false };
 
     default:
       break;
+  }
+
+  // QR yang tidak dipindai ditutup WhatsApp dengan 408 — kode yang sama
+  // dengan koneksi yang putus karena jaringan. Diperlakukan sebagai putus
+  // jaringan, QR terus dibuat ulang selama setengah jam untuk layar yang
+  // mungkin tidak pernah dibuka, dan nomor yang belum pernah tertaut
+  // berakhir tercatat "terputus".
+  if (opsi.menungguScan) {
+    if (percobaan + 1 >= MAKS_PUTARAN_QR) {
+      return {
+        sambungUlang: false,
+        perluScanUlang: true,
+        jedaMs: 0,
+        catatan: 'QR tidak dipindai sampai kedaluwarsa. Minta QR baru untuk menautkan.',
+        tahapQr: true,
+      };
+    }
+    return { sambungUlang: true, perluScanUlang: false, jedaMs: 0, catatan: 'QR kedaluwarsa, membuat QR baru.', tahapQr: true };
   }
 
   // Sisanya gangguan sementara: jaringan putus, server WhatsApp sibuk.
@@ -78,6 +115,7 @@ export const putuskanReconnect = (
       perluScanUlang: false,
       jedaMs: 0,
       catatan: `Gagal menyambung ulang setelah ${MAKS_PERCOBAAN} percobaan. Perlu disambungkan manual.`,
+      tahapQr: false,
     };
   }
 
@@ -86,5 +124,6 @@ export const putuskanReconnect = (
     perluScanUlang: false,
     jedaMs: jeda,
     catatan: `Koneksi terputus (kode ${kode ?? 'tidak diketahui'}). Menyambung ulang dalam ${Math.round(jeda / 1000)} detik.`,
+    tahapQr: false,
   };
 };

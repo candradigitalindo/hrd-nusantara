@@ -52,14 +52,13 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/models ./models
 
-# Direktori yang ditulis saat runtime, keduanya dipasang sebagai volume oleh
+# Direktori yang ditulis saat runtime; uploads dipasang sebagai volume oleh
 # compose. Kepemilikannya harus sudah benar DI DALAM IMAGE: volume bernama
 # mewarisi kepemilikan direktori yang ditimpanya, dan kalau direktorinya belum
 # ada, Docker membuatnya milik root — proses yang berjalan sebagai "node"
-# lalu tidak bisa menulis ke sana. Untuk whatsapp-sessions itu berarti
-# kredensial sesi gagal tersimpan dan tiap restart menuntut scan QR ulang.
-RUN mkdir -p /app/uploads /app/whatsapp-sessions \
-  && chown -R node:node /app/uploads /app/whatsapp-sessions /app/models
+# lalu tidak bisa menulis ke sana.
+RUN mkdir -p /app/uploads \
+  && chown -R node:node /app/uploads /app/models
 
 # Jalan sebagai user non-root bawaan image node.
 USER node

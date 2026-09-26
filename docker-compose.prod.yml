@@ -127,7 +127,6 @@ services:
       WHATSAPP_RETENTION_DAYS: ${WHATSAPP_RETENTION_DAYS:-0}
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY wajib diisi (openssl rand -base64 32)}
       WHATSAPP_BAILEYS_ENABLED: ${WHATSAPP_BAILEYS_ENABLED:-false}
-      WHATSAPP_SESSION_DIR: /app/whatsapp-sessions
       # Berkas media WhatsApp ikut disimpan di volume uploads; batas ini yang
       # menjaga satu video panjang tidak menghabiskan disk server.
       WHATSAPP_MEDIA_MAX_BYTES: ${WHATSAPP_MEDIA_MAX_BYTES:-25000000}
@@ -136,8 +135,6 @@ services:
     volumes:
       # Foto pendaftaran wajah, dokumen karyawan, dan APK rilis mobile.
       - uploads:/app/uploads
-      # Kredensial sesi WhatsApp: tanpa ini setiap deploy menuntut scan QR ulang.
-      - whatsappsessions:/app/whatsapp-sessions
       # Kunci privat, read-only, di-mount dari host dan tidak ikut ke image.
       - ./backend/secrets:/app/secrets:ro
     healthcheck:
@@ -238,4 +235,3 @@ volumes:
   pgdata:
   redisdata:
   uploads:
-  whatsappsessions:
