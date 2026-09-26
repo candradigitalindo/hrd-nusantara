@@ -20,7 +20,7 @@ Future<void> tampilkanPemberitahuanPemantauan(BuildContext context, WidgetRef re
       title: const Text('Pemantauan Lokasi'),
       content: Text(
         'Perusahaan mengaktifkan pemantauan lokasi. ${_cakupan(s)}, aplikasi ini mengirim lokasi Anda '
-        'ke HRD Nusantara setiap ${s.konfigurasi?.intervalMenit ?? 15} menit — juga saat aplikasi tidak dibuka.\n\n'
+        'ke HRD Nusantara setiap ${s.konfigurasi?.intervalMenit ?? 20} menit — juga saat aplikasi tidak dibuka.\n\n'
         'Lokasi hanya dapat dilihat oleh Super Admin dan disimpan sesuai kebijakan perusahaan. '
         'Selama pemantauan berjalan, notifikasi "Pemantauan lokasi aktif" tampil di ponsel Anda.\n\n'
         'Setelah ini ponsel akan meminta izin lokasi; pilih "Izinkan sepanjang waktu" bila tersedia.',

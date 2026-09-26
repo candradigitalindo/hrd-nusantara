@@ -1849,7 +1849,7 @@ model LocationTrackingSetting {
   /// always = 24 jam; while_working = hanya selama presensi terbuka.
   mode            String    @default("always")
   /// Jarak antar pengiriman lokasi dari ponsel.
-  intervalMinutes Int       @default(15)
+  intervalMinutes Int       @default(20)
   /// Titik yang lebih tua dari ini dihapus otomatis.
   retentionDays   Int       @default(30)
   updatedBy       Employee? @relation("LocationTrackingSettingEditor", fields: [updatedById], references: [id])

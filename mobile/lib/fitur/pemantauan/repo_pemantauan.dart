@@ -16,7 +16,7 @@ class KonfigurasiPemantauan {
   factory KonfigurasiPemantauan.dariJson(Map<String, dynamic> j) => KonfigurasiPemantauan(
         aktif: j['enabled'] == true,
         selamaBekerja: j['mode'] == 'while_working',
-        intervalMenit: (j['intervalMinutes'] as num?)?.toInt() ?? 15,
+        intervalMenit: (j['intervalMinutes'] as num?)?.toInt() ?? 20,
       );
 
   @override

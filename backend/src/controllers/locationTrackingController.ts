@@ -15,7 +15,7 @@ import type { LocationPingsInput, TrackingSettingsInput, TrackingStatusInput, Tr
 
 type Koordinat = { lat: number; lng: number };
 
-const BAWAAN = { id: 'utama', enabled: false, mode: 'always', intervalMinutes: 15, retentionDays: 30 } as const;
+const BAWAAN = { id: 'utama', enabled: false, mode: 'always', intervalMinutes: 20, retentionDays: 30 } as const;
 
 export const bacaPengaturan = async () => (await prisma.locationTrackingSetting.findUnique({ where: { id: 'utama' } })) ?? { ...BAWAAN, updatedById: null, updatedAt: null };
 

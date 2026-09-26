@@ -34,7 +34,7 @@ beforeEach(async () => {
 describe('Pemantauan Lokasi', () => {
   it('bawaannya nonaktif: ponsel tidak diminta mengirim, dan kiriman tidak disimpan', async () => {
     const konfig = await request(app).get('/api/location-tracking/config').set(auth(tokenBudi));
-    expect(konfig.body).toEqual({ enabled: false, mode: 'always', intervalMinutes: 15 });
+    expect(konfig.body).toEqual({ enabled: false, mode: 'always', intervalMinutes: 20 });
 
     const kirim = await request(app).post('/api/location-tracking/pings').set(auth(tokenBudi)).send({ pings: [titik(1)] });
     expect(kirim.body).toMatchObject({ diterima: 0, enabled: false });
