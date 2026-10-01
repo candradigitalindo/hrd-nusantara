@@ -5,9 +5,10 @@
 // metode) ke grup yang ia pilih — pengganti "stamp photo" yang biasa
 // dikirim manual ke grup outlet.
 //
-// NIK sengaja tidak dicantumkan, baik di pita maupun di keterangan: grup
-// outlet berisi banyak orang dan fotonya bisa diteruskan ke mana saja,
-// sedangkan nama sudah cukup untuk mengenali siapa yang absen.
+// NIK dan koordinat GPS sengaja tidak dicantumkan, baik di pita maupun di
+// keterangan: grup outlet berisi banyak orang dan fotonya bisa diteruskan ke
+// mana saja. Nama karyawan, nama lokasi kerja, dan alamatnya sudah cukup
+// untuk mengenali siapa absen di mana; koordinat tetap tersimpan di presensi.
 //
 // Pengiriman berjalan DI LUAR siklus request: presensi sudah tercatat dan
 // dijawab 201 lebih dulu. WhatsApp yang lambat atau putus tidak boleh
@@ -22,9 +23,10 @@ export interface DataStempel {
   jenis: 'masuk' | 'pulang';
   nama: string;
   waktu: Date;
+  /** Nama lokasi kerja. */
   lokasi: string | null;
-  latitude?: number;
-  longitude?: number;
+  /** Alamat lokasi kerja (diisi HR di halaman Lokasi Kerja), bukan posisi GPS ponsel. */
+  alamat?: string | null;
   metode: string;
   wajahTerverifikasi: boolean;
   status: string;
@@ -48,23 +50,66 @@ const durasi = (menit: number) => {
   return jam === 0 ? `${sisa} mnt` : sisa === 0 ? `${jam} jam` : `${jam} jam ${sisa} mnt`;
 };
 
-/** Baris teks pada pita stempel (urutan = urutan tampil). */
-export const barisStempel = (d: DataStempel): string[] => [
-  `${d.jenis === 'masuk' ? 'CHECK-IN' : 'CHECK-OUT'} · ${d.nama}`,
-  `${formatWaktuStempel(d.waktu)}${d.diterimaServer ? ' · offline' : ''}`,
-  `${d.lokasi ?? 'Lokasi tidak tercatat'}${d.latitude !== undefined && d.longitude !== undefined ? ` · ${d.latitude.toFixed(5)}, ${d.longitude.toFixed(5)}` : ''}`,
+/**
+ * Lebar satu baris alamat di pita, dalam karakter. Pita selebar 1080 px dengan
+ * huruf 30 px memuat sekitar 56 karakter; diberi sisa supaya huruf lebar
+ * (M, W, angka) tidak terpotong di tepi gambar.
+ */
+export const LEBAR_BARIS_ALAMAT = 52;
+const BARIS_ALAMAT_MAKS = 2;
+
+/**
+ * Memecah alamat per kata menjadi paling banyak dua baris. Teks SVG tidak
+ * membungkus sendiri, jadi alamat panjang tanpa ini terpotong di luar gambar;
+ * sisanya diganti elipsis (alamat lengkap tetap ada di keterangan pesan).
+ */
+export const pecahAlamat = (alamat: string): string[] => {
+  const baris: string[] = [];
+  let kini = '';
+  for (const kata of alamat.trim().split(/\s+/).filter(Boolean)) {
+    const calon = kini ? `${kini} ${kata}` : kata;
+    if (calon.length <= LEBAR_BARIS_ALAMAT) {
+      kini = calon;
+      continue;
+    }
+    if (kini) baris.push(kini);
+    kini = kata.slice(0, LEBAR_BARIS_ALAMAT);
+  }
+  if (kini) baris.push(kini);
+  if (baris.length <= BARIS_ALAMAT_MAKS) return baris;
+
+  const terpotong = baris.slice(0, BARIS_ALAMAT_MAKS);
+  terpotong[BARIS_ALAMAT_MAKS - 1] = `${terpotong[BARIS_ALAMAT_MAKS - 1].slice(0, LEBAR_BARIS_ALAMAT - 1).trimEnd()}…`;
+  return terpotong;
+};
+
+const barisMetode = (d: DataStempel) =>
   `${LABEL_METODE[d.metode] ?? d.metode}${d.wajahTerverifikasi ? ' · wajah terverifikasi' : ''} · ${LABEL_STATUS[d.status] ?? d.status}${
     d.menitTerlambat ? ` ${d.menitTerlambat} mnt` : ''
-  }${d.menitKerja !== undefined ? ` · kerja ${durasi(d.menitKerja)}` : ''}`,
-];
+  }${d.menitKerja !== undefined ? ` · kerja ${durasi(d.menitKerja)}` : ''}`;
+
+const alamatDari = (d: DataStempel) => d.alamat?.trim() || null;
+
+/** Baris teks pada pita stempel (urutan = urutan tampil). */
+export const barisStempel = (d: DataStempel): string[] => {
+  const alamat = alamatDari(d);
+  return [
+    `${d.jenis === 'masuk' ? 'CHECK-IN' : 'CHECK-OUT'} · ${d.nama}`,
+    `${formatWaktuStempel(d.waktu)}${d.diterimaServer ? ' · offline' : ''}`,
+    d.lokasi ?? 'Lokasi tidak tercatat',
+    ...(alamat ? pecahAlamat(alamat) : []),
+    barisMetode(d),
+  ];
+};
 
 /** Keterangan pesan WhatsApp (caption) — isinya sama dengan pita, plus penanda aplikasi. */
 export const teksKeterangan = (d: DataStempel): string =>
   [
     `${d.jenis === 'masuk' ? '✅ CHECK-IN' : '🏁 CHECK-OUT'} — ${d.nama}`,
     `🕒 ${formatWaktuStempel(d.waktu)}`,
-    `📍 ${barisStempel(d)[2]}`,
-    `📱 ${barisStempel(d)[3]}`,
+    `📍 ${d.lokasi ?? 'Lokasi tidak tercatat'}`,
+    ...(alamatDari(d) ? [`🏢 ${alamatDari(d)}`] : []),
+    `📱 ${barisMetode(d)}`,
     ...(d.diterimaServer ? [`📶 Diambil offline, terkirim ${formatWaktuStempel(d.diterimaServer)}`] : []),
     'Dikirim otomatis oleh HRD Nusantara',
   ].join('\n');

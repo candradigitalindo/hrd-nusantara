@@ -73,7 +73,7 @@ const attendanceSelect = {
   createdAt: true,
   updatedAt: true,
   employee: { select: { id: true, nik: true, name: true, departmentId: true } },
-  workLocation: { select: { id: true, name: true } },
+  workLocation: { select: { id: true, name: true, address: true } },
   shiftSchedule: { select: { id: true, date: true, startTime: true, endTime: true } },
 } satisfies Prisma.AttendanceSelect;
 
@@ -470,8 +470,7 @@ export const checkIn = async (req: Request, res: Response) => {
       waktu,
       diterimaServer: ditentukan.offline ? now : undefined,
       lokasi: attendance.workLocation?.name ?? null,
-      latitude: input.latitude,
-      longitude: input.longitude,
+      alamat: attendance.workLocation?.address ?? null,
       metode: input.method,
       wajahTerverifikasi: wajah.faceVerified,
       status: penilaian.status,
@@ -576,8 +575,7 @@ export const checkOut = async (req: Request, res: Response) => {
       waktu,
       diterimaServer: ditentukan.offline ? now : undefined,
       lokasi: attendance.workLocation?.name ?? null,
-      latitude: input.latitude,
-      longitude: input.longitude,
+      alamat: attendance.workLocation?.address ?? null,
       metode: input.method,
       wajahTerverifikasi: input.method === 'face',
       status: attendance.status,

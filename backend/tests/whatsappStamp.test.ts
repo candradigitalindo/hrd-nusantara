@@ -6,7 +6,7 @@ import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
 import { setPembuatSoket, shutdownSessions, tungguEventSelesai, type SesiDibuat, type MetadataGrup } from '../src/services/whatsapp/session';
-import { tungguStempelSelesai, buatGambarStempel, barisStempel, teksKeterangan, LEBAR_STEMPEL } from '../src/services/whatsapp/attendanceStamp';
+import { tungguStempelSelesai, buatGambarStempel, barisStempel, teksKeterangan, pecahAlamat, LEBAR_STEMPEL, LEBAR_BARIS_ALAMAT } from '../src/services/whatsapp/attendanceStamp';
 
 const app = bikinApp();
 
@@ -57,7 +57,7 @@ beforeEach(async () => {
   await makeEmployee({ email: 'hr@resto.id', nik: 'HR-1', role: Role.HR_ADMIN });
   budi = await makeEmployee({ email: 'budi@resto.id', nik: 'EMP-1', name: 'Budi Cook' });
   budiToken = await login(app, 'budi@resto.id');
-  lokasiId = (await makeWorkLocation({ name: 'Outlet Kemang' })).id;
+  lokasiId = (await makeWorkLocation({ name: 'Outlet Kemang', address: 'Jl. Kemang Raya No. 8, Jakarta Selatan' })).id;
   soket.clear();
   setPembuatSoket(async ({ accountId }): Promise<SesiDibuat> => {
     const s = new SoketPalsu();
@@ -153,7 +153,10 @@ describe('Foto absensi ber-stempel dikirim ke grup', () => {
     expect(caption).toContain('CHECK-IN — Budi Cook');
     // Grup outlet berisi banyak orang dan foto bisa diteruskan: NIK tidak ikut.
     expect(caption).not.toContain('EMP-1');
-    expect(caption).toContain('Outlet Kemang');
+    expect(caption).toContain('📍 Outlet Kemang');
+    expect(caption).toContain('🏢 Jl. Kemang Raya No. 8, Jakarta Selatan');
+    // Posisi GPS ponsel (MONAS di test ini) tidak ikut ke grup.
+    expect(caption).not.toMatch(/-6\.175|106\.827/);
     expect(caption).toContain('GPS');
 
     const baris = await prisma.attendance.findUniqueOrThrow({ where: { id: res.body.id } });
@@ -225,15 +228,43 @@ describe('Foto absensi ber-stempel dikirim ke grup', () => {
 });
 
 describe('Penyusunan stempel (murni)', () => {
-  const data = { jenis: 'masuk' as const, nama: 'Siti <Waiter> & Co', waktu: new Date('2026-09-21T01:02:00.000Z'), lokasi: 'Outlet HI', latitude: -6.1953, longitude: 106.8231, metode: 'face', wajahTerverifikasi: true, status: 'late', menitTerlambat: 7 };
+  const data = { jenis: 'masuk' as const, nama: 'Siti <Waiter> & Co', waktu: new Date('2026-09-21T01:02:00.000Z'), lokasi: 'Outlet HI', alamat: 'Jl. M.H. Thamrin No. 1, Jakarta Pusat', metode: 'face', wajahTerverifikasi: true, status: 'late', menitTerlambat: 7 };
 
-  it('baris stempel memuat jam zona aplikasi, lokasi, koordinat, metode, dan status', () => {
+  it('baris stempel memuat jam zona aplikasi, nama lokasi, alamat, metode, dan status', () => {
     const baris = barisStempel(data);
     expect(baris[0]).toBe('CHECK-IN · Siti <Waiter> & Co');
     expect(baris[1]).toMatch(/21 Sep 2026 08:02/);
-    expect(baris[2]).toBe('Outlet HI · -6.19530, 106.82310');
-    expect(baris[3]).toBe('Wajah · wajah terverifikasi · Terlambat 7 mnt');
+    expect(baris[2]).toBe('Outlet HI');
+    expect(baris[3]).toBe('Jl. M.H. Thamrin No. 1, Jakarta Pusat');
+    expect(baris[4]).toBe('Wajah · wajah terverifikasi · Terlambat 7 mnt');
     expect(teksKeterangan(data)).toContain('✅ CHECK-IN');
+    expect(teksKeterangan(data)).toContain('📍 Outlet HI\n🏢 Jl. M.H. Thamrin No. 1, Jakarta Pusat');
+  });
+
+  it('tidak mencantumkan koordinat GPS walau datanya ikut terbawa', () => {
+    const denganKoordinat = { ...data, latitude: -6.1953, longitude: 106.8231 } as typeof data;
+    expect(barisStempel(denganKoordinat).join('\n')).not.toMatch(/-6\.19|106\.82/);
+    expect(teksKeterangan(denganKoordinat)).not.toMatch(/-6\.19|106\.82/);
+  });
+
+  it('tanpa alamat, baris alamat tidak muncul sama sekali', () => {
+    const tanpa = { ...data, alamat: null };
+    expect(barisStempel(tanpa)).toHaveLength(4);
+    expect(barisStempel(tanpa)[2]).toBe('Outlet HI');
+    expect(teksKeterangan(tanpa)).not.toContain('🏢');
+    expect(barisStempel({ ...data, alamat: '   ' })).toHaveLength(4);
+  });
+
+  it('alamat panjang dibungkus paling banyak dua baris di pita, lengkap di keterangan', () => {
+    const panjang = 'Gedung Graha Niaga Lantai 12 Unit 1204, Jl. Jenderal Sudirman Kav. 52-53, Senayan, Kebayoran Baru, Jakarta Selatan, DKI Jakarta 12190';
+    const baris = pecahAlamat(panjang);
+    expect(baris).toHaveLength(2);
+    baris.forEach((b) => expect(b.length).toBeLessThanOrEqual(LEBAR_BARIS_ALAMAT));
+    expect(baris[1].endsWith('…')).toBe(true);
+    expect(pecahAlamat('Jl. Pendek 1')).toEqual(['Jl. Pendek 1']);
+    // Pas dua baris: tidak dipotong.
+    expect(pecahAlamat('Jl. Jenderal Sudirman Kav. 52-53, Senayan, Kebayoran Baru, Jakarta Selatan 12190').at(-1)?.endsWith('…')).toBe(false);
+    expect(teksKeterangan({ ...data, alamat: panjang })).toContain(panjang);
   });
 
   it('tidak mencantumkan NIK di pita foto maupun keterangan', () => {

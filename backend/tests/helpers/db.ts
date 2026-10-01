@@ -127,13 +127,14 @@ export const makePosition = async (name: string, departmentId?: string) =>
   });
 
 export const makeWorkLocation = async (
-  overrides: { name?: string; latitude?: number; longitude?: number; radiusMeters?: number } = {}
+  overrides: { name?: string; address?: string; latitude?: number; longitude?: number; radiusMeters?: number } = {}
 ) => {
   counter += 1;
   return prisma.workLocation.create({
     data: {
       id: generateULID(),
       name: overrides.name ?? `Lokasi ${counter}`,
+      address: overrides.address ?? null,
       // Monas, dipakai sebagai titik acuan tetap di seluruh test.
       latitude: new Prisma.Decimal(overrides.latitude ?? -6.1753924),
       longitude: new Prisma.Decimal(overrides.longitude ?? 106.8271528),
