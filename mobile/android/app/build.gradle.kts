@@ -37,10 +37,30 @@ android {
         applicationId = "id.nusantara.hrd.hrd_nusantara"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // Android 7.0 (API 24): batas bawah mesin Flutter 3.44 sendiri. Nilai
+        // lebih rendah dikembalikan otomatis oleh migrator Flutter saat build.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Plugin Gradle Flutter mengisi abiFilters dengan semua ABI bawaan
+        // (termasuk x86_64), apa pun --target-platform-nya, sehingga pustaka
+        // native plugin (mis. ML Kit pemindai QR, +6 MB) untuk emulator ikut
+        // masuk APK rilis. Ikuti --target-platform yang benar-benar dibangun
+        // (lihat rilis.sh). Tidak saat --split-per-abi: splits dan abiFilters
+        // tidak boleh dipakai bersamaan.
+        val abiFlutter = mapOf("android-arm" to "armeabi-v7a", "android-arm64" to "arm64-v8a", "android-x64" to "x86_64")
+        val abiDibangun = (project.findProperty("target-platform") as String?)
+            ?.split(",")
+            ?.mapNotNull { abiFlutter[it.trim()] }
+            .orEmpty()
+        if (abiDibangun.isNotEmpty() && project.findProperty("split-per-abi") != "true") {
+            ndk {
+                abiFilters.clear()
+                abiFilters.addAll(abiDibangun)
+            }
+        }
     }
 
     signingConfigs {

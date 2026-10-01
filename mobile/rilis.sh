@@ -12,14 +12,20 @@
 # pubspec.yaml (`version: 0.2.0+2`); angka setelah `+` di sana diabaikan.
 #
 # Pakai:
-#   ./rilis.sh                         # APK arm64 (ponsel 64-bit), tanpa unggah
-#   ./rilis.sh --semua-abi             # satu APK berisi semua ABI (±3x lebih besar)
+#   ./rilis.sh                         # APK arm 32-bit + arm64 (semua ponsel), tanpa unggah
+#   ./rilis.sh --arm64-saja            # APK arm64 saja (lebih kecil, tidak jalan di ponsel 32-bit)
+#   ./rilis.sh --semua-abi             # satu APK berisi semua ABI termasuk x86 emulator (±3x)
 #   ./rilis.sh --unggah                # bangun lalu unggah; minta username/password HR
 #   HRD_TOKEN=… ./rilis.sh --unggah    # pakai token JWT yang sudah ada
 #   CATATAN_RILIS="…" ./rilis.sh --unggah   # catatan rilis tanpa prompt
 #   API_URL=https://… ./rilis.sh       # backend yang dipanggil aplikasi (bawaan: produksi)
 #   UNGGAH_URL=http://backend:3000/api DOCKER_NETWORK=hrd_hrd_internal ./rilis.sh --unggah
 #                                      # unggah lewat jaringan internal Docker di server
+#
+# Bawaannya arm 32-bit + arm64 dalam satu APK: halaman unduh hanya menawarkan
+# satu APK "terbaru", sedangkan banyak ponsel murah dan lama masih Android
+# 32-bit (armeabi-v7a) yang tidak bisa memasang APK arm64 saja. x86 (emulator)
+# tidak disertakan supaya APK tetap ringan.
 #
 # versionCode di manifest APK = angka di atas + offset ABI dari plugin Gradle
 # Flutter saat --split-per-abi (arm64-v8a +2000). Yang dilaporkan dan diunggah
@@ -35,13 +41,15 @@ UNGGAH_URL="${UNGGAH_URL:-$API_URL}"
 IMAGE="${FLUTTER_IMAGE:-ghcr.io/cirruslabs/flutter:latest}"
 UNGGAH=0
 SEMUA_ABI=0
+ARM64_SAJA=0
 DALAM_DOCKER=0
 for arg in "$@"; do
   case "$arg" in
     --unggah) UNGGAH=1 ;;
     --semua-abi) SEMUA_ABI=1 ;;
+    --arm64-saja) ARM64_SAJA=1 ;;
     --dalam-docker) DALAM_DOCKER=1 ;;
-    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "argumen tidak dikenal: $arg" >&2; exit 2 ;;
   esac
 done
@@ -65,7 +73,10 @@ if ! command -v flutter >/dev/null 2>&1; then
   echo "==> flutter tidak ada di PATH; memakai $IMAGE"
   TTY=()
   [[ -t 0 ]] && TTY=(-it)
+  # Build Gradle + AOT bisa memakan semua core; server ini juga melayani
+  # produksi, jadi dibatasi seperti deploy.sh.
   exec docker run --rm "${TTY[@]}" ${DOCKER_NETWORK:+--network "$DOCKER_NETWORK"} \
+    --cpuset-cpus "${BUILD_CPUSET:-2,3}" --memory "${BUILD_MEMORY:-4g}" \
     -v "$PWD:/work" -w /work \
     -v hrd-pub-cache:/root/.pub-cache -e PUB_CACHE=/root/.pub-cache \
     -v hrd-gradle-cache:/root/.gradle \
@@ -81,19 +92,32 @@ NOMOR=$(( $(date +%s) / 60 ))
 NAMA="${VERSI_DASAR}+${STEMPEL}"
 
 # --- Build -------------------------------------------------------------------
-ARGS=(--release --build-name="$NAMA" --build-number="$NOMOR" --dart-define=API_URL="$API_URL")
+# Simbol debug Dart dipisah dari APK (beberapa MB per arsitektur) dan disimpan
+# di build/rilis/simbol-<versionCode> untuk membaca jejak tumpukan laporan crash
+# (flutter symbolize).
+ARGS=(--release --build-name="$NAMA" --build-number="$NOMOR" --dart-define=API_URL="$API_URL"
+  --split-debug-info="build/rilis/simbol-$NOMOR")
 if (( SEMUA_ABI )); then
   ABI=semua-abi
   OFFSET_ABI=0
   echo "==> flutter build apk (semua ABI) versi $NAMA · versionCode $NOMOR"
   flutter build apk "${ARGS[@]}"
   APK=build/app/outputs/flutter-apk/app-release.apk
-else
+elif (( ARM64_SAJA )); then
   ABI=arm64
   OFFSET_ABI=2000 # plugin Gradle Flutter: arm64-v8a = 2 × 1000
   echo "==> flutter build apk (arm64) versi $NAMA · versionCode $NOMOR"
   flutter build apk "${ARGS[@]}" --target-platform android-arm64 --split-per-abi
   APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+else
+  ABI=arm
+  # Satu APK tanpa --split-per-abi: tidak ada offset ABI. Tetap lebih besar
+  # dari rilis arm64 sebelumnya (versionCode +2000) karena angka dasarnya
+  # menit sejak epoch, yang sudah naik ribuan sejak rilis itu.
+  OFFSET_ABI=0
+  echo "==> flutter build apk (arm 32-bit + arm64) versi $NAMA · versionCode $NOMOR"
+  flutter build apk "${ARGS[@]}" --target-platform android-arm,android-arm64
+  APK=build/app/outputs/flutter-apk/app-release.apk
 fi
 [[ -f "$APK" ]] || { echo "APK tidak ditemukan: $APK" >&2; exit 1; }
 NOMOR_APK=$(( NOMOR + OFFSET_ABI ))
