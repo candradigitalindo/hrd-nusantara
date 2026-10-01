@@ -15,6 +15,23 @@ const hapusKedaluwarsa = () =>
     .catch((e) => console.warn('Gagal membersihkan Idempotency-Key lama:', e));
 
 /**
+ * Penolakan yang bisa berubah tanpa ada yang diubah pada kirimannya, sehingga
+ * tidak boleh diputar ulang seperti jawaban final.
+ *
+ * "Wajah belum terdaftar": presensi offline yang ditolak karena ini akan
+ * dikirim ulang dengan kunci yang sama ("Coba kirim lagi") setelah HR
+ * menyetujui wajahnya. Kalau 422 itu disimpan, kiriman ulang menerima
+ * penolakan yang sama selama UMUR_KUNCI_HARI walau wajahnya sudah terdaftar,
+ * dan presensi hari itu hilang. Tidak ada yang tercatat saat penolakan ini,
+ * jadi melepas kuncinya tidak membuka jalan ke data dobel.
+ */
+const bisaBerubah = (statusCode: number, body: unknown): boolean =>
+  statusCode === 422 &&
+  typeof body === 'object' &&
+  body !== null &&
+  (body as { reason?: unknown }).reason === 'not_enrolled';
+
+/**
  * Kunci anti-dobel untuk kiriman dari antrean offline mobile.
  *
  * Ponsel yang sinyalnya putus sesaat setelah mengirim tidak tahu apakah
@@ -66,15 +83,16 @@ export const idempotensi = asyncHandler(async (req: Request, res: Response, next
 
   // Jawaban dicatat dulu, baru dikirim: ponsel yang menerimanya lalu segera
   // mengirim ulang (mis. karena jawaban berikutnya hilang) pasti mendapat
-  // jawaban tersimpan, bukan "masih diproses". 5xx tidak dicatat (kuncinya
-  // dilepas) supaya kiriman ulang benar-benar dicoba lagi.
+  // jawaban tersimpan, bukan "masih diproses". 5xx dan penolakan yang bisa
+  // berubah (bisaBerubah) tidak dicatat — kuncinya dilepas — supaya kiriman
+  // ulang benar-benar dicoba lagi.
   let tercatat = false;
   const jsonAsli = res.json.bind(res);
   res.json = ((body?: unknown) => {
     if (tercatat) return jsonAsli(body);
     tercatat = true;
     const simpan =
-      res.statusCode >= 500
+      res.statusCode >= 500 || bisaBerubah(res.statusCode, body)
         ? prisma.idempotencyKey.delete({ where })
         : prisma.idempotencyKey.update({
             where,

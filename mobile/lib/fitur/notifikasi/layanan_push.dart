@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/klien_api.dart';
 import '../../firebase_options.dart';
+import '../wajah/repo_wajah.dart';
 
 /// Rute tujuan saat notifikasi diketuk, berdasarkan `data.jenis` dari backend.
 String? ruteUntukPesan(Map<String, dynamic> data) => switch (data['jenis']) {
@@ -15,6 +16,7 @@ String? ruteUntukPesan(Map<String, dynamic> data) => switch (data['jenis']) {
       'leave' || 'cuti' => '/cuti',
       'attendance' || 'presensi' => '/presensi',
       'announcement' || 'pengumuman' => '/pengumuman',
+      'wajah' => '/wajah',
       _ => null,
     };
 
@@ -72,6 +74,9 @@ class LayananPush {
 
       // Di latar depan sistem tidak menampilkan notifikasi; tampilkan sendiri.
       FirebaseMessaging.onMessage.listen((m) {
+        // HR baru menyetujui/menolak foto wajah: status yang tampil di Profil
+        // dan lembar absen jangan menunggu dibuka ulang.
+        if (m.data['jenis'] == 'wajah') _ref.invalidate(statusWajahProvider);
         final n = m.notification;
         if (n == null) return;
         _lokal.show(

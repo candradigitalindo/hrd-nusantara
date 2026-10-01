@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Plus, Search, UserX, Users, Pencil, KeyRound, UserPlus, Lock } from "lucide-react";
+import { Plus, Search, UserX, Users, Pencil, KeyRound, UserPlus, Lock, ScanFace, Clock } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin, bolehKelolaAkun } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
@@ -19,6 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { FormKaryawan } from "@/components/karyawan/form-karyawan";
 import { DialogResetSandi } from "@/components/karyawan/dialog-reset-sandi";
+import { PengingatWajahMenunggu } from "@/components/karyawan/tinjau-wajah";
 import { formatTanggal, labelStatus, LABEL_ROLE, LABEL_STATUS, inisial } from "@/lib/utils";
 import type { Halaman, Karyawan, Departemen } from "@/lib/types";
 
@@ -30,6 +31,8 @@ export default function HalamanKaryawan() {
   const bolehUbah = punyaIzin(saya, "karyawan.ubah");
   const bolehHapus = punyaIzin(saya, "karyawan.hapus");
   const hr = bolehUbah || bolehHapus;
+  // wajah.buat juga izin menyetujui foto wajah yang dikirim karyawan dari aplikasi.
+  const bolehTinjauWajah = punyaIzin(saya, "wajah.buat");
 
   const [cari, setCari] = React.useState("");
   const [cariTunda, setCariTunda] = React.useState("");
@@ -105,6 +108,29 @@ export default function HalamanKaryawan() {
       ),
     },
     { key: "gabung", header: "Bergabung", cell: (k) => formatTanggal(k.joinDate) },
+    // Server hanya mengirim status wajah kepada pemegang izin wajah.
+    ...(data?.data.some((k) => k.faceEnrolled !== undefined)
+      ? [
+          {
+            key: "wajah",
+            header: "Wajah",
+            cell: (k: Karyawan) =>
+              k.faceEnrolled ? (
+                // Sudah terdaftar tapi mengirim foto baru: tetap bisa check-in,
+                // jadi "Terdaftar" yang utama; kiriman barunya ditandai di bawahnya
+                // (bertumpuk, bukan berjajar, supaya kolomnya tidak melebar).
+                <div className="flex flex-col items-end gap-1 md:items-start">
+                  <Badge tone="success" dot>Terdaftar</Badge>
+                  {k.facePending && <Badge tone="info" title="Foto baru dari aplikasi menunggu persetujuan"><Clock className="h-3 w-3" aria-hidden /> Menunggu</Badge>}
+                </div>
+              ) : k.facePending ? (
+                <Badge tone="info" dot>Menunggu</Badge>
+              ) : (
+                <Badge tone="warning" dot><ScanFace className="h-3 w-3" aria-hidden /> Belum</Badge>
+              ),
+          } satisfies Kolom<Karyawan>,
+        ]
+      : []),
     ...(hr
       ? [
           {
@@ -151,6 +177,8 @@ export default function HalamanKaryawan() {
           )
         }
       />
+
+      {bolehTinjauWajah && <PengingatWajahMenunggu />}
 
       <Card>
         <div className="grid gap-2 border-b border-border p-3 sm:grid-cols-[1fr_auto_auto]">

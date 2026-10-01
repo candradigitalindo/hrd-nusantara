@@ -7,10 +7,13 @@ import 'package:geolocator/geolocator.dart' show Geolocator;
 /// Mengambil selfie dengan kamera depan dan mengembalikan data URI base64
 /// (JPEG) untuk dikirim ke backend. Pengenalan wajah dikerjakan server.
 class LayarKameraWajah extends StatefulWidget {
-  const LayarKameraWajah({super.key});
+  const LayarKameraWajah({super.key, this.judul = 'Verifikasi Wajah'});
 
-  static Future<String?> buka(BuildContext context) =>
-      Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const LayarKameraWajah(), fullscreenDialog: true));
+  /// Judul bilah atas, mis. "Daftarkan Wajah" saat mengirim foto pendaftaran.
+  final String judul;
+
+  static Future<String?> buka(BuildContext context, {String judul = 'Verifikasi Wajah'}) =>
+      Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => LayarKameraWajah(judul: judul), fullscreenDialog: true));
 
   @override
   State<LayarKameraWajah> createState() => _LayarKameraWajahState();
@@ -98,7 +101,7 @@ class _LayarKameraWajahState extends State<LayarKameraWajah> with WidgetsBinding
     final c = _kamera;
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: const Text('Verifikasi Wajah')),
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text(widget.judul)),
       body: _galat != null
           ? Center(
               child: Padding(

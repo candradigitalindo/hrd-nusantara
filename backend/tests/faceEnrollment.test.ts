@@ -6,12 +6,16 @@ import {
   prisma,
   resetDatabase,
   makeEmployee,
+  makeDepartment,
   makeWorkLocation,
+  tungguJejakAudit,
   MONAS,
 } from './helpers/db';
 import { login, auth } from './helpers/api';
 import { bikinApp } from './helpers/app';
 import { areModelsAvailable } from '../src/services/face';
+import { env } from '../src/config/env';
+import { generateULID } from '../src/utils/generateULID';
 
 const app = bikinApp();
 const FIXTURES = path.resolve(__dirname, 'fixtures/faces');
@@ -20,12 +24,12 @@ const b64 = (nama: string) => fs.readFileSync(path.join(FIXTURES, nama)).toStrin
 const describeModel = areModelsAvailable() ? describe : describe.skip;
 
 let hrToken: string;
-let karyawan: { id: string };
+let karyawan: { id: string; name: string };
 let lokasiId: string;
 
 beforeEach(async () => {
   await resetDatabase();
-  await makeEmployee({ email: 'hr@resto.id', nik: 'HR-1', role: Role.HR_ADMIN });
+  await makeEmployee({ email: 'hr@resto.id', nik: 'HR-1', name: 'Rina HR', role: Role.HR_ADMIN });
   hrToken = await login(app, 'hr@resto.id');
   karyawan = await makeEmployee({ email: 'budi@resto.id', nik: 'EMP-1' });
   lokasiId = (await makeWorkLocation({ name: 'Resto Pusat' })).id;
@@ -131,6 +135,43 @@ describeModel('POST /api/employees/:id/face-enrollments', () => {
       where: { employeeId: karyawan.id, isActive: true },
     });
     expect(aktif).toBe(1);
+  });
+
+  it('menyebut nama HR yang mendaftarkan, untuk ditampilkan di web', async () => {
+    await daftarkan(karyawan.id, 'personA_1.jpg');
+
+    const res = await request(app)
+      .get(`/api/employees/${karyawan.id}/face-enrollments`)
+      .set(auth(hrToken));
+
+    expect(res.body.data[0].enrolledBy.name).toBe('Rina HR');
+  });
+
+  it('mencatat pendaftaran di jejak audit atas nama karyawannya', async () => {
+    const res = await daftarkan(karyawan.id, 'personA_1.jpg');
+
+    const jejak = await tungguJejakAudit({ action: 'employee.face.enroll', entityId: res.body.id });
+    expect(jejak?.summary).toBe(`Mendaftarkan wajah ${karyawan.name}`);
+    expect(jejak?.metadata).toMatchObject({
+      employeeId: karyawan.id,
+      replaceExisting: false,
+      deactivatedCount: 0,
+    });
+    // Fotonya sendiri tidak boleh ikut tertulis di jejak.
+    expect(JSON.stringify(jejak?.metadata)).not.toMatch(/base64|\/9j\//);
+  });
+
+  it('mencatat berapa pendaftaran lama yang digantikan', async () => {
+    await daftarkan(karyawan.id, 'personA_1.jpg');
+    await daftarkan(karyawan.id, 'personA_2.jpg');
+
+    const res = await request(app)
+      .post(`/api/employees/${karyawan.id}/face-enrollments`)
+      .set(auth(hrToken))
+      .send({ image: b64('personA_2.jpg'), replaceExisting: true });
+
+    const jejak = await tungguJejakAudit({ action: 'employee.face.enroll', entityId: res.body.id });
+    expect(jejak?.metadata).toMatchObject({ replaceExisting: true, deactivatedCount: 2 });
   });
 
   it('karyawan tidak boleh mendaftarkan wajahnya sendiri', async () => {
@@ -333,6 +374,14 @@ describeModel('DELETE /api/face-enrollments/:id', () => {
     expect(res.status).toBe(422);
   });
 
+  it('mencatat penonaktifan di jejak audit atas nama karyawannya', async () => {
+    const dibuat = await daftarkan(karyawan.id, 'personA_1.jpg');
+    await request(app).delete(`/api/face-enrollments/${dibuat.body.id}`).set(auth(hrToken));
+
+    const jejak = await tungguJejakAudit({ action: 'employee.face.deactivate', entityId: dibuat.body.id });
+    expect(jejak?.summary).toBe(`Menonaktifkan pendaftaran wajah ${karyawan.name}`);
+  });
+
   it('hanya HR yang boleh menonaktifkan', async () => {
     const dibuat = await daftarkan(karyawan.id, 'personA_1.jpg');
     const token = await login(app, 'budi@resto.id');
@@ -345,3 +394,60 @@ describeModel('DELETE /api/face-enrollments/:id', () => {
   });
 });
 
+/**
+ * Tidak butuh model: pendaftaran dibuat langsung di database, karena yang
+ * diuji adalah cara daftar karyawan menghitungnya, bukan pengenalan wajahnya.
+ */
+describe('Status wajah di daftar karyawan', () => {
+  const daftarLangsung = (employeeId: string, ubah: { modelName?: string; isActive?: boolean } = {}) =>
+    prisma.faceEnrollment.create({
+      data: {
+        id: generateULID(),
+        employeeId,
+        embedding: Buffer.alloc(16),
+        dimensions: 512,
+        modelName: ubah.modelName ?? env.FACE_MODEL_NAME,
+        detectionScore: 0.9,
+        isActive: ubah.isActive ?? true,
+      },
+    });
+
+  const statusDaftar = async (token: string) => {
+    const res = await request(app).get('/api/employees?limit=100').set(auth(token));
+    expect(res.status).toBe(200);
+    return res.body.data as { id: string; faceEnrolled?: boolean }[];
+  };
+
+  it('menandai siapa yang sudah dan belum terdaftar', async () => {
+    await daftarLangsung(karyawan.id);
+    // Dua foto untuk orang yang sama tetap satu karyawan terdaftar.
+    await daftarLangsung(karyawan.id);
+
+    const daftar = await statusDaftar(hrToken);
+    const hr = await prisma.employee.findUniqueOrThrow({ where: { email: 'hr@resto.id' } });
+
+    expect(daftar.find((k) => k.id === karyawan.id)?.faceEnrolled).toBe(true);
+    expect(daftar.find((k) => k.id === hr.id)?.faceEnrolled).toBe(false);
+  });
+
+  it('tidak menghitung pendaftaran nonaktif atau dari model lama', async () => {
+    // Check-in menolak keduanya, jadi menyebutnya "terdaftar" akan menyesatkan HR.
+    await daftarLangsung(karyawan.id, { isActive: false });
+    await daftarLangsung(karyawan.id, { modelName: 'model_lama_v1' });
+
+    const daftar = await statusDaftar(hrToken);
+    expect(daftar.find((k) => k.id === karyawan.id)?.faceEnrolled).toBe(false);
+  });
+
+  it('tidak menyertakan status wajah bagi yang tidak memegang izin wajah', async () => {
+    const dapur = await makeDepartment('Dapur');
+    await prisma.employee.update({ where: { id: karyawan.id }, data: { departmentId: dapur.id } });
+    await makeEmployee({ email: 'manajer@resto.id', role: Role.MANAGER, departmentId: dapur.id });
+    await daftarLangsung(karyawan.id);
+
+    const daftar = await statusDaftar(await login(app, 'manajer@resto.id'));
+
+    expect(daftar.some((k) => k.id === karyawan.id)).toBe(true);
+    expect(daftar.every((k) => !('faceEnrolled' in k))).toBe(true);
+  });
+});

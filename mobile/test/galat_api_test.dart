@@ -45,6 +45,15 @@ void main() {
     expect(GalatApi.dari(_respons(500, {'error': 'x'})).serverTakTerjangkau, isFalse);
   });
 
+  test('kode mesin dari `code`, atau `reason` pada galat wajah', () {
+    expect(GalatApi.dari(_respons(409, {'error': 'Sedang diproses', 'code': 'idempotency_in_progress'})).kode, 'idempotency_in_progress');
+    final g = GalatApi.dari(_respons(422, {'error': 'Wajah Anda belum terdaftar.', 'reason': 'not_enrolled'}));
+    expect(g.kode, 'not_enrolled');
+    expect(g.pesan, 'Wajah Anda belum terdaftar.');
+    expect(GalatApi.dari(_respons(409, {'error': 'x', 'code': 'a', 'reason': 'b'})).kode, 'a');
+    expect(GalatApi.dari(_respons(400, {'error': 'x'})).kode, isNull);
+  });
+
   test('401 dikenali sebagai sesi habis', () {
     expect(GalatApi.dari(_respons(401, {'error': 'Token tidak sah'})).tidakTerautentikasi, isTrue);
   });

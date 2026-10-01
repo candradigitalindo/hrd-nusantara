@@ -150,7 +150,9 @@ describe('Foto absensi ber-stempel dikirim ke grup', () => {
     expect(gambar.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
     expect((await sharp(gambar).metadata()).width).toBe(LEBAR_STEMPEL);
     const caption = s.kiriman[0].content.caption!;
-    expect(caption).toContain('CHECK-IN — Budi Cook (EMP-1)');
+    expect(caption).toContain('CHECK-IN — Budi Cook');
+    // Grup outlet berisi banyak orang dan foto bisa diteruskan: NIK tidak ikut.
+    expect(caption).not.toContain('EMP-1');
     expect(caption).toContain('Outlet Kemang');
     expect(caption).toContain('GPS');
 
@@ -223,15 +225,22 @@ describe('Foto absensi ber-stempel dikirim ke grup', () => {
 });
 
 describe('Penyusunan stempel (murni)', () => {
-  const data = { jenis: 'masuk' as const, nama: 'Siti <Waiter> & Co', nik: 'EMP-2', waktu: new Date('2026-09-21T01:02:00.000Z'), lokasi: 'Outlet HI', latitude: -6.1953, longitude: 106.8231, metode: 'face', wajahTerverifikasi: true, status: 'late', menitTerlambat: 7 };
+  const data = { jenis: 'masuk' as const, nama: 'Siti <Waiter> & Co', waktu: new Date('2026-09-21T01:02:00.000Z'), lokasi: 'Outlet HI', latitude: -6.1953, longitude: 106.8231, metode: 'face', wajahTerverifikasi: true, status: 'late', menitTerlambat: 7 };
 
   it('baris stempel memuat jam zona aplikasi, lokasi, koordinat, metode, dan status', () => {
     const baris = barisStempel(data);
-    expect(baris[0]).toBe('CHECK-IN · Siti <Waiter> & Co (EMP-2)');
+    expect(baris[0]).toBe('CHECK-IN · Siti <Waiter> & Co');
     expect(baris[1]).toMatch(/21 Sep 2026 08:02/);
     expect(baris[2]).toBe('Outlet HI · -6.19530, 106.82310');
     expect(baris[3]).toBe('Wajah · wajah terverifikasi · Terlambat 7 mnt');
     expect(teksKeterangan(data)).toContain('✅ CHECK-IN');
+  });
+
+  it('tidak mencantumkan NIK di pita foto maupun keterangan', () => {
+    // Data dari controller bisa saja membawa field lain; yang tampil hanya yang dipilih di sini.
+    const denganNik = { ...data, nik: 'EMP-2' } as typeof data;
+    expect(barisStempel(denganNik).join('\n')).not.toContain('EMP-2');
+    expect(teksKeterangan(denganNik)).not.toContain('EMP-2');
   });
 
   it('karakter khusus pada nama tidak merusak SVG dan gambar tetap terbentuk', async () => {

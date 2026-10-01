@@ -308,15 +308,18 @@ const verifikasiWajah = async (
   const { buffer, extension } = decodeBase64Image(base64Image);
   const probe = await extractForVerification(buffer);
 
+  // status 'approved' wajib, bukan hanya isActive: kiriman mandiri dari
+  // aplikasi belum boleh dipakai sebelum HR memastikan wajahnya orang yang
+  // benar — kalau tidak, karyawan bisa mendaftarkan wajah rekan atas namanya.
   const terdaftar = await prisma.faceEnrollment.findMany({
-    where: { employeeId, isActive: true, modelName: probe.modelName },
+    where: { employeeId, isActive: true, status: 'approved', modelName: probe.modelName },
     select: { id: true, embedding: true },
   });
 
   if (terdaftar.length === 0) {
     throw new FaceProcessingError(
       'not_enrolled',
-      'Wajah Anda belum terdaftar untuk model yang aktif. Hubungi HR untuk pendaftaran.'
+      'Wajah Anda belum terdaftar. Daftarkan lewat menu Profil › Wajah untuk Presensi di aplikasi versi terbaru, atau minta HR mendaftarkannya.'
     );
   }
 
@@ -464,7 +467,6 @@ export const checkIn = async (req: Request, res: Response) => {
     data: {
       jenis: 'masuk',
       nama: attendance.employee.name,
-      nik: attendance.employee.nik,
       waktu,
       diterimaServer: ditentukan.offline ? now : undefined,
       lokasi: attendance.workLocation?.name ?? null,
@@ -571,7 +573,6 @@ export const checkOut = async (req: Request, res: Response) => {
     data: {
       jenis: 'pulang',
       nama: attendance.employee.name,
-      nik: attendance.employee.nik,
       waktu,
       diterimaServer: ditentukan.offline ? now : undefined,
       lokasi: attendance.workLocation?.name ?? null,

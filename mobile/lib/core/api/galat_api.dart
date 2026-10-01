@@ -12,8 +12,9 @@ class GalatApi implements Exception {
   final int? kodeHttp;
   final List<String> rincian;
 
-  /// Kode galat untuk mesin (`code` di jawaban server), mis.
-  /// `idempotency_in_progress`.
+  /// Kode galat untuk mesin: `code` di jawaban server (mis.
+  /// `idempotency_in_progress`), atau `reason` pada galat wajah (mis.
+  /// `not_enrolled`, `spoof_detected`).
   final String? kode;
 
   bool get tidakTerautentikasi => kodeHttp == 401;
@@ -55,7 +56,11 @@ class GalatApi implements Exception {
       final rincian = <String>[];
       String? kode;
       if (data is Map) {
-        if (data['code'] is String) kode = data['code'] as String;
+        if (data['code'] is String) {
+          kode = data['code'] as String;
+        } else if (data['reason'] is String) {
+          kode = data['reason'] as String;
+        }
         final err = data['error'];
         if (err is String && err.isNotEmpty) pesan = err;
         final details = data['details'];

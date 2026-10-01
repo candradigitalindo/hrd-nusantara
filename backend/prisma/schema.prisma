@@ -96,6 +96,7 @@ model Employee {
   approvedOvertimes            Attendance[]                    @relation("OvertimeApprover")
   faceEnrollments              FaceEnrollment[]                @relation("EmployeeFace")
   enrolledFaces                FaceEnrollment[]                @relation("FaceEnroller")
+  reviewedFaces                FaceEnrollment[]                @relation("FaceReviewer")
   leaveBalances                LeaveBalance[]
   decidedLeaves                Leave[]                         @relation("LeaveDecider")
   salaries                     EmployeeSalary[]
@@ -300,11 +301,29 @@ model FaceEnrollment {
   enrolledBy   Employee? @relation("FaceEnroller", fields: [enrolledById], references: [id])
   enrolledById String?
 
+  /// "pending" | "approved" | "rejected" | "cancelled". Kiriman mandiri dari
+  /// aplikasi mobile menunggu HR dulu: tanpa persetujuan, karyawan A bisa
+  /// mendaftarkan wajah rekan B atas nama A lalu menitip absen. isActive
+  /// tetap berarti "dipakai mencocokkan check-in" dan hanya boleh true untuk
+  /// baris "approved"; baris lama (didaftarkan HR) otomatis "approved".
+  status        String    @default("approved")
+  /// "hr" (didaftarkan HR di web) | "self" (dikirim karyawan dari aplikasi).
+  source        String    @default("hr")
+  /// Skor keaslian-hidup foto kiriman mandiri, untuk bahan pertimbangan HR.
+  livenessScore Float?
+  reviewedBy    Employee? @relation("FaceReviewer", fields: [reviewedById], references: [id])
+  reviewedById  String?
+  reviewedAt    DateTime?
+  /// Alasan penolakan, atau catatan pembatalan saat digantikan kiriman baru.
+  reviewNote    String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([employeeId, isActive])
   @@index([enrolledById])
+  @@index([status])
+  @@index([reviewedById])
 }
 
 /// Titik presensi resmi perusahaan.

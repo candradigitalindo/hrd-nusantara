@@ -203,3 +203,12 @@ List<Kasus> daftarKasus() => [
         'handledBy': {'id': 'K9', 'nik': 'ADMIN-001', 'name': 'Administrator'},
       }),
     ];
+
+/// Jawaban GET /face-enrollments/me. [ditolak] = alasan HR untuk kiriman
+/// mandiri terakhir.
+Map<String, dynamic> jsonStatusWajah({bool terdaftar = false, bool menunggu = false, String? ditolak, bool aktif = true}) => {
+      'enrolled': terdaftar,
+      'pending': menunggu ? {'id': 'FE-2', 'createdAt': iso(DateTime.now().subtract(const Duration(minutes: 25)))} : null,
+      'lastRejection': ditolak == null ? null : {'id': 'FE-1', 'reason': ditolak, 'reviewedAt': iso(jam(9, 15, -1))},
+      'recognitionEnabled': aktif,
+    };

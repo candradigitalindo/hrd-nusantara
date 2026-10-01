@@ -32,5 +32,34 @@ export const listFaceEnrollmentQuerySchema = z.object({
     .transform((v) => v === 'true'),
 });
 
+/** Kiriman mandiri dari aplikasi: hanya foto — pemiliknya selalu si pengirim. */
+export const kirimWajahSendiriSchema = z.object({ image: base64ImageField }).strict();
+
+export const listWajahMenungguQuerySchema = z.object(paginationFields);
+
+export const setujuiWajahSchema = z
+  .object({
+    // Sama seperti pendaftaran oleh HR: menonaktifkan foto lama, misalnya
+    // karena karyawan memperbarui fotonya setelah berganti penampilan.
+    replaceExisting: z.boolean().default(false),
+  })
+  .strict();
+
+export const tolakWajahSchema = z
+  .object({
+    // Wajib: alasannya dikirim ke karyawan, supaya ia tahu apa yang harus
+    // diperbaiki pada kiriman berikutnya.
+    reason: z
+      .string()
+      .trim()
+      .min(3, 'Alasan penolakan minimal 3 karakter')
+      .max(300, 'Alasan penolakan maksimal 300 karakter'),
+  })
+  .strict();
+
 export type EnrollFaceInput = z.infer<typeof enrollFaceSchema>;
 export type ListFaceEnrollmentQuery = z.infer<typeof listFaceEnrollmentQuerySchema>;
+export type KirimWajahSendiriInput = z.infer<typeof kirimWajahSendiriSchema>;
+export type ListWajahMenungguQuery = z.infer<typeof listWajahMenungguQuerySchema>;
+export type SetujuiWajahInput = z.infer<typeof setujuiWajahSchema>;
+export type TolakWajahInput = z.infer<typeof tolakWajahSchema>;

@@ -8,6 +8,8 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { cabutSesi } from '../services/sesiMobile';
+import { punyaIzin, type AuthUser } from '../middleware/auth';
+import { lihatAtauKelola } from '../utils/permissions';
 import { generateULID } from '../utils/generateULID';
 import type {
   CreateEmployeeInput,
@@ -109,6 +111,47 @@ const tentukanPeran = async (
   return { ok: true, role, customRoleId: sistem?.id ?? null };
 };
 
+/**
+ * Karyawan mana yang wajahnya siap dicocokkan saat check-in, supaya HR bisa
+ * melihat siapa yang masih harus didaftarkan. Syaratnya sama dengan check-in:
+ * pendaftaran aktif dan disetujui untuk model yang sedang dipakai —
+ * pendaftaran dari model lama tidak dihitung karena check-in tetap akan
+ * menolaknya. Kiriman mandiri yang menunggu persetujuan dihitung terpisah,
+ * supaya HR tahu siapa yang tinggal disetujui, bukan didaftarkan dari awal.
+ *
+ * Hanya untuk pemegang izin wajah (null bila tidak): status biometrik bukan
+ * bagian dari data karyawan yang boleh dilihat semua orang.
+ */
+const statusWajah = async (
+  actor: Pick<AuthUser, 'permissions'>,
+  ids: string[]
+): Promise<{ terdaftar: Set<string>; menunggu: Set<string> } | null> => {
+  if (!lihatAtauKelola('wajah').some((k) => punyaIzin(actor, k))) return null;
+  if (ids.length === 0) return { terdaftar: new Set(), menunggu: new Set() };
+
+  const [terdaftar, menunggu] = await Promise.all([
+    prisma.faceEnrollment.findMany({
+      where: {
+        employeeId: { in: ids },
+        isActive: true,
+        status: 'approved',
+        modelName: env.FACE_MODEL_NAME,
+      },
+      select: { employeeId: true },
+      distinct: ['employeeId'],
+    }),
+    prisma.faceEnrollment.findMany({
+      where: { employeeId: { in: ids }, status: 'pending' },
+      select: { employeeId: true },
+      distinct: ['employeeId'],
+    }),
+  ]);
+  return {
+    terdaftar: new Set(terdaftar.map((r) => r.employeeId)),
+    menunggu: new Set(menunggu.map((r) => r.employeeId)),
+  };
+};
+
 export const getAllEmployees = async (req: Request, res: Response) => {
   const { page, limit, search, status, departmentId, includeInactive } =
     req.query as unknown as ListEmployeeQuery;
@@ -152,8 +195,16 @@ export const getAllEmployees = async (req: Request, res: Response) => {
     }),
   ]);
 
+  const wajah = await statusWajah(actor, data.map((k) => k.id));
+
   res.json({
-    data,
+    data: wajah
+      ? data.map((k) => ({
+          ...k,
+          faceEnrolled: wajah.terdaftar.has(k.id),
+          facePending: wajah.menunggu.has(k.id),
+        }))
+      : data,
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
   });
 };

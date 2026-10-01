@@ -63,6 +63,7 @@ void main() {
   test('notifikasi push diarahkan ke layar yang tepat berdasarkan jenisnya', () {
     expect(ruteUntukPesan({'jenis': 'whatsapp_session', 'eventType': 'logged_out'}), '/whatsapp');
     expect(ruteUntukPesan({'jenis': 'cuti'}), '/cuti');
+    expect(ruteUntukPesan({'jenis': 'wajah', 'status': 'approved'}), '/wajah');
     expect(ruteUntukPesan({}), isNull);
   });
   test('tautan WhatsApp: belum pernah → wajib; menunggu scan membawa QR; tersambung tidak perlu tindakan', () {

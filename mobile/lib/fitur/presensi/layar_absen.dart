@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/galat_api.dart';
 import '../../core/api/status_jaringan.dart';
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../wajah/model_wajah.dart';
+import '../wajah/repo_wajah.dart';
 import '../whatsapp/repo_whatsapp.dart';
 import 'integritas_lokasi.dart';
 import 'layanan_lokasi.dart';
@@ -44,6 +47,17 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
   MetodeAbsen? _sedang;
   String? _langkah;
   final _catatan = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Status wajah dibaca tanpa menahan lembar. Yang sudah ada di memori
+    // (mis. dari Profil) disegarkan: HR bisa saja baru menyetujui, dan status
+    // basi tidak boleh menahan check-in wajah yang sebenarnya sudah boleh.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) segarkanStatusWajah(ref);
+    });
+  }
 
   @override
   void dispose() {
@@ -144,9 +158,87 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
       _batal();
     } catch (e) {
       if (!mounted) return;
+      if (e is GalatApi && e.kode == 'not_enrolled') {
+        // Status di ponsel tadi belum terbaca atau sudah basi (mis. HR
+        // menonaktifkan wajah lama): muat ulang supaya pilihan wajah ikut berubah.
+        ref.invalidate(statusWajahProvider);
+        _batal();
+        return _jelaskanWajah(
+          ikon: Icons.face_retouching_natural,
+          nada: Nada.peringatan,
+          judul: 'Wajah belum terdaftar',
+          isi: 'Check-in wajah butuh foto wajah yang sudah disetujui HR. Kirim selfie sekarang; sambil menunggu persetujuan, pakai Lokasi GPS atau Pindai QR.',
+          labelTutup: 'Nanti',
+          labelKeWajah: 'Daftarkan wajah',
+        );
+      }
       tampilkanGalat(context, e, widget.pulang ? 'Check-out gagal' : 'Check-in gagal');
       _batal();
     }
+  }
+
+  /// Pilihan wajah memakai status wajah bila sudah pasti; selain itu server
+  /// yang memutuskan, seperti sebelum ada pendaftaran mandiri.
+  void _pilihWajah(StatusWajah? wajah) {
+    switch (wajah?.keadaan) {
+      case KeadaanWajah.belum || KeadaanWajah.ditolak:
+        _keLayarWajah();
+      case KeadaanWajah.menunggu:
+        final dikirim = wajah?.menunggu?.dikirimPada;
+        _jelaskanWajah(
+          ikon: Icons.hourglass_top_rounded,
+          nada: Nada.info,
+          judul: 'Menunggu persetujuan HR',
+          isi: 'Foto wajah Anda${dikirim == null ? '' : ' (dikirim ${formatTanggalWaktu(dikirim)})'} sedang diperiksa HR. Sementara itu, pakai Lokasi GPS atau Pindai QR. Anda diberi tahu begitu wajah disetujui.',
+          labelKeWajah: 'Lihat status',
+        );
+      case KeadaanWajah.nonaktif:
+        // Server menolak check-in wajah selama fitur ini mati.
+        _jelaskanWajah(
+          ikon: Icons.face_retouching_off,
+          nada: Nada.netral,
+          judul: 'Verifikasi wajah dinonaktifkan',
+          isi: 'Perusahaan sedang tidak memakai verifikasi wajah. Pakai Lokasi GPS atau Pindai QR.',
+        );
+      case KeadaanWajah.terdaftar || null:
+        _jalankan(MetodeAbsen.wajah);
+    }
+  }
+
+  /// Lembar ditutup dulu, supaya kembali dari layar wajah tidak mendarat di
+  /// lembar absen dengan status wajah yang sudah basi.
+  void _keLayarWajah() {
+    final router = GoRouter.of(context);
+    Navigator.of(context).pop();
+    router.push('/wajah');
+  }
+
+  /// Dialog, bukan notifikasi bawah: notifikasi bawah tertutup lembar ini.
+  Future<void> _jelaskanWajah({
+    required IconData ikon,
+    required Nada nada,
+    required String judul,
+    required String isi,
+    String labelTutup = 'Mengerti',
+    String? labelKeWajah,
+  }) async {
+    final keWajah = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: Icon(ikon, color: warnaNada(nada, Theme.of(ctx).colorScheme), size: 36),
+        title: Text(judul),
+        content: Text(isi),
+        actions: [
+          if (labelKeWajah == null)
+            FilledButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.check), label: Text(labelTutup))
+          else ...[
+            TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.close), label: Text(labelTutup)),
+            FilledButton.icon(onPressed: () => Navigator.pop(ctx, true), icon: const Icon(Icons.face_retouching_natural), label: Text(labelKeWajah)),
+          ],
+        ],
+      ),
+    );
+    if (keWajah == true && mounted) _keLayarWajah();
   }
 
   /// Presensi dihentikan di ponsel; server juga akan menolaknya. Dijelaskan
@@ -183,6 +275,11 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
+    final statusWajah = ref.watch(statusWajahProvider);
+    // Yang sedang dimuat ulang atau gagal dimuat (offline) bisa basi; hanya
+    // status yang pasti yang boleh mengubah pilihan wajah.
+    final wajah = statusWajah.isLoading || statusWajah.hasError ? null : statusWajah.valueOrNull;
+    final keadaanWajah = wajah?.keadaan;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 0, 20, 20 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(
@@ -206,7 +303,22 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
               ),
             )
           else ...[
-            _PilihanMetode(ikon: Icons.face_retouching_natural, judul: 'Verifikasi Wajah', keterangan: 'Selfie + lokasi GPS. Paling kuat, dianjurkan.', onTap: () => _jalankan(MetodeAbsen.wajah)),
+            _PilihanMetode(
+              ikon: Icons.face_retouching_natural,
+              judul: 'Verifikasi Wajah',
+              keterangan: switch (keadaanWajah) {
+                KeadaanWajah.belum || KeadaanWajah.ditolak => 'Belum terdaftar — ketuk untuk mendaftar',
+                KeadaanWajah.menunggu => 'Menunggu persetujuan HR',
+                KeadaanWajah.nonaktif => 'Sedang dinonaktifkan — pakai GPS atau QR',
+                KeadaanWajah.terdaftar || null => 'Selfie + lokasi GPS. Paling kuat, dianjurkan.',
+              },
+              warnaKeterangan: switch (keadaanWajah) {
+                KeadaanWajah.belum || KeadaanWajah.ditolak => warnaNada(Nada.peringatan, skema),
+                KeadaanWajah.menunggu => warnaNada(Nada.info, skema),
+                _ => null,
+              },
+              onTap: () => _pilihWajah(wajah),
+            ),
             const SizedBox(height: 10),
             _PilihanMetode(ikon: Icons.qr_code_scanner, judul: 'Pindai QR', keterangan: 'Pindai kode di titik presensi outlet/hotel.', onTap: () => _jalankan(MetodeAbsen.qr)),
             const SizedBox(height: 10),
@@ -221,11 +333,14 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
 }
 
 class _PilihanMetode extends StatelessWidget {
-  const _PilihanMetode({required this.ikon, required this.judul, required this.keterangan, required this.onTap});
+  const _PilihanMetode({required this.ikon, required this.judul, required this.keterangan, required this.onTap, this.warnaKeterangan});
   final IconData ikon;
   final String judul;
   final String keterangan;
   final VoidCallback onTap;
+
+  /// Untuk keterangan yang menuntut tindakan, mis. wajah belum terdaftar.
+  final Color? warnaKeterangan;
 
   @override
   Widget build(BuildContext context) {
@@ -252,7 +367,10 @@ class _PilihanMetode extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(judul, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text(keterangan, style: TextStyle(fontSize: 12, color: skema.onSurfaceVariant)),
+                    Text(
+                      keterangan,
+                      style: TextStyle(fontSize: 12, color: warnaKeterangan ?? skema.onSurfaceVariant, fontWeight: warnaKeterangan == null ? null : FontWeight.w600),
+                    ),
                   ],
                 ),
               ),

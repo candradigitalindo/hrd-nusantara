@@ -5,6 +5,10 @@
 // metode) ke grup yang ia pilih — pengganti "stamp photo" yang biasa
 // dikirim manual ke grup outlet.
 //
+// NIK sengaja tidak dicantumkan, baik di pita maupun di keterangan: grup
+// outlet berisi banyak orang dan fotonya bisa diteruskan ke mana saja,
+// sedangkan nama sudah cukup untuk mengenali siapa yang absen.
+//
 // Pengiriman berjalan DI LUAR siklus request: presensi sudah tercatat dan
 // dijawab 201 lebih dulu. WhatsApp yang lambat atau putus tidak boleh
 // membuat karyawan gagal absen; hasilnya dicatat di Attendance.stampStatus.
@@ -17,7 +21,6 @@ import { sendImageToGroup, GalatSesiWhatsApp } from './session';
 export interface DataStempel {
   jenis: 'masuk' | 'pulang';
   nama: string;
-  nik: string;
   waktu: Date;
   lokasi: string | null;
   latitude?: number;
@@ -47,7 +50,7 @@ const durasi = (menit: number) => {
 
 /** Baris teks pada pita stempel (urutan = urutan tampil). */
 export const barisStempel = (d: DataStempel): string[] => [
-  `${d.jenis === 'masuk' ? 'CHECK-IN' : 'CHECK-OUT'} · ${d.nama} (${d.nik})`,
+  `${d.jenis === 'masuk' ? 'CHECK-IN' : 'CHECK-OUT'} · ${d.nama}`,
   `${formatWaktuStempel(d.waktu)}${d.diterimaServer ? ' · offline' : ''}`,
   `${d.lokasi ?? 'Lokasi tidak tercatat'}${d.latitude !== undefined && d.longitude !== undefined ? ` · ${d.latitude.toFixed(5)}, ${d.longitude.toFixed(5)}` : ''}`,
   `${LABEL_METODE[d.metode] ?? d.metode}${d.wajahTerverifikasi ? ' · wajah terverifikasi' : ''} · ${LABEL_STATUS[d.status] ?? d.status}${
@@ -58,7 +61,7 @@ export const barisStempel = (d: DataStempel): string[] => [
 /** Keterangan pesan WhatsApp (caption) — isinya sama dengan pita, plus penanda aplikasi. */
 export const teksKeterangan = (d: DataStempel): string =>
   [
-    `${d.jenis === 'masuk' ? '✅ CHECK-IN' : '🏁 CHECK-OUT'} — ${d.nama} (${d.nik})`,
+    `${d.jenis === 'masuk' ? '✅ CHECK-IN' : '🏁 CHECK-OUT'} — ${d.nama}`,
     `🕒 ${formatWaktuStempel(d.waktu)}`,
     `📍 ${barisStempel(d)[2]}`,
     `📱 ${barisStempel(d)[3]}`,

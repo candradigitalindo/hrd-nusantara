@@ -18,6 +18,7 @@ import 'fitur/pengumuman/layar_pengumuman.dart';
 import 'fitur/presensi/layar_presensi.dart';
 import 'fitur/profil/layar_profil.dart' show LayarGantiPassword, LayarProfil;
 import 'fitur/survei/layar_survei.dart';
+import 'fitur/wajah/layar_wajah.dart';
 import 'fitur/whatsapp/layar_whatsapp.dart';
 
 /// Jembatan: go_router butuh Listenable untuk mengevaluasi ulang redirect
@@ -75,6 +76,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/chat', builder: (_, _) => const LayarChat()),
       GoRoute(path: '/whatsapp', builder: (_, _) => const LayarWhatsApp()),
       GoRoute(path: '/antrean', builder: (_, _) => const LayarAntrean()),
+      GoRoute(path: '/wajah', builder: (_, _) => const LayarWajah()),
     ],
   );
 });

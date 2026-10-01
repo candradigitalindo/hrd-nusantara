@@ -94,6 +94,10 @@ export interface Karyawan {
   department: Ref | null;
   position: Ref | null;
   createdAt: string;
+  /** Hanya ada di daftar karyawan, dan hanya untuk pemegang izin wajah. */
+  faceEnrolled?: boolean;
+  /** Ada foto kiriman dari aplikasi yang menunggu persetujuan HR. Sama seperti faceEnrolled. */
+  facePending?: boolean;
 }
 
 export interface Departemen {
@@ -341,6 +345,54 @@ export interface DokumenKaryawan {
   deletedAt: string | null;
   createdAt: string;
   employee?: { id: string; nik: string; name: string; department: Ref | null };
+}
+
+/** Pendaftaran wajah untuk presensi. Embedding dan fotonya tidak pernah dikirim ke klien. */
+export interface PendaftaranWajah {
+  id: string;
+  employeeId: string;
+  dimensions: number;
+  modelName: string;
+  detectionScore: number;
+  isActive: boolean;
+  enrolledById: string | null;
+  enrolledBy: Ref | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Dibuat dengan model lain dari yang aktif: check-in tidak bisa memakainya. */
+  stale: boolean;
+  // Field persetujuan di bawah ini opsional: kontraknya hanya "boleh" ada di
+  // daftar pendaftaran, jadi UI tidak boleh bergantung pada keberadaannya.
+  status?: StatusWajah;
+  /** "hr" = didaftarkan HR langsung; "self" = dikirim karyawan dari aplikasi lalu disetujui HR. */
+  source?: "hr" | "self";
+  /** Peluang 0–1 bahwa foto diambil dari wajah sungguhan, bukan foto/layar. Null bila tidak diperiksa. */
+  livenessScore?: number | null;
+  reviewedAt?: string | null;
+  reviewedBy?: Ref | null;
+}
+
+export type StatusWajah = "pending" | "approved" | "rejected" | "cancelled";
+
+/** Kiriman terbaru yang menunggu persetujuan, di respons daftar wajah seorang karyawan. */
+export interface KirimanWajahMenunggu {
+  id: string;
+  createdAt: string;
+  detectionScore: number;
+  livenessScore: number | null;
+  /** Model berganti sejak dikirim: server menolak menyetujuinya. */
+  stale: boolean;
+}
+
+/** Satu kiriman di antrean persetujuan (GET /face-enrollments/pending). */
+export interface WajahMenunggu {
+  id: string;
+  employeeId: string;
+  employee: { id: string; name: string; nik: string; department: Ref | null; position: Ref | null };
+  detectionScore: number;
+  livenessScore: number | null;
+  createdAt: string;
+  stale: boolean;
 }
 
 export type JenisKasus = "complaint" | "disciplinary_action";

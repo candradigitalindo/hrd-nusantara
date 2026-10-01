@@ -16,6 +16,7 @@ import { Alert } from "@/components/ui/alert";
 import { PanelDokumen } from "@/components/karyawan/dokumen-karyawan";
 import { DialogResetSandi } from "@/components/karyawan/dialog-reset-sandi";
 import { PanelGaji } from "@/components/karyawan/panel-gaji";
+import { PanelWajah } from "@/components/karyawan/panel-wajah";
 import { PanelSaldoCuti } from "@/components/cuti/panel-saldo";
 import { formatTanggal, labelStatus, LABEL_ROLE, inisial } from "@/lib/utils";
 import type { Karyawan } from "@/lib/types";
@@ -38,6 +39,7 @@ export default function HalamanDetailKaryawan() {
   const gaji = punyaIzin(saya, "payroll.lihat") || bolehKelola(saya, "payroll");
   const lihatSaldo = punyaIzin(saya, "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat") || bolehKelola(saya, "pengaturan_cuti");
   const kelolaSaldo = punyaIzin(saya, "pengaturan_cuti.buat", "pengaturan_cuti.ubah");
+  const lihatWajah = punyaIzin(saya, "wajah.lihat") || bolehKelola(saya, "wajah");
 
   const { data: k, isLoading, isError, error } = useQuery({
     queryKey: ["karyawan", id],
@@ -72,8 +74,9 @@ export default function HalamanDetailKaryawan() {
           />
           <DialogResetSandi karyawan={k} open={resetSandi} onClose={() => setResetSandi(false)} />
 
+          {/* min-w-0: tanpa ini teks satu baris (truncate) di panel mana pun melebarkan kolom grid, dan halaman bisa digeser ke samping di ponsel. */}
           <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-1">
+            <Card className="min-w-0 lg:col-span-1">
               <CardHeader className="items-center text-center">
                 <span className="grid h-16 w-16 place-items-center rounded-full bg-primary-soft text-primary text-xl font-semibold">
                   {inisial(k.name)}
@@ -96,9 +99,12 @@ export default function HalamanDetailKaryawan() {
               )}
             </Card>
 
-            <div className="space-y-4 lg:col-span-2">
+            <div className="min-w-0 space-y-4 lg:col-span-2">
               {gaji && <PanelGaji employeeId={k.id} />}
               {lihatSaldo && <PanelSaldoCuti employeeId={k.id} employeeName={k.name} bolehKelola={kelolaSaldo} />}
+              {lihatWajah && (
+                <PanelWajah employeeId={k.id} employeeName={k.name} bolehDaftar={punyaIzin(saya, "wajah.buat")} bolehHapus={punyaIzin(saya, "wajah.hapus")} />
+              )}
               <PanelDokumen employeeId={k.id} bolehUnggah={punyaIzin(saya, "dokumen.buat")} bolehHapus={punyaIzin(saya, "dokumen.hapus")} />
             </div>
           </div>

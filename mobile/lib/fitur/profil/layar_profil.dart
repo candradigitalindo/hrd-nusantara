@@ -10,6 +10,8 @@ import '../antrean/mesin_antrean.dart';
 import '../auth/sesi_provider.dart';
 import '../pemantauan/layanan_pemantauan.dart';
 import '../pemantauan/layar_pemantauan.dart';
+import '../wajah/model_wajah.dart';
+import '../wajah/repo_wajah.dart';
 
 /// Versi terpasang (versionName + versionCode dari manifest APK), supaya
 /// HR tahu build mana yang dipegang karyawan saat menangani keluhan.
@@ -92,6 +94,22 @@ class LayarProfil extends ConsumerWidget {
             child: Column(
               children: [
                 ListTile(leading: const Icon(Icons.calendar_month_outlined), title: const Text('Jadwal shift'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/jadwal')),
+                const Divider(),
+                Consumer(builder: (context, ref, _) {
+                  // Selama status belum terbaca (memuat, offline) cukup
+                  // keterangan umum; layar wajah yang menjelaskan galatnya.
+                  final wajah = ref.watch(statusWajahProvider).valueOrNull;
+                  return ListTile(
+                    leading: const Icon(Icons.face_retouching_natural),
+                    title: const Text('Wajah untuk Presensi'),
+                    subtitle: Text(
+                      wajah?.ringkasan ?? 'Selfie untuk check-in Verifikasi Wajah',
+                      style: wajah?.keadaan == KeadaanWajah.ditolak ? TextStyle(color: skema.error) : null,
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.push('/wajah'),
+                  );
+                }),
                 const Divider(),
                 if (p.punyaIzin('kinerja.lihat')) ...[
                   ListTile(leading: const Icon(Icons.insights_outlined), title: const Text('Kinerja & KPI'), subtitle: const Text('Hasil penilaian, penilaian diri, umpan balik'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/kinerja')),

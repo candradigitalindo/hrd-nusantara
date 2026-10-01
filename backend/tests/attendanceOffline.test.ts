@@ -53,7 +53,6 @@ describe('Stempel WhatsApp presensi offline', () => {
   const data = {
     jenis: 'masuk' as const,
     nama: 'Budi',
-    nik: 'K-1',
     waktu: new Date('2026-09-24T00:55:00Z'),
     lokasi: 'Outlet Kemang',
     metode: 'gps',

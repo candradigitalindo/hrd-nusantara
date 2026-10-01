@@ -128,6 +128,16 @@ const ekstrak = async (
   };
 };
 
+export interface OpsiPendaftaran {
+  /**
+   * Periksa keaslian-hidup seperti saat presensi. Dipakai kiriman mandiri
+   * dari aplikasi: tidak ada HR yang mengawasi saat foto diambil, jadi foto
+   * rekan yang ditampilkan di layar harus ditolak sejak awal — bukan baru
+   * ketahuan saat HR meninjau.
+   */
+  periksaHidup?: boolean;
+}
+
 /**
  * Mengambil ciri wajah untuk pendaftaran.
  *
@@ -135,7 +145,10 @@ const ekstrak = async (
  * dilakukan HR, dan kalau ada dua orang di frame, tidak ada cara memastikan
  * ciri siapa yang tersimpan atas nama siapa.
  */
-export const extractForEnrollment = async (imageBuffer: Buffer): Promise<FaceExtraction> => {
+export const extractForEnrollment = async (
+  imageBuffer: Buffer,
+  { periksaHidup = false }: OpsiPendaftaran = {}
+): Promise<FaceExtraction> => {
   pastikanSiap(imageBuffer);
 
   const wajah = await deteksi(imageBuffer);
@@ -152,10 +165,11 @@ export const extractForEnrollment = async (imageBuffer: Buffer): Promise<FaceExt
 
   validasiUkuran(wajah[0]);
 
-  // Pendaftaran tidak diperiksa keaslian-hidupnya: prosesnya diawasi HR secara
-  // langsung, dan foto resmi karyawan yang dipindai memang wajar gagal uji itu.
-  // Pemeriksaan tetap berlaku penuh di sisi presensi, yang justru jadi sasaran.
-  return ekstrak(imageBuffer, wajah[0], false);
+  // Pendaftaran oleh HR tidak diperiksa keaslian-hidupnya: prosesnya diawasi
+  // HR secara langsung, dan foto resmi karyawan yang dipindai memang wajar
+  // gagal uji itu. Pemeriksaan tetap berlaku penuh di sisi presensi, yang
+  // justru jadi sasaran — dan di kiriman mandiri (periksaHidup).
+  return ekstrak(imageBuffer, wajah[0], periksaHidup);
 };
 
 /**
