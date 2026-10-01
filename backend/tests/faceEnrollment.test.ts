@@ -174,6 +174,20 @@ describeModel('POST /api/employees/:id/face-enrollments', () => {
     expect(jejak?.metadata).toMatchObject({ replaceExisting: true, deactivatedCount: 2 });
   });
 
+  it('pemegang izin wajah tidak boleh mendaftarkan wajahnya sendiri; HR lain boleh', async () => {
+    // Tanpa ini HR bisa memotret rekan dan menyimpannya sebagai wajah dirinya
+    // tanpa ada yang memeriksa — aturan "disetujui HR lain" jadi tidak berarti.
+    const rina = await prisma.employee.findUniqueOrThrow({ where: { email: 'hr@resto.id' } });
+
+    const sendiri = await daftarkan(rina.id, 'personB_1.jpg');
+    expect(sendiri.status).toBe(403);
+    expect(await prisma.faceEnrollment.count({ where: { employeeId: rina.id } })).toBe(0);
+
+    await makeEmployee({ email: 'hr2@resto.id', nik: 'HR-2', role: Role.HR_ADMIN });
+    const olehHrLain = await daftarkan(rina.id, 'personA_1.jpg', await login(app, 'hr2@resto.id'));
+    expect(olehHrLain.status).toBe(201);
+  });
+
   it('karyawan tidak boleh mendaftarkan wajahnya sendiri', async () => {
     // Kalau boleh, ia juga bisa mendaftarkan wajah rekannya — dan seluruh
     // guna verifikasi wajah untuk presensi hilang.

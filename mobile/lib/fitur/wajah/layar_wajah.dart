@@ -49,6 +49,10 @@ class _LayarWajahState extends ConsumerState<LayarWajah> {
     // Unggahan bisa sampai semenit; status tetap harus disegarkan walau
     // karyawan sudah meninggalkan layar ini (Profil ikut menampilkannya).
     final wadah = ProviderScope.containerOf(context, listen: false);
+    // Dibaca sebelum kirim: setelah kirim statusnya dimuat ulang. Yang sudah
+    // terdaftar tetap bisa check-in wajah dengan foto lama sampai foto baru
+    // disetujui, jadi tidak perlu disuruh pindah ke GPS/QR.
+    final sudahTerdaftar = ref.read(statusWajahProvider).value?.terdaftar ?? false;
     final foto = await ref.read(ambilSelfieWajahProvider)(context);
     if (foto == null || !mounted) return;
     setState(() {
@@ -59,7 +63,13 @@ class _LayarWajahState extends ConsumerState<LayarWajah> {
       await wadah.read(repoWajahProvider).kirim(foto);
       wadah.invalidate(statusWajahProvider);
       if (!mounted) return;
-      tampilkanPesan(context, 'Foto terkirim ke HR', rincian: 'Anda diberi tahu setelah HR memeriksanya. Sementara itu, check-in pakai Lokasi GPS atau Pindai QR.');
+      tampilkanPesan(
+        context,
+        'Foto terkirim ke HR',
+        rincian: sudahTerdaftar
+            ? 'Anda diberi tahu setelah HR memeriksanya. Sampai foto baru disetujui, check-in wajah tetap memakai foto lama.'
+            : 'Anda diberi tahu setelah HR memeriksanya. Sementara itu, check-in pakai Lokasi GPS atau Pindai QR.',
+      );
     } catch (e) {
       if (!mounted) return;
       final g = GalatApi.dari(e);

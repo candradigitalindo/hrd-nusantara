@@ -89,6 +89,17 @@ export const enrollFace = async (req: Request, res: Response) => {
   const { image, replaceExisting } = req.body as EnrollFaceInput;
   const employeeId = req.params.id;
 
+  // Aturan yang sama dengan persetujuan kiriman: kalau pemegang izin ini boleh
+  // mendaftarkan wajahnya sendiri, ia bisa memotret rekan lalu menyimpannya
+  // sebagai wajah dirinya tanpa ada yang memeriksa — persis titip absen yang
+  // dicegah persetujuan HR. Wajah sendiri didaftarkan HR lain, atau dikirim
+  // dari aplikasi lalu disetujui HR lain.
+  if (employeeId === req.user!.id) {
+    return res.status(403).json({
+      error: 'Wajah Anda sendiri harus didaftarkan HR lain, atau kirim selfie dari aplikasi untuk disetujui HR lain',
+    });
+  }
+
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
     select: { id: true, name: true },

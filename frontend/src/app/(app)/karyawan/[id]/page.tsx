@@ -103,7 +103,13 @@ export default function HalamanDetailKaryawan() {
               {gaji && <PanelGaji employeeId={k.id} />}
               {lihatSaldo && <PanelSaldoCuti employeeId={k.id} employeeName={k.name} bolehKelola={kelolaSaldo} />}
               {lihatWajah && (
-                <PanelWajah employeeId={k.id} employeeName={k.name} bolehDaftar={punyaIzin(saya, "wajah.buat")} bolehHapus={punyaIzin(saya, "wajah.hapus")} />
+                <PanelWajah
+                  employeeId={k.id}
+                  employeeName={k.name}
+                  bolehDaftar={punyaIzin(saya, "wajah.buat")}
+                  bolehHapus={punyaIzin(saya, "wajah.hapus")}
+                  wajahSendiri={k.id === saya?.id}
+                />
               )}
               <PanelDokumen employeeId={k.id} bolehUnggah={punyaIzin(saya, "dokumen.buat")} bolehHapus={punyaIzin(saya, "dokumen.hapus")} />
             </div>

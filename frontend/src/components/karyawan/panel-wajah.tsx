@@ -73,18 +73,24 @@ const bacaFoto = async (berkas: File) => {
  * pernah dipakai sebelum disetujui — lihat tinjau-wajah.tsx untuk alasannya.
  *
  * `bolehDaftar` (izin wajah.buat) juga izin menyetujui/menolak kiriman.
+ * `wajahSendiri`: panel milik pengguna yang sedang login. Ia tidak boleh
+ * mendaftarkan wajahnya sendiri (server menolak dengan 403) — kalau boleh, ia
+ * bisa menyimpan wajah rekan sebagai dirinya tanpa ada yang memeriksa.
  */
 export const PanelWajah = ({
   employeeId,
   employeeName,
   bolehDaftar,
   bolehHapus,
+  wajahSendiri = false,
 }: {
   employeeId: string;
   employeeName: string;
   bolehDaftar: boolean;
   bolehHapus: boolean;
+  wajahSendiri?: boolean;
 }) => {
+  const bolehDaftarLangsung = bolehDaftar && !wajahSendiri;
   const qc = useQueryClient();
   const [daftarBuka, setDaftarBuka] = React.useState(false);
   const [hapus, setHapus] = React.useState<PendaftaranWajah | null>(null);
@@ -143,7 +149,7 @@ export const PanelWajah = ({
             )}
           </CardDescription>
         </div>
-        {bolehDaftar && data && (
+        {bolehDaftarLangsung && data && (
           <Button size="sm" className="shrink-0" onClick={() => setDaftarBuka(true)}>
             <ScanFace className="h-4 w-4" aria-hidden /> {siap.length > 0 ? "Tambah foto" : "Daftarkan"}
           </Button>
@@ -175,12 +181,14 @@ export const PanelWajah = ({
                   icon={ScanFace}
                   title="Wajah belum terdaftar"
                   description={
-                    bolehDaftar
+                    wajahSendiri
+                      ? "Wajah Anda sendiri didaftarkan oleh HR lain, atau kirim selfie dari menu Profil di aplikasi lalu tunggu persetujuan HR lain."
+                      : bolehDaftar
                       ? `Daftarkan wajah ${employeeName} agar bisa check-in dengan Verifikasi Wajah, atau minta ${employeeName} mengirim selfie dari menu Profil di aplikasi. Sampai saat itu, presensi tetap bisa lewat GPS atau QR.`
                       : "Minta HR mendaftarkan wajah karyawan ini."
                   }
                   action={
-                    bolehDaftar && (
+                    bolehDaftarLangsung && (
                       <Button onClick={() => setDaftarBuka(true)}>
                         <Camera className="h-4 w-4" aria-hidden /> Daftarkan wajah
                       </Button>
@@ -224,7 +232,7 @@ export const PanelWajah = ({
                     </li>
                   ))}
                 </ul>
-                {bolehDaftar && siap.length === 1 && (
+                {bolehDaftarLangsung && siap.length === 1 && (
                   <p className="border-t border-border px-4 py-3 text-xs text-muted sm:px-5">
                     Tambahkan 1–2 foto lagi dengan kondisi berbeda (mis. berkacamata, pencahayaan lain) supaya pencocokan saat check-in lebih andal.
                   </p>

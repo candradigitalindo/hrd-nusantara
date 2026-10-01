@@ -211,8 +211,29 @@ void main() {
       // Bukan kiriman antrean: tanpa Idempotency-Key.
       expect(kiriman.single.headers['Idempotency-Key'], isNull);
       expect(find.text('Foto terkirim ke HR'), findsOneWidget);
+      // Belum punya foto yang disetujui: sementara pakai GPS/QR.
+      expect(find.text('Anda diberi tahu setelah HR memeriksanya. Sementara itu, check-in pakai Lokasi GPS atau Pindai QR.'), findsOneWidget);
       expect(find.text('Menunggu persetujuan HR'), findsOneWidget);
       expect(find.text('Kirim ulang foto'), findsOneWidget);
+    });
+
+    testWidgets('perbarui foto saat sudah terdaftar: tidak disuruh pindah ke GPS/QR', (tester) async {
+      // Foto lama tetap dipakai check-in sampai foto baru disetujui HR.
+      server.jawab = (o) {
+        if (o.method == 'POST') {
+          sudahKirim = true;
+          return (201, {'id': 'FE-9', 'status': 'pending', 'createdAt': iso(DateTime.now())});
+        }
+        return (200, jsonStatusWajah(terdaftar: true, menunggu: sudahKirim));
+      };
+      await buka(tester);
+
+      await tester.tap(find.text('Perbarui foto'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Foto terkirim ke HR'), findsOneWidget);
+      expect(find.textContaining('check-in wajah tetap memakai foto lama'), findsOneWidget);
+      expect(find.textContaining('Lokasi GPS atau Pindai QR'), findsNothing);
     });
 
     testWidgets('ditolak pemeriksaan otomatis (422): alasannya tetap tampil di kartu', (tester) async {
