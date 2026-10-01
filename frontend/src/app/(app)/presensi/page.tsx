@@ -102,9 +102,14 @@ export default function HalamanPresensi() {
       key: "status",
       header: "Status",
       cell: (p) => (
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
           <Badge tone={nadaStatus(p.status)} dot>{labelStatus(p.status)}</Badge>
-          {p.lateMinutes ? <span className="text-xs text-muted">+{menit(p.lateMinutes)}</span> : null}
+          {/* Jam fleksibel tidak mengenal terlambat; labelnya menjelaskan kenapa tidak ada menit terlambat atau lembur. */}
+          {p.isFlexible ? (
+            <Badge tone="info" title="Jam fleksibel: tanpa hitungan terlambat, pulang cepat, dan lembur">Fleksibel</Badge>
+          ) : p.lateMinutes ? (
+            <span className="text-xs text-muted">+{menit(p.lateMinutes)}</span>
+          ) : null}
         </div>
       ),
     },

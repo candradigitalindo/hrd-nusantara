@@ -38,6 +38,7 @@ class Presensi {
     this.shiftSelesai,
     this.masukTertunda = false,
     this.pulangTertunda = false,
+    this.fleksibel = false,
   });
 
   final String id;
@@ -60,6 +61,11 @@ class Presensi {
   final bool masukTertunda;
   final bool pulangTertunda;
 
+  /// Diambil dengan jam fleksibel: tanpa shift, tanpa terlambat dan lembur.
+  /// Cuplikan saat check-in, jadi tetap benar walau pengaturan karyawannya
+  /// diubah kemudian.
+  final bool fleksibel;
+
   bool get masihTerbuka => jamMasuk != null && jamPulang == null;
   bool get tertunda => masukTertunda || pulangTertunda;
 
@@ -80,6 +86,7 @@ class Presensi {
         shiftSelesai: shiftSelesai,
         masukTertunda: masukTertunda,
         pulangTertunda: true,
+        fleksibel: fleksibel,
       );
 
   factory Presensi.dariJson(Map<String, dynamic> j) => Presensi(
@@ -98,6 +105,7 @@ class Presensi {
         namaLokasi: (j['workLocation'] as Map?)?['name'] as String?,
         shiftMulai: (j['shiftSchedule'] as Map?)?['startTime'] as String?,
         shiftSelesai: (j['shiftSchedule'] as Map?)?['endTime'] as String?,
+        fleksibel: j['isFlexible'] == true,
       );
 }
 

@@ -11,6 +11,7 @@ import '../cuti/model_cuti.dart';
 import '../cuti/repo_cuti.dart';
 import '../gaji/model_gaji.dart';
 import '../gaji/repo_gaji.dart';
+import '../jadwal/layar_jadwal.dart' show KartuJamFleksibel;
 import '../jadwal/model_shift.dart';
 import '../jadwal/repo_jadwal.dart';
 import '../kinerja/model_kinerja.dart';
@@ -47,6 +48,7 @@ class LayarBeranda extends ConsumerWidget {
     final bolehPelatihan = boleh('pelatihan.lihat');
     final bolehKinerja = boleh('kinerja.lihat');
     final bolehKasus = boleh('kasus.lihat');
+    final fleksibel = p?.jamFleksibel ?? false;
 
     // ref.watch bersyarat sengaja: bagian yang tidak tampil tidak perlu
     // memanggil API-nya (server toh akan menolak dengan 403).
@@ -54,8 +56,11 @@ class LayarBeranda extends ConsumerWidget {
     // Dimuat sejak beranda dibuka, supaya daftar lokasi kerja sudah tersimpan
     // di ponsel sebelum karyawan berada di lokasi tanpa sinyal.
     if (bolehPresensi) ref.watch(lokasiKerjaProvider);
-    final shift = bolehPresensi ? ref.watch(shiftHariIniProvider) : null;
-    final jadwal = bolehPresensi ? ref.watch(jadwalProvider) : null;
+    // Karyawan berjam fleksibel tidak punya roster: jadwalnya tidak diminta,
+    // dan sisa baris lama (bila ada) tidak boleh membuatnya tampak "absen".
+    final pakaiRoster = bolehPresensi && !fleksibel;
+    final shift = pakaiRoster ? ref.watch(shiftHariIniProvider) : null;
+    final jadwal = pakaiRoster ? ref.watch(jadwalProvider) : null;
     final riwayat = bolehPresensi ? ref.watch(riwayatPresensiProvider) : null;
     final saldo = bolehCuti ? ref.watch(saldoCutiProvider) : null;
     final cuti = bolehCuti ? ref.watch(riwayatCutiProvider) : null;
@@ -70,12 +75,8 @@ class LayarBeranda extends ConsumerWidget {
 
     Future<void> segarkan() async {
       for (final prov in [
-        if (bolehPresensi) ...[
-          presensiHariIniProvider,
-          shiftHariIniProvider,
-          jadwalProvider,
-          riwayatPresensiProvider,
-        ],
+        if (bolehPresensi) ...[presensiHariIniProvider, riwayatPresensiProvider],
+        if (pakaiRoster) ...[shiftHariIniProvider, jadwalProvider],
         if (bolehCuti) ...[saldoCutiProvider, riwayatCutiProvider],
         if (bolehGaji) slipSayaProvider,
         if (bolehPengumuman) ...[pengumumanProvider, surveiProvider],
@@ -88,6 +89,7 @@ class LayarBeranda extends ConsumerWidget {
       await Future.wait([
         if (bolehPresensi) ref.read(presensiHariIniProvider.future),
         if (bolehPengumuman) ref.read(pengumumanProvider.future),
+        segarkanProfilDiam(ref),
       ]);
     }
 
@@ -113,7 +115,12 @@ class LayarBeranda extends ConsumerWidget {
             _Kepala(
               pengguna: p,
               kartu: bolehPresensi
-                  ? _KartuPresensiHariIni(presensi: presensi!, shift: shift!)
+                  ? _KartuPresensiHariIni(
+                      presensi: presensi!,
+                      shift: shift ?? const AsyncValue.data(null),
+                      fleksibel: fleksibel,
+                      riwayat: riwayat!.value ?? const [],
+                    )
                   : null,
             ),
             if (tindakan.isNotEmpty) ...[
@@ -122,17 +129,29 @@ class LayarBeranda extends ConsumerWidget {
             ],
             if (bolehPresensi) ...[
               const _Judul('Kehadiran 30 hari terakhir'),
-              _RingkasanKehadiran(riwayat: riwayat!, jadwal: jadwal!),
-              _Judul(
-                'Jadwal 7 hari ke depan',
-                aksi: TextButton.icon(
-                  onPressed: () => context.push('/jadwal'),
-                  icon: const Icon(Icons.chevron_right),
-                  iconAlignment: IconAlignment.end,
-                  label: const Text('Selengkapnya'),
-                ),
+              _RingkasanKehadiran(
+                riwayat: riwayat!,
+                jadwal: jadwal ?? const AsyncValue.data(<Shift>[]),
+                fleksibel: fleksibel,
               ),
-              _JadwalMingguIni(jadwal: jadwal),
+              if (fleksibel) ...[
+                const _Judul('Jadwal kerja'),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: KartuJamFleksibel(),
+                ),
+              ] else ...[
+                _Judul(
+                  'Jadwal 7 hari ke depan',
+                  aksi: TextButton.icon(
+                    onPressed: () => context.push('/jadwal'),
+                    icon: const Icon(Icons.chevron_right),
+                    iconAlignment: IconAlignment.end,
+                    label: const Text('Selengkapnya'),
+                  ),
+                ),
+                _JadwalMingguIni(jadwal: jadwal!),
+              ],
             ],
             if (bolehCuti || bolehGaji) ...[
               const _Judul('Cuti & gaji'),
@@ -543,9 +562,21 @@ class _Kepala extends StatelessWidget {
 }
 
 class _KartuPresensiHariIni extends ConsumerWidget {
-  const _KartuPresensiHariIni({required this.presensi, required this.shift});
+  const _KartuPresensiHariIni({
+    required this.presensi,
+    required this.shift,
+    this.fleksibel = false,
+    this.riwayat = const [],
+  });
   final AsyncValue<Presensi?> presensi;
   final AsyncValue<Shift?> shift;
+
+  /// Jam fleksibel: tidak ada shift yang ditunggu, dan setelah satu sesi
+  /// selesai boleh check-in lagi (server mengizinkan sesi ganda).
+  final bool fleksibel;
+
+  /// Riwayat presensi, untuk menjumlah jam kerja semua sesi hari ini.
+  final List<Presensi> riwayat;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -557,17 +588,46 @@ class _KartuPresensiHariIni extends ConsumerWidget {
     final (String labelStatus, Nada nadaStatusHariIni) = presensi.isLoading
         ? ('Memuat…', Nada.netral)
         : hariIni == null
-        ? (adaShift
+        ? (fleksibel
+              ? ('Belum check-in', Nada.info)
+              : adaShift
               ? ('Belum check-in', Nada.peringatan)
               : (shift.isLoading
                     ? ('Memuat…', Nada.netral)
                     : ('Hari libur', Nada.netral)))
         : hariIni.tertunda
-        ? (hariIni.masihTerbuka ? 'Sedang bekerja · belum terkirim' : 'Lengkap · belum terkirim', Nada.peringatan)
+        ? (
+            hariIni.masihTerbuka
+                ? 'Sedang bekerja · belum terkirim'
+                : '${fleksibel ? 'Sesi selesai' : 'Lengkap'} · belum terkirim',
+            Nada.peringatan,
+          )
         : hariIni.masihTerbuka
         ? ('Sedang bekerja', Nada.info)
-        : ('Lengkap', Nada.sukses);
+        : (fleksibel ? ('Sesi selesai', Nada.sukses) : ('Lengkap', Nada.sukses));
     final warnaStatus = warnaNada(nadaStatusHariIni, skema);
+
+    final String judul;
+    final String utama;
+    final String keterangan;
+    if (fleksibel) {
+      judul = 'JAM FLEKSIBEL';
+      utama = 'Masuk dan pulang kapan saja';
+      // Geofence tetap berlaku untuk karyawan fleksibel.
+      keterangan = hariIni?.namaLokasi ?? 'Absen di lokasi kerja';
+    } else {
+      judul = 'SHIFT HARI INI';
+      utama = adaShift
+          ? '${s.mulai} – ${s.selesai}${s.lintasHari ? ' (+1)' : ''}'
+          : (shift.isLoading ? '…' : 'Tidak ada shift');
+      keterangan = adaShift
+          ? (hariIni?.namaLokasi ??
+                [
+                  ?s.jenis?.nama,
+                  s.catatan ?? 'Istirahat ${s.istirahatJam ?? 1} jam',
+                ].join(' · '))
+          : 'Nikmati hari libur Anda';
+    }
 
     return Card(
       elevation: 3,
@@ -587,7 +647,10 @@ class _KartuPresensiHariIni extends ConsumerWidget {
                     color: skema.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(Icons.schedule_rounded, color: skema.primary),
+                  child: Icon(
+                    fleksibel ? Icons.more_time_rounded : Icons.schedule_rounded,
+                    color: skema.primary,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -595,7 +658,7 @@ class _KartuPresensiHariIni extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'SHIFT HARI INI',
+                        judul,
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
@@ -604,20 +667,18 @@ class _KartuPresensiHariIni extends ConsumerWidget {
                         ),
                       ),
                       Text(
-                        adaShift
-                            ? '${s.mulai} – ${s.selesai}${s.lintasHari ? ' (+1)' : ''}'
-                            : (shift.isLoading ? '…' : 'Tidak ada shift'),
-                        style: const TextStyle(
-                          fontSize: 20,
+                        utama,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        // Kalimat jam fleksibel lebih panjang dari "07:00 –
+                        // 15:00"; dikecilkan supaya tidak terpotong di 390 dp.
+                        style: TextStyle(
+                          fontSize: fleksibel ? 16 : 20,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       Text(
-                        adaShift
-                            ? (hariIni?.namaLokasi ??
-                                  (s.catatan ??
-                                      'Istirahat ${s.istirahatJam ?? 1} jam'))
-                            : 'Nikmati hari libur Anda',
+                        keterangan,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -628,6 +689,7 @@ class _KartuPresensiHariIni extends ConsumerWidget {
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -664,112 +726,141 @@ class _KartuPresensiHariIni extends ConsumerWidget {
                 'Status presensi tidak bisa dimuat. Tarik untuk menyegarkan.',
                 style: TextStyle(color: skema.error, fontSize: 12),
               ),
-              data: (h) => Column(
-                children: [
-                  Row(
-                    children: [
-                      _Waktu(
-                        label: 'Masuk',
-                        nilai: h?.jamMasuk == null
-                            ? '—'
-                            : formatWaktu(h!.jamMasuk),
-                        catatan: (h?.menitTerlambat ?? 0) > 0
-                            ? 'terlambat ${h!.menitTerlambat} mnt'
-                            : null,
-                        nadaCatatan: Nada.peringatan,
-                      ),
-                      _Waktu(
-                        label: 'Pulang',
-                        nilai: h?.jamPulang == null
-                            ? '—'
-                            : formatWaktu(h!.jamPulang),
-                      ),
-                      _Waktu(
-                        label: 'Jam kerja',
-                        nilai: h == null
-                            ? '—'
-                            : formatDurasiMenit(
-                                h.menitKerja ?? _menitBerjalan(h),
-                              ),
-                        catatan: (h?.jamLembur ?? 0) > 0
-                            ? 'lembur ${h!.jamLembur} jam'
-                            : null,
-                        nadaCatatan: Nada.info,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  if (h == null || h.masihTerbuka)
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        style: h == null
-                            ? null
-                            : FilledButton.styleFrom(
-                                backgroundColor: skema.secondary,
-                                foregroundColor: skema.onSecondary,
-                              ),
-                        onPressed: () async {
-                          final hasil = await LayarAbsen.buka(
-                            context,
-                            pulang: h != null,
-                          );
-                          if (hasil != null && context.mounted && hasil.tertunda) {
-                            tampilkanAbsenTertunda(context, hasil, pulang: h != null);
-                          } else if (hasil != null && context.mounted) {
-                            tampilkanPesan(
-                              context,
-                              h == null
-                                  ? 'Check-in tercatat ${formatWaktu(hasil.jamMasuk)}'
-                                  : 'Check-out tercatat ${formatWaktu(hasil.jamPulang)}',
-                              rincian: h == null
-                                  ? ((hasil.menitTerlambat ?? 0) > 0
-                                        ? 'Terlambat ${hasil.menitTerlambat} menit'
-                                        : (hasil.namaLokasi ?? ''))
-                                  : 'Jam kerja ${formatDurasiMenit(hasil.menitKerja)}',
-                              nada: (hasil.menitTerlambat ?? 0) > 0 && h == null
-                                  ? Nada.peringatan
-                                  : Nada.sukses,
-                            );
-                          }
-                        },
-                        icon: Icon(
-                          h == null
-                              ? Icons.login_rounded
-                              : Icons.logout_rounded,
-                        ),
-                        label: Text(
-                          h == null ? 'Check-in sekarang' : 'Check-out',
-                        ),
-                      ),
-                    )
-                  else
+              data: (h) {
+                final sesiLain = fleksibel ? _sesiLainHariIni(h) : const <Presensi>[];
+                final menitSesi = h == null
+                    ? null
+                    : h.menitKerja ?? _menitBerjalan(h);
+                final menitTotal = menitSesi == null
+                    ? null
+                    : menitSesi +
+                          sesiLain.fold<int>(0, (a, x) => a + (x.menitKerja ?? 0));
+                final pulang = h != null && h.masihTerbuka;
+                // Karyawan biasa selesai setelah satu sesi; karyawan
+                // fleksibel boleh masuk lagi kapan saja.
+                final tampilkanTombol = h == null || h.masihTerbuka || fleksibel;
+                return Column(
+                  children: [
                     Row(
                       children: [
-                        Icon(
-                          Icons.check_circle_rounded,
-                          size: 18,
-                          color: warnaNada(Nada.sukses, skema),
+                        _Waktu(
+                          label: 'Masuk',
+                          nilai: h?.jamMasuk == null
+                              ? '—'
+                              : formatWaktu(h!.jamMasuk),
+                          catatan: (h?.menitTerlambat ?? 0) > 0
+                              ? 'terlambat ${h!.menitTerlambat} mnt'
+                              : null,
+                          nadaCatatan: Nada.peringatan,
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Presensi hari ini lengkap. Terima kasih sudah bekerja!',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              color: skema.onSurfaceVariant,
-                            ),
-                          ),
+                        _Waktu(
+                          label: 'Pulang',
+                          nilai: h?.jamPulang == null
+                              ? '—'
+                              : formatWaktu(h!.jamPulang),
+                        ),
+                        _Waktu(
+                          label: 'Jam kerja',
+                          nilai: menitTotal == null
+                              ? '—'
+                              : formatDurasiMenit(menitTotal),
+                          catatan: sesiLain.isNotEmpty
+                              ? '${sesiLain.length + 1} sesi hari ini'
+                              : (h?.jamLembur ?? 0) > 0
+                              ? 'lembur ${h!.jamLembur} jam'
+                              : null,
+                          nadaCatatan: Nada.info,
                         ),
                       ],
                     ),
-                ],
-              ),
+                    const SizedBox(height: 14),
+                    if (tampilkanTombol)
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          style: pulang
+                              ? FilledButton.styleFrom(
+                                  backgroundColor: skema.secondary,
+                                  foregroundColor: skema.onSecondary,
+                                )
+                              : null,
+                          onPressed: () async {
+                            final hasil = await LayarAbsen.buka(
+                              context,
+                              pulang: pulang,
+                            );
+                            if (hasil != null && context.mounted && hasil.tertunda) {
+                              tampilkanAbsenTertunda(context, hasil, pulang: pulang);
+                            } else if (hasil != null && context.mounted) {
+                              tampilkanPesan(
+                                context,
+                                !pulang
+                                    ? 'Check-in tercatat ${formatWaktu(hasil.jamMasuk)}'
+                                    : 'Check-out tercatat ${formatWaktu(hasil.jamPulang)}',
+                                rincian: !pulang
+                                    ? ((hasil.menitTerlambat ?? 0) > 0
+                                          ? 'Terlambat ${hasil.menitTerlambat} menit'
+                                          : (hasil.namaLokasi ?? ''))
+                                    : 'Jam kerja ${formatDurasiMenit(hasil.menitKerja)}',
+                                nada: (hasil.menitTerlambat ?? 0) > 0 && !pulang
+                                    ? Nada.peringatan
+                                    : Nada.sukses,
+                              );
+                            }
+                          },
+                          icon: Icon(
+                            pulang
+                                ? Icons.logout_rounded
+                                : Icons.login_rounded,
+                          ),
+                          label: Text(
+                            pulang
+                                ? 'Check-out'
+                                : h == null
+                                ? 'Check-in sekarang'
+                                : 'Check-in lagi',
+                          ),
+                        ),
+                      )
+                    else
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 18,
+                            color: warnaNada(Nada.sukses, skema),
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Presensi hari ini lengkap. Terima kasih sudah bekerja!',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                color: skema.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                );
+              },
             ),
           ],
         ),
       ),
     );
+  }
+
+  /// Sesi hari ini yang sudah tercatat di server selain [h] (yang sedang
+  /// tampil), untuk menjumlah jam kerja karyawan yang masuk-pulang beberapa
+  /// kali sehari.
+  List<Presensi> _sesiLainHariIni(Presensi? h) {
+    if (h == null) return const [];
+    final sekarang = DateTime.now();
+    return riwayat
+        .where((x) => x.id != h.id && x.jamPulang != null && _hariSama(x.jamMasuk, sekarang))
+        .toList();
   }
 
   /// Menit kerja berjalan untuk presensi yang belum check-out.
@@ -911,15 +1002,24 @@ bool _hariSama(DateTime? a, DateTime b) =>
     a != null && a.year == b.year && a.month == b.month && a.day == b.day;
 
 class _RingkasanKehadiran extends StatelessWidget {
-  const _RingkasanKehadiran({required this.riwayat, required this.jadwal});
+  const _RingkasanKehadiran({
+    required this.riwayat,
+    required this.jadwal,
+    this.fleksibel = false,
+  });
   final AsyncValue<List<Presensi>> riwayat;
   final AsyncValue<List<Shift>> jadwal;
+
+  /// Tanpa roster, hari tanpa presensi bukan "libur" maupun "absen".
+  final bool fleksibel;
 
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
     final daftar = riwayat.value ?? const <Presensi>[];
     final shifts = jadwal.value ?? const <Shift>[];
+    // Dihitung per tanggal, bukan per baris: masuk-pulang dua kali sehari
+    // (sesi ganda, umum pada jam fleksibel) tetap satu hari hadir.
     final hadir = daftar
         .where(
           (x) =>
@@ -927,6 +1027,12 @@ class _RingkasanKehadiran extends StatelessWidget {
               x.status == 'late' ||
               x.status == 'no_checkout',
         )
+        .map(
+          (x) => x.tanggal == null
+              ? x.id
+              : '${x.tanggal!.year}-${x.tanggal!.month}-${x.tanggal!.day}',
+        )
+        .toSet()
         .length;
     final terlambat = daftar
         .where((x) => (x.menitTerlambat ?? 0) > 0 || x.status == 'late')
@@ -940,13 +1046,18 @@ class _RingkasanKehadiran extends StatelessWidget {
     for (var i = 6; i >= 0; i--) {
       final d = hariIni.subtract(Duration(days: i));
       final pres = daftar.where((x) => _hariSama(x.tanggal, d)).firstOrNull;
-      final adaShift = shifts.any((s) => _hariSama(_tanggalShift(s), d));
+      final adaShift = shifts.any(
+        (s) => _hariSama(_tanggalShift(s), d) && !s.dibatalkan,
+      );
       final Nada nada;
       final String ket;
       if (pres != null) {
         final telat = (pres.menitTerlambat ?? 0) > 0 || pres.status == 'late';
         nada = telat ? Nada.peringatan : Nada.sukses;
         ket = telat ? 'Terlambat' : 'Hadir';
+      } else if (fleksibel) {
+        nada = Nada.netral;
+        ket = 'Tanpa presensi';
       } else if (!adaShift) {
         nada = Nada.netral;
         ket = 'Libur';
@@ -1187,7 +1298,7 @@ class _JadwalMingguIni extends StatelessWidget {
           final s = shifts
               .where(
                 (x) =>
-                    _hariSama(_tanggalShift(x), d) && x.status != 'cancelled',
+                    _hariSama(_tanggalShift(x), d) && !x.dibatalkan,
               )
               .firstOrNull;
           final aktif = i == 0;

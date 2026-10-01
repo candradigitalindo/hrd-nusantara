@@ -8,6 +8,7 @@ import {
   updateEmployee,
   deactivateEmployee,
   resetPassword,
+  setFlexibleHours,
 } from '../controllers/employeeController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -19,6 +20,7 @@ import {
   deactivateEmployeeSchema,
   directoryQuerySchema,
   resetPasswordSchema,
+  flexibleHoursSchema,
 } from '../schemas/employeeSchema';
 
 const router = express.Router();
@@ -64,6 +66,17 @@ router.post(
   validate(employeeIdParamSchema, 'params'),
   validate(resetPasswordSchema),
   asyncHandler(resetPassword)
+);
+
+// Sakelar jam fleksibel: hak yang sama dengan menyunting karyawan. Terpisah
+// dari PUT karena menyalakannya ikut membersihkan roster, dan dampak itu
+// perlu bisa dipratinjau lebih dulu.
+router.patch(
+  '/:id/flexible-hours',
+  requirePermission('karyawan.ubah'),
+  validate(employeeIdParamSchema, 'params'),
+  validate(flexibleHoursSchema),
+  asyncHandler(setFlexibleHours)
 );
 
 // Bukan DELETE: data kepegawaian diarsipkan, bukan dihapus.

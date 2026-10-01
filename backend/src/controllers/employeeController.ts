@@ -1,5 +1,5 @@
 // src/controllers/employeeController.ts
-import type { DirectoryQuery, ResetPasswordInput } from '../schemas/employeeSchema';
+import type { DirectoryQuery, ResetPasswordInput, FlexibleHoursInput } from '../schemas/employeeSchema';
 import { Request, Response } from 'express';
 import { normalizePhoneNumber } from '../utils/whatsappRules';
 import bcrypt from 'bcryptjs';
@@ -8,9 +8,10 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { cabutSesi } from '../services/sesiMobile';
-import { punyaIzin, type AuthUser } from '../middleware/auth';
+import { punyaIzin, ACTIVE_STATUSES, type AuthUser } from '../middleware/auth';
 import { lihatAtauKelola } from '../utils/permissions';
 import { generateULID } from '../utils/generateULID';
+import { akhiriPenugasanKaryawan, hariIni, type Db } from '../services/shiftAssignment';
 import type {
   CreateEmployeeInput,
   UpdateEmployeeInput,
@@ -32,6 +33,7 @@ const employeeSelect = {
   customRoleId: true,
   customRole: { select: { id: true, name: true, isSystem: true } },
   lastLoginAt: true,
+  flexibleHours: true,
   joinDate: true,
   exitDate: true,
   exitReason: true,
@@ -275,6 +277,9 @@ export const createEmployee = async (req: Request, res: Response) => {
         joinDate: input.joinDate,
         status: input.status,
         role: peran.role,
+        // Manajer masuk dan pulang sesuai kebutuhan, jadi bawaannya fleksibel;
+        // HR tetap bisa mengirim nilai lain.
+        flexibleHours: input.flexibleHours ?? peran.role === Role.MANAGER,
         ...(peran.customRoleId && { customRole: { connect: { id: peran.customRoleId } } }),
         password: input.password
           ? await bcrypt.hash(input.password, env.BCRYPT_ROUNDS)
@@ -306,7 +311,10 @@ export const updateEmployee = async (req: Request, res: Response) => {
   const input = req.body as UpdateEmployeeInput;
   const actor = req.user!;
 
-  const target = await prisma.employee.findUnique({ where: { id }, select: { role: true, status: true } });
+  const target = await prisma.employee.findUnique({
+    where: { id },
+    select: { role: true, status: true, flexibleHours: true },
+  });
   if (!target) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
   if (lingkupLebihTinggi(actor, target)) {
     return res.status(403).json({ error: 'Tidak bisa mengubah data akun berlingkup lebih tinggi' });
@@ -348,6 +356,22 @@ export const updateEmployee = async (req: Request, res: Response) => {
     data.customRole = peranBaru.customRoleId ? { connect: { id: peranBaru.customRoleId } } : { disconnect: true };
   }
 
+  // Jam fleksibel mengikuti peran bila tidak diatur eksplisit: naik menjadi
+  // Manajer menyalakannya, turun dari Manajer mematikannya.
+  const fleksibelBaru =
+    input.flexibleHours ??
+    (peranBaru && peranBaru.role !== target.role ? peranBaru.role === Role.MANAGER : target.flexibleHours);
+  if (fleksibelBaru !== target.flexibleHours) {
+    const tolak = tolakUbahJamSendiri(actor, id);
+    if (tolak) return res.status(403).json({ error: tolak });
+    data.flexibleHours = fleksibelBaru;
+  }
+  const nyalakanFleksibel = fleksibelBaru && !target.flexibleHours;
+  // Status keluar juga bisa diatur lewat penyuntingan biasa, bukan hanya
+  // lewat /deactivate; penugasan shiftnya harus ikut berhenti di kedua jalur.
+  const keluarSekarang =
+    input.status !== undefined && !ACTIVE_STATUSES.has(input.status) && ACTIVE_STATUSES.has(target.status);
+
   // null berarti lepaskan relasi; string berarti pindahkan.
   if (input.departmentId !== undefined) {
     data.department = input.departmentId
@@ -366,7 +390,19 @@ export const updateEmployee = async (req: Request, res: Response) => {
   const sebelum = ubahPeran || input.status !== undefined ? target : null;
 
   try {
-    const employee = await prisma.employee.update({ where: { id }, data, select: employeeSelect });
+    // Menyalakan jam fleksibel lewat penyuntingan biasa (termasuk karena
+    // diangkat menjadi Manajer) membersihkan rosternya sama seperti sakelar
+    // khusus: jadwal yang tersisa akan tercatat "absen" karena check-in
+    // fleksibel tidak lagi menautkan shift.
+    const employee = await prisma.$transaction(async (tx) => {
+      const hasil = await tx.employee.update({ where: { id }, data, select: employeeSelect });
+      if (nyalakanFleksibel) {
+        await akhiriPenugasanKaryawan(tx, id, hariIni(), { hapusOverride: true });
+      } else if (keluarSekarang) {
+        await akhiriPenugasanKaryawan(tx, id, hariIni(), { hapusOverride: false });
+      }
+      return hasil;
+    });
 
     res.locals.audit = {
       action: ubahPeran ? 'employee.ubah.role' : 'employee.ubah',
@@ -431,18 +467,25 @@ export const deactivateEmployee = async (req: Request, res: Response) => {
   const { status, reason } = req.body as DeactivateEmployeeInput;
 
   try {
-    const employee = await prisma.employee.update({
-      where: { id },
-      data: {
-        status,
-        // Tanggal dan alasan berhenti dicatat di sini, satu-satunya tempat
-        // karyawan dinonaktifkan. Tanpa keduanya, analisis perputaran
-        // karyawan tidak punya bahan.
-        exitDate: new Date(),
-        exitReason: reason,
-        exitType: status === 'terminated' ? 'involuntary' : 'voluntary',
-      },
-      select: employeeSelect,
+    const employee = await prisma.$transaction(async (tx) => {
+      const hasil = await tx.employee.update({
+        where: { id },
+        data: {
+          status,
+          // Tanggal dan alasan berhenti dicatat di sini, satu-satunya tempat
+          // karyawan dinonaktifkan. Tanpa keduanya, analisis perputaran
+          // karyawan tidak punya bahan.
+          exitDate: new Date(),
+          exitReason: reason,
+          exitType: status === 'terminated' ? 'involuntary' : 'voluntary',
+        },
+        select: employeeSelect,
+      });
+      // Penugasan shift berhenti di hari keluar dan jadwal sesudahnya
+      // dihapus; kalau dibiarkan, orang yang sudah keluar terhitung "absen"
+      // di laporan dan tetap muncul di roster.
+      await akhiriPenugasanKaryawan(tx, id, hariIni(), { hapusOverride: false });
+      return hasil;
     });
     await cabutSesi({ employeeId: id }, 'deactivated');
     res.json({ message: 'Karyawan dinonaktifkan', employee });
@@ -452,6 +495,96 @@ export const deactivateEmployee = async (req: Request, res: Response) => {
     }
     throw error;
   }
+};
+
+/**
+ * Mengubah jam kerja sendiri sama saja membebaskan diri dari hitungan
+ * terlambat dan pulang cepat. Hanya Super Admin (pemilik sistem) yang boleh.
+ */
+const tolakUbahJamSendiri = (actor: { id: string; role: Role }, targetId: string): string | null =>
+  actor.id === targetId && actor.role !== Role.SUPER_ADMIN ? 'Anda tidak bisa mengubah jam kerja sendiri' : null;
+
+/** Dibatalkan dengan sengaja untuk pratinjau; hasilnya dibawa keluar transaksi. */
+class BatalkanPratinjau extends Error {
+  constructor(public readonly hasil: { assignmentsEnded: number; rowsDeleted: number }) {
+    super('pratinjau');
+  }
+}
+
+/**
+ * Sakelar jam fleksibel. Menyalakannya mengakhiri penugasan shift karyawan
+ * itu hari ini dan menghapus semua jadwal sesudah hari ini yang belum
+ * dipakai presensi (termasuk yang dikoreksi manual): karyawan fleksibel
+ * tidak memakai roster, dan jadwal yang tersisa akan terbaca "absen".
+ *
+ * Dengan preview, dampaknya dihitung di transaksi yang lalu dibatalkan,
+ * jadi angkanya persis sama dengan yang akan terjadi.
+ */
+export const setFlexibleHours = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { flexibleHours, preview } = req.body as FlexibleHoursInput;
+  const actor = req.user!;
+
+  const target = await prisma.employee.findUnique({
+    where: { id },
+    select: { id: true, name: true, email: true, role: true, departmentId: true, flexibleHours: true },
+  });
+  if (!target) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+  if (lingkupLebihTinggi(actor, target)) {
+    return res.status(403).json({ error: 'Tidak bisa mengubah data akun berlingkup lebih tinggi' });
+  }
+  if (actor.role === Role.MANAGER && (!actor.departmentId || target.departmentId !== actor.departmentId)) {
+    return res.status(403).json({ error: 'Manajer hanya bisa mengubah karyawan di departemennya' });
+  }
+  if (flexibleHours !== target.flexibleHours) {
+    const tolak = tolakUbahJamSendiri(actor, id);
+    if (tolak) return res.status(403).json({ error: tolak });
+  }
+
+  const nyalakan = flexibleHours && !target.flexibleHours;
+  const jalankan = async (tx: Db) => {
+    if (flexibleHours !== target.flexibleHours) {
+      await tx.employee.update({ where: { id }, data: { flexibleHours } });
+    }
+    return nyalakan
+      ? akhiriPenugasanKaryawan(tx, id, hariIni(), { hapusOverride: true })
+      : { assignmentsEnded: 0, rowsDeleted: 0 };
+  };
+
+  let dampak: { assignmentsEnded: number; rowsDeleted: number };
+  try {
+    dampak = await prisma.$transaction(async (tx) => {
+      const hasil = await jalankan(tx);
+      if (preview) throw new BatalkanPratinjau(hasil);
+      return hasil;
+    });
+  } catch (error) {
+    if (!(error instanceof BatalkanPratinjau)) throw error;
+    dampak = error.hasil;
+  }
+
+  res.locals.audit = preview
+    ? {
+        action: 'employee.flexible_hours.preview',
+        entity: 'Employee',
+        entityId: id,
+        summary: `Pratinjau ${flexibleHours ? 'menyalakan' : 'mematikan'} jam fleksibel ${target.email}`,
+      }
+    : {
+        action: 'employee.flexible_hours',
+        entity: 'Employee',
+        entityId: id,
+        summary: `${flexibleHours ? 'Menyalakan' : 'Mematikan'} jam fleksibel ${target.email}${
+          nyalakan ? `; ${dampak.assignmentsEnded} penugasan shift diakhiri, ${dampak.rowsDeleted} jadwal ke depan dihapus` : ''
+        }`,
+        metadata: { sebelum: target.flexibleHours, sesudah: flexibleHours, ...dampak },
+      };
+
+  res.json({
+    employee: { id, flexibleHours: preview ? target.flexibleHours : flexibleHours },
+    ...dampak,
+    ...(preview ? { preview: true } : {}),
+  });
 };
 
 /**

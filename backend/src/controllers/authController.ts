@@ -30,6 +30,9 @@ const publicUserFields = {
   customRoleId: true,
   customRole: { select: { id: true, name: true, permissions: true } },
   mustChangePassword: true,
+  // Aplikasi mobile memakainya untuk menampilkan "Jam fleksibel" alih-alih
+  // "Hari libur" saat tidak ada shift.
+  flexibleHours: true,
 } as const;
 
 /**
@@ -120,6 +123,7 @@ export const login = async (req: Request, res: Response) => {
       status: employee.status,
       departmentId: employee.departmentId,
       positionId: employee.positionId,
+      flexibleHours: employee.flexibleHours,
       customRole: employee.customRole ? { id: employee.customRole.id, name: employee.customRole.name } : null,
       permissions: denganAliasKlienLama(await izinEfektif(employee)),
     },

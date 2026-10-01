@@ -6,6 +6,7 @@ import { mulaiDriverWhatsApp, hentikanDriverWhatsApp } from './services/whatsapp
 import { mulaiPush, hentikanPush } from './services/notification/bootstrap';
 import { pastikanPeranSistem } from './services/roles/system';
 import { mulaiPembersihLokasi, hentikanPembersihLokasi } from './controllers/locationTrackingController';
+import { mulaiPerpanjanganPenugasan, hentikanPerpanjanganPenugasan } from './services/shiftAssignment';
 
 const app = createApp();
 
@@ -23,6 +24,8 @@ const server = app.listen(env.PORT, () => {
 
   mulaiPush();
   mulaiPembersihLokasi();
+  // Penugasan shift "seterusnya" diperpanjang barisnya saat boot dan tiap 6 jam.
+  mulaiPerpanjanganPenugasan();
 
   mulaiDriverWhatsApp().catch((error) => {
     console.warn('[whatsapp] driver gagal dinyalakan:', error);
@@ -35,6 +38,7 @@ const shutdown = (signal: string) => {
     await hentikanDriverWhatsApp();
     hentikanPush();
     hentikanPembersihLokasi();
+    hentikanPerpanjanganPenugasan();
     await prisma.$disconnect();
     process.exit(0);
   });

@@ -13,6 +13,7 @@ import {
 } from '../utils/analytics';
 import { businessDayRange } from '../utils/shiftTime';
 import { env } from '../config/env';
+import { pastikanJadwalTerbit } from '../services/shiftAssignment';
 import type { PeriodQuery, RawDataQuery } from '../schemas/reportSchema';
 
 const KELUAR = ['resign', 'terminated', 'inactive'];
@@ -234,6 +235,11 @@ export const getProductivityReport = async (req: Request, res: Response) => {
   const rentang = businessDayRange(query.startDate, query.endDate, env.APP_TIMEZONE);
   const deptFilter = query.departmentId ? { employee: { departmentId: query.departmentId } } : {};
 
+  const lingkup = query.departmentId
+    ? (await prisma.employee.findMany({ where: { departmentId: query.departmentId }, select: { id: true } })).map((e) => e.id)
+    : null;
+  await pastikanJadwalTerbit(lingkup, query.endDate);
+
   const [shifts, presensi] = await Promise.all([
     prisma.shiftSchedule.count({
       where: {
@@ -244,21 +250,27 @@ export const getProductivityReport = async (req: Request, res: Response) => {
     }),
     prisma.attendance.findMany({
       where: { checkInTime: { gte: rentang.gte, lt: rentang.lt }, ...deptFilter },
-      select: { status: true, workedMinutes: true, overtimeHours: true, overtimeApproved: true },
+      select: { status: true, workedMinutes: true, overtimeHours: true, overtimeApproved: true, isFlexible: true },
     }),
   ]);
 
+  // Presensi berjam fleksibel tidak punya jadwal pembanding. Kalau ikut
+  // dihitung, kehadiran manajer setiap hari menutupi absennya orang lain di
+  // persentase ketidakhadiran.
+  const terjadwal = presensi.filter((a) => !a.isFlexible);
+
   const ringkasan = attendanceProductivity({
     scheduledShifts: shifts,
-    attendanceCount: presensi.length,
-    lateCount: presensi.filter((a) => a.status === 'late').length,
-    totalWorkedMinutes: presensi.reduce((s, a) => s + a.workedMinutes, 0),
+    attendanceCount: terjadwal.length,
+    lateCount: terjadwal.filter((a) => a.status === 'late').length,
+    totalWorkedMinutes: terjadwal.reduce((s, a) => s + a.workedMinutes, 0),
   });
 
   res.json({
     period: { startDate: query.startDate, endDate: query.endDate },
     scheduledShifts: shifts,
-    attendanceCount: presensi.length,
+    attendanceCount: terjadwal.length,
+    flexibleAttendanceCount: presensi.length - terjadwal.length,
     ...ringkasan,
     approvedOvertimeHours:
       Math.round(

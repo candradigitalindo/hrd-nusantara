@@ -98,6 +98,8 @@ const Map<String, String> labelStatus = {
   'paid': 'Dibayar',
   'scheduled': 'Terjadwal',
   'confirmed': 'Terjadwal',
+  // Shift yang belum pasti (roster masih bisa berubah).
+  'tentative': 'Sementara',
   'completed': 'Selesai',
   'published': 'Tayang',
   'closed': 'Ditutup',

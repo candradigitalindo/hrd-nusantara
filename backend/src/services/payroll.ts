@@ -2,7 +2,10 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
-import { eachCalendarDay, calendarKey } from '../utils/leaveDays';
+import { eachCalendarDay, calendarKey, fixedPatternResolver } from '../utils/leaveDays';
+import { businessDayRange } from '../utils/shiftTime';
+import { pastikanJadwalTerbit, tanggalBisnis } from './shiftAssignment';
+import { resolveWorkPattern } from './workPattern';
 import {
   calculatePayroll,
   type ComponentInput,
@@ -93,32 +96,62 @@ export interface PeriodFacts {
 }
 
 /**
+ * Hari kerja yang seharusnya dijalani karyawan berjam fleksibel: ia tidak
+ * punya roster, jadi acuannya pola kerja (hari kerja dalam pekan, libur
+ * nasional bila polanya menghormati). Tipe pola 'shift' pun dibaca sebagai
+ * hari dalam pekan — roster tidak berlaku untuk orang ini.
+ */
+const hariKerjaMenurutPola = async (employeeId: string, periodStart: Date, periodEnd: Date): Promise<number> => {
+  const [pola, libur] = await Promise.all([
+    resolveWorkPattern(employeeId),
+    prisma.holiday.findMany({ where: { date: { gte: periodStart, lte: periodEnd } }, select: { date: true } }),
+  ]);
+  const penilai = fixedPatternResolver({
+    workingWeekdays: pola.workingWeekdays,
+    holidayKeys: new Set(libur.map((h) => calendarKey(h.date))),
+    observesPublicHolidays: pola.observesPublicHolidays,
+  });
+  return eachCalendarDay(periodStart, periodEnd).filter((hari) => penilai(hari).isWorkingDay).length;
+};
+
+/**
  * Mengumpulkan angka dari modul presensi dan cuti untuk satu periode.
  *
  * Hanya lembur yang SUDAH disetujui yang ikut dihitung — itulah gunanya
  * persetujuan lembur di modul presensi.
+ *
+ * Hari dihitung sebagai TANGGAL unik, bukan jumlah baris: check-in lagi
+ * sesudah check-out (sesi ganda) dan split shift tetap satu hari kerja.
+ * Tanpa itu upah harian terbayar dua kali untuk hari yang sama.
  */
 export const gatherPeriodFacts = async (
   employeeId: string,
   periodStart: Date,
   periodEnd: Date
 ): Promise<PeriodFacts> => {
-  const akhirEksklusif = new Date(periodEnd.getTime() + 24 * 60 * 60 * 1000);
+  // Presensi adalah titik waktu absolut; batas periodenya mengikuti hari
+  // kerja di zona operasional, bukan tengah malam UTC (07:00 WIB).
+  const rentang = businessDayRange(periodStart, periodEnd, env.APP_TIMEZONE);
 
-  const [shifts, presensi, cutiTakBerbayar] = await Promise.all([
-    prisma.shiftSchedule.count({
+  // Penugasan "seterusnya" harus sudah berbaris sampai akhir periode.
+  await pastikanJadwalTerbit([employeeId], periodEnd);
+
+  const [karyawan, shifts, presensi, cutiTakBerbayar] = await Promise.all([
+    prisma.employee.findUnique({ where: { id: employeeId }, select: { flexibleHours: true } }),
+    prisma.shiftSchedule.findMany({
       where: {
         employeeId,
         status: { not: 'cancelled' },
         date: { gte: periodStart, lte: periodEnd },
       },
+      select: { date: true },
     }),
     prisma.attendance.findMany({
       where: {
         employeeId,
-        checkInTime: { gte: periodStart, lt: akhirEksklusif },
+        checkInTime: { gte: rentang.gte, lt: rentang.lt },
       },
-      select: { workedMinutes: true, overtimeHours: true, overtimeApproved: true },
+      select: { checkInTime: true, workedMinutes: true, overtimeHours: true, overtimeApproved: true },
     }),
     prisma.leave.findMany({
       where: {
@@ -132,8 +165,16 @@ export const gatherPeriodFacts = async (
     }),
   ]);
 
+  const scheduledDays = karyawan?.flexibleHours
+    ? await hariKerjaMenurutPola(employeeId, periodStart, periodEnd)
+    : new Set(shifts.map((s) => calendarKey(s.date))).size;
+
+  const workedDays = new Set(presensi.map((a) => calendarKey(tanggalBisnis(a.checkInTime)))).size;
+
   const workedMinutes = presensi.reduce((s, a) => s + a.workedMinutes, 0);
 
+  // Presensi fleksibel tidak pernah mencatat lembur (overtimeHours 0), jadi
+  // tidak perlu dikecualikan terpisah di sini.
   const approvedOvertimeHours = presensi
     .filter((a) => a.overtimeApproved)
     .reduce((s, a) => s + a.overtimeHours.toNumber(), 0);
@@ -150,8 +191,8 @@ export const gatherPeriodFacts = async (
   }
 
   return {
-    scheduledDays: shifts,
-    workedDays: presensi.length,
+    scheduledDays,
+    workedDays,
     workedHours: Math.round((workedMinutes / 60) * 100) / 100,
     approvedOvertimeHours: Math.round(approvedOvertimeHours * 100) / 100,
     unpaidLeaveDays: hariCuti.size,

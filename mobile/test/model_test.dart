@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hrd_nusantara/fitur/auth/model_pengguna.dart';
 import 'package:hrd_nusantara/fitur/cuti/model_cuti.dart';
 import 'package:hrd_nusantara/fitur/gaji/model_gaji.dart';
 import 'package:hrd_nusantara/fitur/jadwal/model_shift.dart';
@@ -42,6 +43,46 @@ void main() {
   test('shift malam terdeteksi lintas hari', () {
     expect(Shift.dariJson({'id': '1', 'date': '2026-09-20T00:00:00.000Z', 'startTime': '22:00', 'endTime': '06:00'}).lintasHari, isTrue);
     expect(Shift.dariJson({'id': '2', 'date': '2026-09-20T00:00:00.000Z', 'startTime': '08:00', 'endTime': '16:00'}).lintasHari, isFalse);
+  });
+
+  test('shift dari penugasan: jenis shift, penanda berulang dan ubahan manual', () {
+    final s = Shift.dariJson({
+      'id': 'S1', 'date': '2026-10-01T00:00:00.000Z', 'startTime': '07:00', 'endTime': '15:00', 'breakDuration': '1', 'status': 'tentative',
+      'templateId': 'T1', 'template': {'id': 'T1', 'name': 'Pagi', 'code': 'P', 'color': 'amber'}, 'assignmentId': 'A1', 'isOverride': true,
+    });
+    expect(s.jenis?.nama, 'Pagi');
+    expect(s.jenis?.kode, 'P');
+    expect(s.jenis?.warna, 'amber');
+    expect(s.berulang, isTrue);
+    expect(s.diubahManual, isTrue);
+    expect(s.judul, 'Pagi · 07:00–15:00');
+    expect(s.dibatalkan, isFalse);
+  });
+
+  test('shift dari server lama (tanpa jenis/penugasan) tetap terbaca', () {
+    final s = Shift.dariJson({'id': 'S2', 'date': '2026-10-01T00:00:00.000Z', 'startTime': '22:00', 'endTime': '06:00', 'status': 'cancelled'});
+    expect(s.jenis, isNull);
+    expect(s.berulang, isFalse);
+    expect(s.diubahManual, isFalse);
+    expect(s.judul, '22:00 – 06:00');
+    expect(s.dibatalkan, isTrue);
+    // Bentuk jenis yang tidak dikenal diabaikan, bukan menjatuhkan daftar.
+    expect(Shift.dariJson({'id': 'S3', 'date': '2026-10-01', 'startTime': '08:00', 'endTime': '16:00', 'template': 'Pagi'}).jenis, isNull);
+  });
+
+  test('presensi fleksibel ditandai, dan tandanya ikut saat check-out masih mengantre', () {
+    final p = Presensi.dariJson({'id': 'P1', 'status': 'present', 'checkInTime': '2026-10-01T02:00:00.000Z', 'checkOutTime': null, 'lateMinutes': 0, 'isFlexible': true});
+    expect(p.fleksibel, isTrue);
+    expect(p.denganPulangTertunda(DateTime.utc(2026, 10, 1, 9)).fleksibel, isTrue);
+    expect(Presensi.dariJson({'id': 'P2', 'status': 'present'}).fleksibel, isFalse);
+  });
+
+  test('pengguna: jam fleksibel dari /auth/me, bawaan mati, ikut tersimpan untuk sesi offline', () {
+    final dasar = {'id': 'K1', 'nik': 'EMP-1', 'name': 'Siti', 'email': 's@contoh.id', 'role': 'MANAGER', 'status': 'active'};
+    expect(Pengguna.dariJson(dasar).jamFleksibel, isFalse);
+    final fleksibel = Pengguna.dariJson({...dasar, 'flexibleHours': true});
+    expect(fleksibel.jamFleksibel, isTrue);
+    expect(Pengguna.dariJson(fleksibel.keJson()).jamFleksibel, isTrue);
   });
 
   test('cuti bisa dibatalkan bila menunggu, atau disetujui tapi belum mulai', () {

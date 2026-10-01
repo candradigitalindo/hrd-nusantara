@@ -150,7 +150,13 @@ export const deleteDepartment = async (req: Request, res: Response) => {
   }
 
   try {
-    await prisma.department.delete({ where: { id: req.params.id } });
+    await prisma.$transaction([
+      // Foreign key jenis shift ke departemen ON DELETE SET NULL: tanpa
+      // dinonaktifkan dulu, jenis shift khusus departemen ini diam-diam
+      // berubah menjadi jenis shift untuk SEMUA departemen.
+      prisma.shiftTemplate.updateMany({ where: { departmentId: req.params.id }, data: { isActive: false } }),
+      prisma.department.delete({ where: { id: req.params.id } }),
+    ]);
     res.status(204).send();
   } catch (error) {
     tanganiHapus(error, res, 'Departemen');

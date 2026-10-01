@@ -84,6 +84,11 @@ model Employee {
   customRole         CustomRole?  @relation(fields: [customRoleId], references: [id])
   customRoleId       String?
   lastLoginAt        DateTime?
+  /// Jam kerja fleksibel: masuk dan pulang kapan saja, tanpa roster shift,
+  /// tanpa hitungan terlambat maupun lembur — tetap wajib absen di lokasi
+  /// kerja. Menyala otomatis untuk peran Manajer (lihat employeeController),
+  /// HR bisa mengubahnya per orang.
+  flexibleHours      Boolean      @default(false)
   department         Department?  @relation(fields: [departmentId], references: [id])
   departmentId       String?
   position           Position?    @relation(fields: [positionId], references: [id])
@@ -125,32 +130,35 @@ model Employee {
   whatsappConversations        WhatsAppConversation[]
 
   // Bidirectional relations that need explicit back-link
-  createdJobPostings     JobPosting[] // Employee yang membuat lowongan
-  authoredAnnouncements  Announcement[] // Employee yang membuat pengumuman
-  sentChatMessages       ChatMessage[] // Employee yang mengirim pesan
+  createdJobPostings      JobPosting[] // Employee yang membuat lowongan
+  authoredAnnouncements   Announcement[] // Employee yang membuat pengumuman
+  sentChatMessages        ChatMessage[] // Employee yang mengirim pesan
   // Assuming Employee can be a member of many rooms - requires junction table
   // memberships          RoomMembership[] // Example junction table
-  createdSurveys         Survey[] // Employee yang membuat survei
-  respondedSurveys       SurveyResponse[] // Employee yang merespon survei
+  createdSurveys          Survey[] // Employee yang membuat survei
+  respondedSurveys        SurveyResponse[] // Employee yang merespon survei
   // Complaint/Disciplinary Action reporting/handling
-  reportedComplaints     ComplaintOrDisciplinaryAction[] @relation(name: "ReportedByRelation")
-  handledComplaints      ComplaintOrDisciplinaryAction[] @relation(name: "HandledByRelation")
-  scheduledShifts        ShiftSchedule[] // Employee yang dijadwalkan shift
-  conductedInterviews    Interview[] // Employee yang melakukan wawancara
-  evaluatedTests         PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
-  deviceTokens           DeviceToken[] // Perangkat yang menerima notifikasi push
-  mobileSessions         MobileSession[]
-  idempotencyKeys        IdempotencyKey[]
-  locationPings          LocationPing[]
-  locationTrackingStatus LocationTrackingStatus?
-  locationTrackingEdits  LocationTrackingSetting[]       @relation("LocationTrackingSettingEditor")
-  documents              EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
-  mobileReleases         MobileRelease[]                 @relation("MobileReleaseUploader")
-  cbtQuestions           CbtQuestion[]                   @relation("CbtQuestionAuthor")
-  cbtTests               CbtTest[]                       @relation("CbtTestAuthor")
-  cbtAssignments         CbtAssignment[]                 @relation("CbtPeserta")
-  cbtAssignedBy          CbtAssignment[]                 @relation("CbtAssigner")
-  cbtGradedAttempts      CbtAttempt[]                    @relation("CbtGrader")
+  reportedComplaints      ComplaintOrDisciplinaryAction[] @relation(name: "ReportedByRelation")
+  handledComplaints       ComplaintOrDisciplinaryAction[] @relation(name: "HandledByRelation")
+  scheduledShifts         ShiftSchedule[] // Employee yang dijadwalkan shift
+  shiftAssignments        ShiftAssignment[]               @relation("ShiftAssignmentEmployee")
+  createdShiftAssignments ShiftAssignment[]               @relation("ShiftAssignmentCreator")
+  createdShiftTemplates   ShiftTemplate[]                 @relation("ShiftTemplateCreator")
+  conductedInterviews     Interview[] // Employee yang melakukan wawancara
+  evaluatedTests          PsychometricTestResult[]        @relation(name: "EvaluatorRelation") // Employee yang mengevaluasi test
+  deviceTokens            DeviceToken[] // Perangkat yang menerima notifikasi push
+  mobileSessions          MobileSession[]
+  idempotencyKeys         IdempotencyKey[]
+  locationPings           LocationPing[]
+  locationTrackingStatus  LocationTrackingStatus?
+  locationTrackingEdits   LocationTrackingSetting[]       @relation("LocationTrackingSettingEditor")
+  documents               EmployeeDocument[] // CV, ijazah, kontrak, BPJS, ...
+  mobileReleases          MobileRelease[]                 @relation("MobileReleaseUploader")
+  cbtQuestions            CbtQuestion[]                   @relation("CbtQuestionAuthor")
+  cbtTests                CbtTest[]                       @relation("CbtTestAuthor")
+  cbtAssignments          CbtAssignment[]                 @relation("CbtPeserta")
+  cbtAssignedBy           CbtAssignment[]                 @relation("CbtAssigner")
+  cbtGradedAttempts       CbtAttempt[]                    @relation("CbtGrader")
 
   @@index([departmentId])
   @@index([positionId])
@@ -172,6 +180,7 @@ model Department {
   trainingPrograms          TrainingProgram[]
   surveys                   Survey[]
   whatsappAccounts          WhatsAppAccount[]
+  shiftTemplates            ShiftTemplate[]
 }
 
 model Position {
@@ -258,6 +267,11 @@ model Attendance {
   /// null = dikirim langsung saat online.
   checkInSyncedAt  DateTime?
   checkOutSyncedAt DateTime?
+
+  /// Presensi diambil dengan jam fleksibel (Employee.flexibleHours saat
+  /// check-in). Disimpan sebagai cuplikan supaya laporan dan payroll periode
+  /// lampau tidak ikut berubah bila pengaturan karyawannya diubah kemudian.
+  isFlexible Boolean @default(false)
 
   status    String   @default("present") // present, late, absent, no_checkout
   notes     String?
@@ -1765,11 +1779,94 @@ model ShiftSchedule {
   status        String       @default("confirmed") // confirmed, tentative, cancelled
   notes         String?
   attendances   Attendance[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
 
+  /// Jenis shift asal jamnya; null = jam diketik manual.
+  template     ShiftTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId   String?
+  /// Penugasan berjangka yang membuat baris ini (services/shiftAssignment.ts).
+  /// null = dibuat satu per satu dari roster.
+  assignment   ShiftAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  assignmentId String?
+  /// Baris hasil penugasan yang sudah diubah manual. Perubahan jam jenis
+  /// shift dan pengakhiran penugasan tidak lagi menyentuhnya, supaya koreksi
+  /// HR untuk satu tanggal tidak tertimpa diam-diam.
+  isOverride   Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Satu baris per penugasan per tanggal: materialisasi boleh diulang tanpa
+  // menggandakan jadwal. Baris manual (assignmentId NULL) tidak terkena.
+  @@unique([assignmentId, date])
   @@index([employeeId, date])
   @@index([date])
+  @@index([templateId])
+}
+
+/// Jenis shift yang dibuat HR/manajer sendiri ("Pagi 07:00–15:00"), dipakai
+/// ulang saat menugaskan shift alih-alih mengetik jam setiap hari.
+model ShiftTemplate {
+  id            String      @id
+  name          String
+  /// Label pendek untuk chip roster (maks 4 karakter), mis. "P", "M1".
+  code          String?
+  startTime     String // HH:mm
+  endTime       String // HH:mm; <= startTime berarti berakhir keesokan harinya
+  breakDuration Decimal     @default(0) @db.Decimal(4, 2) // jam
+  /// Kunci palet tetap (teal, blue, amber, violet, rose, slate, green,
+  /// orange) — bukan kode warna bebas, supaya tetap terbaca di mode gelap.
+  color         String      @default("teal")
+  /// null = berlaku untuk semua departemen.
+  department    Department? @relation(fields: [departmentId], references: [id])
+  departmentId  String?
+  /// Dinonaktifkan, bukan dihapus: baris jadwal lama tetap menunjuk ke sini.
+  isActive      Boolean     @default(true)
+  createdBy     Employee?   @relation("ShiftTemplateCreator", fields: [createdById], references: [id])
+  createdById   String?
+
+  assignments ShiftAssignment[]
+  schedules   ShiftSchedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([departmentId])
+}
+
+/// Penugasan shift berjangka: "Budi shift Pagi Senin–Sabtu mulai 1 Okt,
+/// seterusnya". Barisnya dibuat sungguhan di ShiftSchedule (materialisasi)
+/// sampai cakrawala tertentu, supaya presensi, payroll, cuti, dan laporan
+/// tetap membaca satu sumber jadwal yang sama.
+model ShiftAssignment {
+  id                 String        @id
+  employee           Employee      @relation("ShiftAssignmentEmployee", fields: [employeeId], references: [id])
+  employeeId         String
+  template           ShiftTemplate @relation(fields: [templateId], references: [id])
+  templateId         String
+  startDate          DateTime // tanggal kalender, tengah malam UTC
+  /// Inklusif. null = berlaku seterusnya.
+  endDate            DateTime?
+  /// Hari dalam pekan yang dijadwalkan: 0 = Minggu sampai 6 = Sabtu.
+  weekdays           Int[]
+  skipPublicHolidays Boolean       @default(false)
+  /// confirmed | tentative — disalin ke setiap baris yang dibuat.
+  status             String        @default("confirmed")
+  notes              String?
+  /// Tanggal terakhir yang barisnya sudah dibuat. Tanggal sebelumnya tidak
+  /// dibuat ulang, jadi baris yang sengaja dihapus HR tidak muncul kembali.
+  materializedUntil  DateTime?
+  createdBy          Employee?     @relation("ShiftAssignmentCreator", fields: [createdById], references: [id])
+  createdById        String?
+
+  schedules ShiftSchedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([endDate])
+  @@index([templateId])
 }
 
 model Interview {

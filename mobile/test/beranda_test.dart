@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hrd_nusantara/fitur/auth/model_pengguna.dart';
 import 'package:hrd_nusantara/fitur/auth/sesi_provider.dart';
@@ -136,5 +137,100 @@ void main() {
     expect(find.text('KPI'), findsNothing);
     expect(find.text('Keluhan'), findsNothing);
     expect(find.text('Belum ada pengumuman'), findsOneWidget);
+  });
+
+  group('jam fleksibel', () {
+    // Manajer berjam fleksibel; menunya dibatasi supaya hanya penyedia yang
+    // ditimpa di bawah yang boleh dipanggil.
+    final manajer = Pengguna(
+      id: pengguna.id,
+      nik: pengguna.nik,
+      nama: 'Siti Rahma',
+      email: 'siti@contoh.id',
+      peran: 'MANAGER',
+      status: 'active',
+      izin: const ['dashboard.lihat', 'presensi.lihat', 'pengumuman.lihat'],
+      jamFleksibel: true,
+    );
+    Presensi sesi(String id, DateTime masuk, {DateTime? pulang, int? menit}) => Presensi.dariJson({
+          'id': id,
+          'status': 'present',
+          'checkInTime': iso(masuk),
+          'checkOutTime': pulang == null ? null : iso(pulang),
+          'checkInMethod': 'gps',
+          'lateMinutes': 0,
+          'workedMinutes': menit,
+          'overtimeHours': '0',
+          'isFlexible': true,
+          'workLocation': {'id': 'L1', 'name': 'Kantor Pusat'},
+          'shiftSchedule': null,
+        });
+
+    Future<bool> pasang(WidgetTester tester, {Presensi? hariIni, List<Presensi> riwayat = const []}) async {
+      var jadwalDiminta = false;
+      await tester.pumpWidget(aplikasiUji(const LayarBeranda(), overrides: [
+        penggunaProvider.overrideWithValue(manajer),
+        presensiHariIniProvider.overrideWith((ref) async => hariIni),
+        // Bila beranda masih memakai roster, kartunya akan berbunyi "Hari
+        // libur" / "Tidak ada shift" — dan ini tercatat.
+        shiftHariIniProvider.overrideWith((ref) async {
+          jadwalDiminta = true;
+          return null;
+        }),
+        jadwalProvider.overrideWith((ref) async {
+          jadwalDiminta = true;
+          return <Shift>[];
+        }),
+        lokasiKerjaProvider.overrideWith((ref) async => []),
+        riwayatPresensiProvider.overrideWith((ref) async => riwayat),
+        pengumumanProvider.overrideWith((ref) async => <Pengumuman>[]),
+        surveiProvider.overrideWith((ref) async => <Survei>[]),
+      ]));
+      await tester.pumpAndSettle();
+      return jadwalDiminta;
+    }
+
+    testWidgets('sebelum check-in: kartu JAM FLEKSIBEL, bukan hari libur; jadwal tidak diminta', (tester) async {
+      ukuranPonsel(tester, tinggi: 1400);
+      final jadwalDiminta = await pasang(tester);
+      expect(find.text('JAM FLEKSIBEL'), findsOneWidget);
+      expect(find.text('Masuk dan pulang kapan saja'), findsOneWidget);
+      expect(find.text('Belum check-in'), findsOneWidget);
+      expect(find.text('Check-in sekarang'), findsOneWidget);
+      for (final teks in ['Hari libur', 'Tidak ada shift', 'Nikmati hari libur Anda', 'SHIFT HARI INI', 'JADWAL 7 HARI KE DEPAN']) {
+        expect(find.text(teks), findsNothing, reason: teks);
+      }
+      expect(find.text('Anda memakai jam fleksibel — tidak ada roster shift'), findsOneWidget);
+      // Hari tanpa presensi di strip 7 hari tidak dicap libur atau absen.
+      final ketStrip = tester.widgetList<Tooltip>(find.byType(Tooltip)).map((t) => t.message ?? '');
+      expect(ketStrip.where((m) => m.startsWith('Libur') || m.startsWith('Absen') || m.startsWith('Belum')), isEmpty);
+      expect(jadwalDiminta, isFalse);
+      await potret(tester, 'beranda-fleksibel');
+    });
+
+    testWidgets('setelah sesi selesai: check-in lagi tersedia dan jam kerja menjumlah semua sesi', (tester) async {
+      ukuranPonsel(tester, tinggi: 1400);
+      final pagi = sesi('P1', jam(8), pulang: jam(10), menit: 120);
+      final siang = sesi('P2', jam(13), pulang: jam(14, 30), menit: 90);
+      await pasang(tester, hariIni: siang, riwayat: [siang, pagi]);
+      expect(find.text('Sesi selesai'), findsOneWidget);
+      expect(find.text('Check-in lagi'), findsOneWidget);
+      expect(find.textContaining('Presensi hari ini lengkap'), findsNothing);
+      expect(find.text('3 jam 30 menit'), findsOneWidget);
+      expect(find.text('2 sesi hari ini'), findsOneWidget);
+      expect(find.text('Hari libur'), findsNothing);
+      // Dua sesi pada tanggal yang sama tetap satu hari hadir.
+      expect(find.text('1 hari'), findsOneWidget);
+    });
+
+    testWidgets('sedang bekerja: tombol check-out, jam kerja berjalan', (tester) async {
+      ukuranPonsel(tester, tinggi: 1400);
+      final berjalan = sesi('P3', DateTime.now().subtract(const Duration(minutes: 45)));
+      await pasang(tester, hariIni: berjalan, riwayat: [berjalan]);
+      expect(find.text('Sedang bekerja'), findsOneWidget);
+      expect(find.text('Check-out'), findsOneWidget);
+      expect(find.text('Check-in lagi'), findsNothing);
+      expect(find.textContaining('menit'), findsWidgets);
+    });
   });
 }

@@ -6,6 +6,7 @@ import { applyDeclaredCollectiveLeaveToBalance } from '../services/collectiveLea
 import { generateULID } from '../utils/generateULID';
 import { calculateLeaveDays } from '../utils/leaveDays';
 import { resolveWorkPattern, buildResolver } from '../services/workPattern';
+import { pastikanJadwalTerbit, geserHari } from '../services/shiftAssignment';
 import type {
   CreateLeaveInput,
   DecideLeaveInput,
@@ -114,6 +115,10 @@ export const createLeave = async (req: Request, res: Response) => {
   // Hari kerja mengikuti pola karyawan: kantor punya hari tetap, sedangkan
   // outlet dan hotel mengikuti roster sehingga hari liburnya berpindah-pindah.
   const pattern = await resolveWorkPattern(employeeId);
+  // Penugasan "seterusnya" baru berbaris sampai cakrawala; cuti tiga bulan
+  // lagi harus tetap dihitung dari jadwal, bukan dari pola cadangan. Sepekan
+  // sesudahnya ikut karena resolver menilai pekan di ujung rentang.
+  await pastikanJadwalTerbit([employeeId], geserHari(input.endDate, 7));
   const resolver = await buildResolver({
     employeeId,
     pattern,

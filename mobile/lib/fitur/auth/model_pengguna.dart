@@ -14,6 +14,7 @@ class Pengguna {
     this.namaPeran,
     this.izin = const [],
     this.wajibGantiSandi = false,
+    this.jamFleksibel = false,
   });
 
   final String id;
@@ -37,6 +38,11 @@ class Pengguna {
   /// HR baru mengatur (ulang) sandinya: harus diganti sebelum memakai aplikasi.
   final bool wajibGantiSandi;
 
+  /// Masuk dan pulang kapan saja tanpa roster shift (diatur HR per karyawan,
+  /// bawaan menyala untuk manajer). Hanya untuk tampilan: server yang
+  /// memutuskan presensinya tanpa terlambat dan lembur.
+  final bool jamFleksibel;
+
   /// Lingkup data (kolom role): seberapa luas data yang terlihat.
   bool get hr => peran == 'SUPER_ADMIN' || peran == 'HR_ADMIN';
   bool get manajemen => hr || peran == 'MANAGER';
@@ -57,6 +63,7 @@ class Pengguna {
         namaPeran: (j['customRole'] as Map?)?['name'] as String?,
         izin: ((j['permissions'] as List?) ?? const []).map((e) => e.toString()).toList(),
         wajibGantiSandi: j['mustChangePassword'] == true,
+        jamFleksibel: j['flexibleHours'] == true,
       );
 
   Map<String, dynamic> keJson() => {
@@ -73,5 +80,6 @@ class Pengguna {
         'customRole': namaPeran == null ? null : {'name': namaPeran},
         'permissions': izin,
         'mustChangePassword': wajibGantiSandi,
+        'flexibleHours': jamFleksibel,
       };
 }

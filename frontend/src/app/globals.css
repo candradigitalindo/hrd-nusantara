@@ -42,6 +42,26 @@
      (tervalidasi: L-band, chroma, kontras >= 3:1 vs permukaan). */
   --chart-1: #2f8a5b;
   --chart-2: #b8860b;
+
+  /* Palet jenis shift: warna pembeda antarjenis di roster, bukan penanda
+     status. Kuncinya tetap (disimpan di database), jadi tema cukup mengganti
+     nilainya di sini. Pasangan teks/latar dipilih berkontras >= 4.5:1. */
+  --jenis-teal: #0f766e;
+  --jenis-teal-soft: #ccfbf1;
+  --jenis-blue: #1d4ed8;
+  --jenis-blue-soft: #dbeafe;
+  --jenis-amber: #92400e;
+  --jenis-amber-soft: #fef3c7;
+  --jenis-violet: #6d28d9;
+  --jenis-violet-soft: #ede9fe;
+  --jenis-rose: #be123c;
+  --jenis-rose-soft: #ffe4e6;
+  --jenis-slate: #334155;
+  --jenis-slate-soft: #e2e8f0;
+  --jenis-green: #15803d;
+  --jenis-green-soft: #dcfce7;
+  --jenis-orange: #c2410c;
+  --jenis-orange-soft: #ffedd5;
 }
 
 /* Tema gelap TIDAK mengikuti sistem: bawaan terang, gelap hanya bila pengguna
@@ -77,6 +97,23 @@
   --ring: #9ccbb0;
   --chart-1: #37a96f;
   --chart-2: #b8860b;
+
+  --jenis-teal: #5eead4;
+  --jenis-teal-soft: #0b3532;
+  --jenis-blue: #93c5fd;
+  --jenis-blue-soft: #172554;
+  --jenis-amber: #fcd34d;
+  --jenis-amber-soft: #422006;
+  --jenis-violet: #c4b5fd;
+  --jenis-violet-soft: #2e1065;
+  --jenis-rose: #fda4af;
+  --jenis-rose-soft: #4c0519;
+  --jenis-slate: #cbd5e1;
+  --jenis-slate-soft: #1e293b;
+  --jenis-green: #86efac;
+  --jenis-green-soft: #052e16;
+  --jenis-orange: #fdba74;
+  --jenis-orange-soft: #431407;
 }
 
 @theme inline {
@@ -103,6 +140,22 @@
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
   --color-ring: var(--ring);
+  --color-jenis-teal: var(--jenis-teal);
+  --color-jenis-teal-soft: var(--jenis-teal-soft);
+  --color-jenis-blue: var(--jenis-blue);
+  --color-jenis-blue-soft: var(--jenis-blue-soft);
+  --color-jenis-amber: var(--jenis-amber);
+  --color-jenis-amber-soft: var(--jenis-amber-soft);
+  --color-jenis-violet: var(--jenis-violet);
+  --color-jenis-violet-soft: var(--jenis-violet-soft);
+  --color-jenis-rose: var(--jenis-rose);
+  --color-jenis-rose-soft: var(--jenis-rose-soft);
+  --color-jenis-slate: var(--jenis-slate);
+  --color-jenis-slate-soft: var(--jenis-slate-soft);
+  --color-jenis-green: var(--jenis-green);
+  --color-jenis-green-soft: var(--jenis-green-soft);
+  --color-jenis-orange: var(--jenis-orange);
+  --color-jenis-orange-soft: var(--jenis-orange-soft);
   --radius-card: var(--radius);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;

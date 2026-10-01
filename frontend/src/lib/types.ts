@@ -16,6 +16,8 @@ export interface PenggunaSesi {
   mustChangePassword: boolean;
   /** Izin efektif — hanya untuk menyembunyikan menu; penegakan tetap di server. */
   permissions: string[];
+  /** Jam fleksibel: masuk/pulang kapan saja tanpa roster shift. Opsional supaya sesi dari backend lama tetap terbaca. */
+  flexibleHours?: boolean;
 }
 
 export type AksiIzin = "lihat" | "buat" | "ubah" | "hapus";
@@ -98,6 +100,12 @@ export interface Karyawan {
   faceEnrolled?: boolean;
   /** Ada foto kiriman dari aplikasi yang menunggu persetujuan HR. Sama seperti faceEnrolled. */
   facePending?: boolean;
+  /**
+   * Jam fleksibel: masuk dan pulang kapan saja, tanpa roster shift, tanpa
+   * terlambat dan lembur — tetap wajib di lokasi kerja. Bawaan menyala untuk
+   * Manajer. Opsional karena backend lama belum mengirimnya.
+   */
+  flexibleHours?: boolean;
 }
 
 export interface Departemen {
@@ -189,6 +197,8 @@ export interface Presensi {
   employee: { id: string; nik: string; name: string; departmentId: string | null };
   workLocation: Ref | null;
   shiftSchedule: { id: string; date: string; startTime: string; endTime: string } | null;
+  /** Diambil dengan jam fleksibel: tanpa shift, terlambat, pulang cepat, dan lembur. Cuplikan saat presensi, bukan pengaturan karyawan sekarang. */
+  isFlexible?: boolean;
 }
 
 export interface Cuti {
@@ -988,7 +998,71 @@ export interface DaftarSertifikat extends Halaman<Sertifikat> {
 
 // ===== Direktori, laporan, chat =====
 
-/** Direktori ringkas untuk semua peran: nama dan unit saja, tanpa data pribadi. */
+/** Kunci palet warna jenis shift; nilainya tetap, warnanya ditentukan tema (lihat globals.css). */
+export type WarnaJenisShift = "teal" | "blue" | "amber" | "violet" | "rose" | "slate" | "green" | "orange";
+
+/** Ringkasan jenis shift yang ditempelkan pada baris jadwal. */
+export interface JenisShiftRingkas {
+  id: string;
+  name: string;
+  /** Label pendek chip roster, maks 4 karakter. */
+  code: string | null;
+  color: WarnaJenisShift | string;
+}
+
+/** Jenis shift (template jam kerja) yang bisa ditetapkan berulang, dari /shifts/templates. */
+export interface JenisShift extends JenisShiftRingkas {
+  startTime: string;
+  endTime: string;
+  breakDuration: number;
+  /** null = berlaku untuk semua departemen. */
+  departmentId: string | null;
+  department: Ref | null;
+  isActive: boolean;
+  /** Penugasan yang belum berakhir dan memakai jenis ini. */
+  activeAssignments: number;
+}
+
+/** Penugasan shift berjangka: satu jenis shift pada hari-hari tertentu, dari tanggal mulai sampai akhir (atau seterusnya). */
+export interface PenugasanShift {
+  id: string;
+  employeeId: string;
+  employee: { id: string; name: string; nik: string; departmentId: string | null };
+  template: JenisShiftRingkas & { startTime: string; endTime: string };
+  /** "YYYY-MM-DD" */
+  startDate: string;
+  /** "YYYY-MM-DD", inklusif; null = seterusnya. */
+  endDate: string | null;
+  /** 0 = Minggu … 6 = Sabtu. */
+  weekdays: number[];
+  skipPublicHolidays: boolean;
+  status: "confirmed" | "tentative";
+  notes: string | null;
+  createdAt: string;
+}
+
+export type DurasiPenugasan = "hari" | "minggu" | "bulan" | "seterusnya" | "sampai";
+
+/** Tanggal yang tidak dibuatkan shift: bentrok, libur_nasional, karyawan_keluar, fleksibel. */
+export interface TanggalDilewati {
+  date: string;
+  reason: string;
+}
+
+/** Jawaban POST /shifts/assignments (juga saat preview). */
+export interface HasilPenugasan {
+  results: {
+    employeeId: string;
+    employeeName: string;
+    assignmentId: string | null;
+    created: number;
+    skipped: TanggalDilewati[];
+    replacedAssignments: number;
+    error?: string;
+  }[];
+  totals: { created: number; skipped: number; employees: number; failed: number };
+}
+
 /** Jadwal shift seorang karyawan pada satu tanggal. */
 export interface Shift {
   id: string;
@@ -1004,6 +1078,13 @@ export interface Shift {
   startsAt: string;
   endsAt: string;
   employee: { id: string; nik: string; name: string; departmentId: string | null };
+  /** Jenis shift asal jam ini; opsional supaya respons backend lama tetap terbaca. */
+  templateId?: string | null;
+  template?: JenisShiftRingkas | null;
+  /** Baris hasil penugasan berulang. */
+  assignmentId?: string | null;
+  /** Baris penugasan yang sudah diubah manual — tidak lagi ikut perubahan jenis/penugasan. */
+  isOverride?: boolean;
 }
 
 /** Satu baris rekap libur bulanan, dari /shifts/rekap. */
@@ -1022,6 +1103,8 @@ export interface RekapLiburKaryawan {
   kurangLibur: boolean;
   beruntunMaks: number;
   beruntunLewatBatas: boolean;
+  /** Memakai jam fleksibel: tidak diroster, jadi tidak diberi peringatan libur. */
+  flexibleHours?: boolean;
 }
 
 export interface RekapLibur {
@@ -1033,6 +1116,7 @@ export interface RekapLibur {
   data: RekapLiburKaryawan[];
 }
 
+/** Direktori ringkas untuk semua peran: nama dan unit saja, tanpa data pribadi. */
 export interface KaryawanDirektori {
   id: string;
   nik: string;

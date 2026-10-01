@@ -135,3 +135,20 @@ final penggunaProvider = Provider<Pengguna?>((ref) {
   final s = ref.watch(sesiProvider);
   return s is SesiMasuk ? s.pengguna : null;
 });
+
+/// Pengguna memakai jam fleksibel: beranda, jadwal, dan presensi menampilkan
+/// "masuk dan pulang kapan saja" alih-alih roster shift.
+final jamFleksibelProvider = Provider<bool>((ref) => ref.watch(penggunaProvider.select((p) => p?.jamFleksibel ?? false)));
+
+/// Menyegarkan profil saat layar ditarik-segarkan, supaya pengaturan yang
+/// diubah HR sewaktu-waktu (mis. jam fleksibel) terbawa tanpa harus keluar
+/// dan masuk lagi. Gagal — mis. offline — dibiarkan: profil tersimpan tetap
+/// dipakai.
+Future<void> segarkanProfilDiam(WidgetRef ref) async {
+  if (ref.read(sesiProvider) is! SesiMasuk) return;
+  try {
+    await ref.read(sesiProvider.notifier).segarkanProfil();
+  } catch (e) {
+    debugPrint('Profil tidak bisa disegarkan: $e');
+  }
+}

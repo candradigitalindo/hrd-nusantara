@@ -97,7 +97,16 @@ export default function HalamanKaryawan() {
     },
     { key: "dept", header: "Departemen", cell: (k) => k.department?.name ?? <span className="text-muted">—</span> },
     { key: "jabatan", header: "Jabatan", cell: (k) => k.position?.name ?? <span className="text-muted">—</span> },
-    { key: "peran", header: "Peran", cell: (k) => k.customRole?.name ?? LABEL_ROLE[k.role] },
+    {
+      key: "peran",
+      header: "Peran",
+      cell: (k) => (
+        <span className="inline-flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
+          {k.customRole?.name ?? LABEL_ROLE[k.role]}
+          {k.flexibleHours && <Badge tone="info" title="Masuk dan pulang kapan saja, tanpa roster shift">Fleksibel</Badge>}
+        </span>
+      ),
+    },
     {
       key: "status",
       header: "Status",

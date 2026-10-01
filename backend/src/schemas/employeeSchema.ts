@@ -42,6 +42,9 @@ export const createEmployeeSchema = z
     departmentId: ulidField.optional(),
     positionId: ulidField.optional(),
     password: z.string().min(8, 'Password minimal 8 karakter').max(128).optional(),
+    /// Jam kerja fleksibel. Tidak dikirim = mengikuti peran: menyala untuk
+    /// Manajer, mati untuk yang lain.
+    flexibleHours: z.boolean().optional(),
   })
   .strict();
 
@@ -64,6 +67,8 @@ export const updateEmployeeSchema = z
     /// Kata sandi baru yang diatur HR (karyawan lupa sandi). Karyawan
     /// mengganti sandinya sendiri lewat /auth/change-password.
     password: z.string().min(8, 'Password minimal 8 karakter').max(128).optional(),
+    /// Tidak dikirim tapi peran berubah = mengikuti peran baru (Manajer → menyala).
+    flexibleHours: z.boolean().optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {
@@ -100,6 +105,19 @@ export const resetPasswordSchema = z
   })
   .strict();
 
+/**
+ * Sakelar jam fleksibel di detail karyawan. `preview` menghitung dampaknya
+ * (penugasan yang diakhiri, jadwal yang dihapus) tanpa menyimpan apa pun,
+ * supaya HR melihatnya sebelum mengonfirmasi.
+ */
+export const flexibleHoursSchema = z
+  .object({
+    flexibleHours: z.boolean(),
+    preview: z.boolean().default(false),
+  })
+  .strict();
+
+export type FlexibleHoursInput = z.infer<typeof flexibleHoursSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;

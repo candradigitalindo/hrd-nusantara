@@ -6,6 +6,8 @@ import { decryptBytes, encryptJson, decryptJson } from '../utils/fieldCrypto';
 import { evaluateIntegrity, type PreviousFix } from '../utils/locationIntegrity';
 import { evaluateOfflineTime } from '../utils/offlineAttendance';
 import { jadwalkanStempel } from '../services/whatsapp/attendanceStamp';
+import { pastikanJadwalTerbit, tanggalBisnis } from '../services/shiftAssignment';
+import { calendarKey } from '../utils/leaveDays';
 
 type Koordinat = { lat: number; lng: number };
 
@@ -68,6 +70,7 @@ const attendanceSelect = {
   stampNote: true,
   checkInSyncedAt: true,
   checkOutSyncedAt: true,
+  isFlexible: true,
   status: true,
   notes: true,
   createdAt: true,
@@ -424,7 +427,13 @@ export const checkIn = async (req: Request, res: Response) => {
     }
   }
 
-  const shift = await findShiftForCheckIn(employeeId, waktu);
+  // Karyawan berjam fleksibel masuk kapan saja: shift tidak dicari sama
+  // sekali (walau masih ada sisa jadwal), jadi tidak pernah terlambat.
+  // Geofence, integritas lokasi, dan wajah di atas tetap berlaku.
+  const saya = await prisma.employee.findUnique({ where: { id: employeeId }, select: { flexibleHours: true } });
+  const fleksibel = saya?.flexibleHours ?? false;
+
+  const shift = fleksibel ? null : await findShiftForCheckIn(employeeId, waktu);
 
   const penilaian = shift
     ? evaluateCheckIn(shift.start, waktu, env.ATTENDANCE_LATE_TOLERANCE_MINUTES)
@@ -448,6 +457,7 @@ export const checkIn = async (req: Request, res: Response) => {
       workLocationId: lokasi.workLocationId,
       shiftScheduleId: shift?.shift.id ?? null,
       lateMinutes: penilaian.lateMinutes,
+      isFlexible: fleksibel,
       status: penilaian.status,
       notes: input.notes,
       integrityFlags: [...integritas.flags, ...ditentukan.flags],
@@ -526,9 +536,13 @@ export const checkOut = async (req: Request, res: Response) => {
     }
   }
 
-  const shift = terbuka.shiftScheduleId
-    ? await prisma.shiftSchedule.findUnique({ where: { id: terbuka.shiftScheduleId } })
-    : null;
+  // Presensi fleksibel dinilai menurut cuplikan saat check-in, bukan
+  // pengaturan karyawan sekarang: tanpa pulang cepat, tanpa lembur, dan jam
+  // kerjanya durasi kotor karena tidak ada jadwal istirahat yang bisa dipotong.
+  const shift =
+    terbuka.shiftScheduleId && !terbuka.isFlexible
+      ? await prisma.shiftSchedule.findUnique({ where: { id: terbuka.shiftScheduleId } })
+      : null;
 
   const window = shift
     ? resolveShiftWindow(shift.date, shift.startTime, shift.endTime, env.APP_TIMEZONE)
@@ -809,7 +823,7 @@ export const getAttendanceReport = async (req: Request, res: Response) => {
 
   const employees = await prisma.employee.findMany({
     where: employeeWhere,
-    select: { id: true, nik: true, name: true, departmentId: true },
+    select: { id: true, nik: true, name: true, departmentId: true, flexibleHours: true },
     orderBy: { name: 'asc' },
   });
 
@@ -821,6 +835,10 @@ export const getAttendanceReport = async (req: Request, res: Response) => {
       data: [],
     });
   }
+
+  // Penugasan berjangka harus sudah berbaris sampai akhir rentang, supaya
+  // jadwal yang belum dibuat tidak terbaca "tidak dijadwalkan".
+  await pastikanJadwalTerbit(employeeIds, query.endDate);
 
   const [presensi, shifts] = await Promise.all([
     prisma.attendance.findMany({
@@ -837,6 +855,8 @@ export const getAttendanceReport = async (req: Request, res: Response) => {
         overtimeHours: true,
         overtimeApproved: true,
         shiftScheduleId: true,
+        checkInTime: true,
+        isFlexible: true,
       },
     }),
     prisma.shiftSchedule.findMany({
@@ -878,8 +898,16 @@ export const getAttendanceReport = async (req: Request, res: Response) => {
     const miliknya = presensi.filter((p) => p.employeeId === employee.id);
     const shiftnya = shifts.filter((s) => s.employeeId === employee.id);
 
+    // Presensi fleksibel tidak menautkan shift. Sisa jadwal pada hari orang
+    // itu hadir secara fleksibel (mis. hari jam fleksibelnya dinyalakan)
+    // karena itu tidak dihitung mangkir.
+    const hariFleksibel = new Set(
+      miliknya.filter((p) => p.isFlexible).map((p) => calendarKey(tanggalBisnis(p.checkInTime)))
+    );
+
     const shiftTanpaPresensi = shiftnya.filter(
-      (s) => !shiftTerpakai.has(s.id) && !sedangCuti(employee.id, s.date)
+      (s) =>
+        !shiftTerpakai.has(s.id) && !sedangCuti(employee.id, s.date) && !hariFleksibel.has(calendarKey(s.date))
     ).length;
 
     const shiftSaatCuti = shiftnya.filter((s) => sedangCuti(employee.id, s.date)).length;
@@ -888,6 +916,7 @@ export const getAttendanceReport = async (req: Request, res: Response) => {
       employee,
       scheduledShifts: shiftnya.length,
       totalAttendance: miliknya.length,
+      flexibleAttendance: miliknya.filter((p) => p.isFlexible).length,
       present: miliknya.filter((p) => p.status === 'present').length,
       late: miliknya.filter((p) => p.status === 'late').length,
       missingCheckout: miliknya.filter((p) => p.status === 'no_checkout').length,

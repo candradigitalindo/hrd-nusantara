@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
+import '../auth/sesi_provider.dart';
 import 'layar_absen.dart';
 import 'model_presensi.dart';
 import 'repo_presensi.dart';
@@ -35,6 +36,7 @@ class LayarPresensi extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final hariIni = ref.watch(presensiHariIniProvider);
     final riwayat = ref.watch(riwayatPresensiProvider);
+    final fleksibel = ref.watch(jamFleksibelProvider);
     final skema = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -67,6 +69,8 @@ class LayarPresensi extends ConsumerWidget {
                               waktu: p?.jamMasuk,
                               rincian: p?.masukTertunda == true
                                   ? 'belum terkirim'
+                                  : p?.fleksibel == true
+                                  ? 'jam fleksibel'
                                   : (p?.menitTerlambat != null && p!.menitTerlambat! > 0 ? 'terlambat ${p.menitTerlambat} mnt' : (p?.metodeMasuk != null ? labelMetode[p!.metodeMasuk] : null)),
                             ),
                           ),
@@ -102,6 +106,10 @@ class LayarPresensi extends ConsumerWidget {
                           icon: const Icon(Icons.logout),
                           label: const Text('Check-out'),
                         )
+                      // Jam fleksibel: masuk lagi kapan saja setelah pulang
+                      // (server mengizinkan beberapa sesi sehari).
+                      else if (fleksibel)
+                        FilledButton.icon(onPressed: () => _absen(context, ref, pulang: false), icon: const Icon(Icons.login), label: const Text('Check-in Lagi'))
                       else
                         Row(
                           children: [
@@ -180,7 +188,9 @@ class _BarisPresensi extends StatelessWidget {
       subtitle: Text([
         if (p.namaLokasi != null) p.namaLokasi!,
         if (p.menitKerja != null) formatDurasiMenit(p.menitKerja),
-        if ((p.menitTerlambat ?? 0) > 0) 'telat ${p.menitTerlambat} mnt',
+        // Presensi fleksibel tidak pernah terlambat; labelnya menjelaskan
+        // kenapa tidak ada shift yang tertaut.
+        if (p.fleksibel) 'Fleksibel' else if ((p.menitTerlambat ?? 0) > 0) 'telat ${p.menitTerlambat} mnt',
         if ((p.jamLembur ?? 0) > 0) 'lembur ${p.jamLembur} jam${p.lemburDisetujui ? ' ✓' : ''}',
       ].join(' · ')),
       trailing: LencanaStatus(p.status),

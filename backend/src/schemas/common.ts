@@ -16,7 +16,13 @@ export const dateField = z
 export const dateOnlyField = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Format tanggal harus YYYY-MM-DD')
-  .refine((value) => !Number.isNaN(Date.parse(value)), 'Tanggal tidak valid')
+  // Date.parse saja tidak cukup: "2026-02-31" diterimanya lalu digeser diam-
+  // diam menjadi 3 Maret. Tanggal dianggap sah hanya bila kembali utuh
+  // setelah diurai.
+  .refine((value) => {
+    const waktu = Date.parse(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(waktu) && new Date(waktu).toISOString().slice(0, 10) === value;
+  }, 'Tanggal tidak valid')
   .transform((value) => new Date(`${value}T00:00:00.000Z`));
 
 export const timeField = z

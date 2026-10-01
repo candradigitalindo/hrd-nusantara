@@ -38,6 +38,7 @@ void main() {
     test('label status dikenal, kode asing dirapikan', () {
       expect(labelUntuk('late'), 'Terlambat');
       expect(labelUntuk('scan_required'), 'Perlu Scan Ulang');
+      expect(labelUntuk('tentative'), 'Sementara');
       expect(labelUntuk('kode_baru'), 'kode baru');
       expect(labelUntuk(null), '—');
     });

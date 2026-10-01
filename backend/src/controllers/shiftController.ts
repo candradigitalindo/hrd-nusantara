@@ -1,7 +1,7 @@
 // src/controllers/shiftController.ts
 import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
-import { prisma } from '../lib/prisma';
+import { prisma, type PrismaTransactionClient } from '../lib/prisma';
 import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { resolveShiftWindow } from '../utils/shiftTime';
@@ -13,14 +13,17 @@ import {
 } from '../utils/rosterRecap';
 import { calendarKey } from '../utils/leaveDays';
 import { INACTIVE_STATUSES } from './employeeController';
+import { ACTIVE_STATUSES } from '../middleware/auth';
+import { pastikanJadwalTerbit } from '../services/shiftAssignment';
 import type {
   CreateShiftInput,
+  BulkShiftItem,
   UpdateShiftInput,
   ListShiftQuery,
   ShiftRecapQuery,
 } from '../schemas/shiftSchema';
 
-const shiftSelect = {
+export const shiftSelect = {
   id: true,
   employeeId: true,
   date: true,
@@ -29,6 +32,10 @@ const shiftSelect = {
   breakDuration: true,
   status: true,
   notes: true,
+  templateId: true,
+  template: { select: { id: true, name: true, code: true, color: true } },
+  assignmentId: true,
+  isOverride: true,
   createdAt: true,
   updatedAt: true,
   employee: { select: { id: true, nik: true, name: true, departmentId: true } },
@@ -36,7 +43,7 @@ const shiftSelect = {
 
 type ShiftRow = Prisma.ShiftScheduleGetPayload<{ select: typeof shiftSelect }>;
 
-const toDTO = (shift: ShiftRow) => {
+export const toDTO = (shift: ShiftRow) => {
   const window = resolveShiftWindow(shift.date, shift.startTime, shift.endTime, env.APP_TIMEZONE);
   return {
     ...shift,
@@ -62,13 +69,16 @@ const durationMinutes = (date: Date, startTime: string, endTime: string) => {
  *
  * Tanggal di sekitarnya ikut diperiksa karena shift malam melewati tengah malam.
  */
-const findOverlappingShift = async (params: {
-  employeeId: string;
-  date: Date;
-  startTime: string;
-  endTime: string;
-  excludeShiftId?: string;
-}) => {
+export const findOverlappingShift = async (
+  params: {
+    employeeId: string;
+    date: Date;
+    startTime: string;
+    endTime: string;
+    excludeShiftId?: string;
+  },
+  db: PrismaTransactionClient = prisma
+) => {
   const target = resolveShiftWindow(
     params.date,
     params.startTime,
@@ -77,7 +87,7 @@ const findOverlappingShift = async (params: {
   );
 
   const sehari = 24 * 60 * 60 * 1000;
-  const kandidat = await prisma.shiftSchedule.findMany({
+  const kandidat = await db.shiftSchedule.findMany({
     where: {
       employeeId: params.employeeId,
       status: { not: 'cancelled' },
@@ -102,25 +112,79 @@ const findOverlappingShift = async (params: {
   );
 };
 
-/** Manager hanya boleh menjadwalkan karyawan di departemennya sendiri. */
-const assertCanScheduleEmployee = async (
-  actor: { role: Role; departmentId: string | null },
-  employeeId: string
-): Promise<string | null> => {
+export interface AktorJadwal {
+  id: string;
+  role: Role;
+  departmentId: string | null;
+}
+
+export type GagalAkses = { ok: false; status: number; error: string };
+
+/**
+ * Manajer tanpa departemen tidak boleh menjadwalkan siapa pun. Tanpa
+ * pemeriksaan ini, perbandingan departemen null === null meloloskannya ke
+ * semua karyawan yang juga belum punya departemen.
+ */
+export const tolakManajerTanpaDepartemen = (actor: AktorJadwal): GagalAkses | null =>
+  actor.role === Role.MANAGER && !actor.departmentId
+    ? { ok: false, status: 403, error: 'Akun manajer Anda belum terhubung ke departemen mana pun' }
+    : null;
+
+/** Pesan yang sama di semua jalur penjadwalan, supaya HR tahu apa yang harus dimatikan. */
+export const pesanFleksibel = (nama: string) =>
+  `${nama} memakai jam fleksibel; matikan dulu di detail karyawan`;
+
+/**
+ * Manager hanya boleh menjadwalkan karyawan di departemennya sendiri, dan
+ * karyawan yang sudah keluar tidak dijadwalkan lagi.
+ *
+ * @param opsi.izinkanNonaktif untuk mengubah/menghapus jadwal yang sudah ada:
+ *   sisa jadwal karyawan yang keluar tetap harus bisa dibereskan.
+ */
+export const assertCanScheduleEmployee = async (
+  actor: AktorJadwal,
+  employeeId: string,
+  opsi: { izinkanNonaktif?: boolean } = {}
+): Promise<
+  | { ok: true; employee: { id: string; name: string; departmentId: string | null; flexibleHours: boolean } }
+  | GagalAkses
+> => {
   const employee = await prisma.employee.findUnique({
     where: { id: employeeId },
-    select: { id: true, departmentId: true, status: true },
+    select: { id: true, name: true, departmentId: true, status: true, flexibleHours: true },
   });
 
-  if (!employee) return 'Karyawan tidak ditemukan';
+  if (!employee) return { ok: false, status: 404, error: 'Karyawan tidak ditemukan' };
+
+  const tanpaDept = tolakManajerTanpaDepartemen(actor);
+  if (tanpaDept) return tanpaDept;
 
   if (actor.role === Role.MANAGER && employee.departmentId !== actor.departmentId) {
-    return 'Anda hanya bisa menjadwalkan karyawan di departemen sendiri';
+    return { ok: false, status: 403, error: 'Anda hanya bisa menjadwalkan karyawan di departemen sendiri' };
   }
-  return null;
+  if (!opsi.izinkanNonaktif && !ACTIVE_STATUSES.has(employee.status)) {
+    return { ok: false, status: 422, error: `${employee.name} sudah tidak aktif` };
+  }
+  return { ok: true, employee };
 };
 
-const validateShiftTimes = (input: {
+/**
+ * Jenis shift yang akan dipakai menjadwalkan: harus ada, masih aktif, dan —
+ * untuk manajer — milik semua departemen atau departemennya sendiri.
+ */
+export const cariJenisShiftUntukDipakai = async (actor: AktorJadwal, templateId: string) => {
+  const template = await prisma.shiftTemplate.findUnique({ where: { id: templateId } });
+  if (!template) return { ok: false as const, status: 404, error: 'Jenis shift tidak ditemukan' };
+  if (!template.isActive) {
+    return { ok: false as const, status: 422, error: `Jenis shift "${template.name}" sudah dinonaktifkan` };
+  }
+  if (actor.role === Role.MANAGER && template.departmentId !== null && template.departmentId !== actor.departmentId) {
+    return { ok: false as const, status: 403, error: 'Jenis shift ini milik departemen lain' };
+  }
+  return { ok: true as const, template };
+};
+
+export const validateShiftTimes = (input: {
   date: Date;
   startTime: string;
   endTime: string;
@@ -138,15 +202,40 @@ export const createShift = async (req: Request, res: Response) => {
   const input = req.body as CreateShiftInput;
   const actor = req.user!;
 
-  const aksesError = await assertCanScheduleEmployee(actor, input.employeeId);
-  if (aksesError) {
-    return res.status(aksesError === 'Karyawan tidak ditemukan' ? 404 : 403).json({ error: aksesError });
+  const akses = await assertCanScheduleEmployee(actor, input.employeeId);
+  if (!akses.ok) return res.status(akses.status).json({ error: akses.error });
+  if (akses.employee.flexibleHours) {
+    return res.status(422).json({ error: pesanFleksibel(akses.employee.name) });
   }
 
-  const waktuError = validateShiftTimes(input);
+  // Jam dari jenis shift dipakai hanya untuk yang tidak dikirim eksplisit,
+  // jadi "Pagi tapi masuk 08:00 hari ini saja" tetap bisa.
+  let templateId: string | null = null;
+  let jam = { startTime: input.startTime, endTime: input.endTime, breakDuration: input.breakDuration };
+  if (input.templateId) {
+    const jenis = await cariJenisShiftUntukDipakai(actor, input.templateId);
+    if (!jenis.ok) return res.status(jenis.status).json({ error: jenis.error });
+    templateId = jenis.template.id;
+    jam = {
+      startTime: input.startTime ?? jenis.template.startTime,
+      endTime: input.endTime ?? jenis.template.endTime,
+      breakDuration: input.breakDuration ?? jenis.template.breakDuration.toNumber(),
+    };
+  }
+
+  const lengkap = {
+    employeeId: input.employeeId,
+    date: input.date,
+    // Skema menjamin jam ada bila templateId tidak dikirim.
+    startTime: jam.startTime!,
+    endTime: jam.endTime!,
+    breakDuration: jam.breakDuration ?? 0,
+  };
+
+  const waktuError = validateShiftTimes(lengkap);
   if (waktuError) return res.status(400).json({ error: waktuError });
 
-  const bentrok = await findOverlappingShift(input);
+  const bentrok = await findOverlappingShift(lengkap);
   if (bentrok) {
     return res.status(409).json({
       error: 'Jadwal bertabrakan dengan shift yang sudah ada',
@@ -157,13 +246,14 @@ export const createShift = async (req: Request, res: Response) => {
   const shift = await prisma.shiftSchedule.create({
     data: {
       id: generateULID(),
-      employeeId: input.employeeId,
-      date: input.date,
-      startTime: input.startTime,
-      endTime: input.endTime,
-      breakDuration: new Prisma.Decimal(input.breakDuration),
+      employeeId: lengkap.employeeId,
+      date: lengkap.date,
+      startTime: lengkap.startTime,
+      endTime: lengkap.endTime,
+      breakDuration: new Prisma.Decimal(lengkap.breakDuration),
       status: input.status,
       notes: input.notes,
+      templateId,
     },
     select: shiftSelect,
   });
@@ -177,15 +267,30 @@ export const createShift = async (req: Request, res: Response) => {
  * roster tidak pernah tersimpan setengah jadi.
  */
 export const bulkCreateShifts = async (req: Request, res: Response) => {
-  const { shifts } = req.body as { shifts: CreateShiftInput[] };
+  const { shifts } = req.body as { shifts: BulkShiftItem[] };
   const actor = req.user!;
+
+  // Karyawan berjam fleksibel ditolak lebih dulu dan terpisah (422): itu
+  // bukan salah isi roster, melainkan pengaturan karyawan yang harus diubah.
+  const fleksibel = await prisma.employee.findMany({
+    where: { id: { in: [...new Set(shifts.map((s) => s.employeeId))] }, flexibleHours: true },
+    select: { id: true, name: true },
+  });
+  if (fleksibel.length > 0) {
+    return res.status(422).json({
+      error: pesanFleksibel(fleksibel.map((k) => k.name).join(', ')),
+      details: shifts.flatMap((s, index) =>
+        fleksibel.some((k) => k.id === s.employeeId) ? [{ index, error: 'Memakai jam fleksibel' }] : []
+      ),
+    });
+  }
 
   const masalah: { index: number; error: string }[] = [];
 
   for (const [index, input] of shifts.entries()) {
-    const aksesError = await assertCanScheduleEmployee(actor, input.employeeId);
-    if (aksesError) {
-      masalah.push({ index, error: aksesError });
+    const akses = await assertCanScheduleEmployee(actor, input.employeeId);
+    if (!akses.ok) {
+      masalah.push({ index, error: akses.error });
       continue;
     }
 
@@ -273,6 +378,18 @@ const buildShiftWhere = (
   return where;
 };
 
+/** Karyawan yang dicakup filter roster; null = seluruh perusahaan. */
+const karyawanDalamLingkup = async (
+  query: ListShiftQuery,
+  actor: { role: Role; departmentId: string | null }
+): Promise<string[] | null> => {
+  if (query.employeeId) return [query.employeeId];
+  const dept = actor.role === Role.MANAGER ? actor.departmentId ?? '__tanpa_departemen__' : query.departmentId;
+  if (!dept) return null;
+  const karyawan = await prisma.employee.findMany({ where: { departmentId: dept }, select: { id: true } });
+  return karyawan.map((k) => k.id);
+};
+
 export const getAllShifts = async (req: Request, res: Response) => {
   const query = req.query as unknown as ListShiftQuery;
   const actor = req.user!;
@@ -280,6 +397,12 @@ export const getAllShifts = async (req: Request, res: Response) => {
   const where = buildShiftWhere(query, actor);
   if ('forbidden' in where) {
     return res.status(403).json({ error: where.forbidden });
+  }
+
+  // Roster yang dibuka jauh ke depan harus sudah berisi baris penugasan
+  // "seterusnya" untuk pekan itu, bukan tampak kosong.
+  if (query.endDate) {
+    await pastikanJadwalTerbit(await karyawanDalamLingkup(query, actor), query.endDate);
   }
 
   const [total, rows] = await Promise.all([
@@ -335,17 +458,24 @@ export const getShiftRecap = async (req: Request, res: Response) => {
       id: true,
       nik: true,
       name: true,
+      flexibleHours: true,
       department: { select: { id: true, name: true } },
     },
     orderBy: { name: 'asc' },
     take: 300,
   });
 
+  const jendela = jendelaRoster(monthStart, monthEnd);
+  await pastikanJadwalTerbit(
+    karyawan.map((k) => k.id),
+    jendela.lte
+  );
+
   const shifts = await prisma.shiftSchedule.findMany({
     where: {
       employeeId: { in: karyawan.map((k) => k.id) },
       status: { not: 'cancelled' },
-      date: jendelaRoster(monthStart, monthEnd),
+      date: jendela,
     },
     select: { employeeId: true, date: true },
   });
@@ -357,14 +487,20 @@ export const getShiftRecap = async (req: Request, res: Response) => {
     perKaryawan.set(s.employeeId, kunci);
   }
 
-  const data = karyawan.map((k) => ({
-    ...k,
-    ...hitungRekapLibur({
+  const data = karyawan.map((k) => {
+    const rekap = hitungRekapLibur({
       scheduledDateKeys: perKaryawan.get(k.id) ?? new Set<string>(),
       monthStart,
       monthEnd,
-    }),
-  }));
+    });
+    // Karyawan berjam fleksibel memang tidak punya roster: tanggal kosongnya
+    // bukan "belum disusun", dan peringatan hari libur tidak berlaku.
+    return {
+      ...k,
+      ...rekap,
+      ...(k.flexibleHours ? { belumDisusun: 0, kurangLibur: false, beruntunLewatBatas: false } : {}),
+    };
+  });
 
   res.json({
     month,
@@ -379,15 +515,20 @@ export const getShiftRecap = async (req: Request, res: Response) => {
 export const getMyShifts = async (req: Request, res: Response) => {
   const query = req.query as unknown as ListShiftQuery;
 
-  const where: Prisma.ShiftScheduleWhereInput = { employeeId: req.user!.id };
+  const employeeId = req.user!.id;
+
+  // Shift yang dibatalkan tidak dikirim: aplikasi mobile menganggap setiap
+  // baris sebagai hari kerja.
+  const where: Prisma.ShiftScheduleWhereInput = { employeeId, status: { not: 'cancelled' } };
   if (query.startDate || query.endDate) {
     where.date = {
       ...(query.startDate ? { gte: query.startDate } : {}),
       ...(query.endDate ? { lte: query.endDate } : {}),
     };
   }
+  if (query.endDate) await pastikanJadwalTerbit([employeeId], query.endDate);
 
-  const [total, rows] = await Promise.all([
+  const [total, rows, saya] = await Promise.all([
     prisma.shiftSchedule.count({ where }),
     prisma.shiftSchedule.findMany({
       where,
@@ -396,6 +537,7 @@ export const getMyShifts = async (req: Request, res: Response) => {
       skip: (query.page - 1) * query.limit,
       take: query.limit,
     }),
+    prisma.employee.findUnique({ where: { id: employeeId }, select: { flexibleHours: true } }),
   ]);
 
   res.json({
@@ -406,6 +548,8 @@ export const getMyShifts = async (req: Request, res: Response) => {
       total,
       totalPages: Math.ceil(total / query.limit) || 1,
     },
+    // Supaya aplikasi bisa menjelaskan "tidak ada roster" alih-alih "libur".
+    flexibleHours: saya?.flexibleHours ?? false,
   });
 };
 
@@ -415,15 +559,23 @@ export const updateShift = async (req: Request, res: Response) => {
 
   const existing = await prisma.shiftSchedule.findUnique({
     where: { id: req.params.id },
-    select: { id: true, employeeId: true, date: true, startTime: true, endTime: true, breakDuration: true },
+    select: {
+      id: true,
+      employeeId: true,
+      date: true,
+      startTime: true,
+      endTime: true,
+      breakDuration: true,
+      assignmentId: true,
+    },
   });
 
   if (!existing) {
     return res.status(404).json({ error: 'Jadwal shift tidak ditemukan' });
   }
 
-  const aksesError = await assertCanScheduleEmployee(actor, existing.employeeId);
-  if (aksesError) return res.status(403).json({ error: aksesError });
+  const akses = await assertCanScheduleEmployee(actor, existing.employeeId, { izinkanNonaktif: true });
+  if (!akses.ok) return res.status(akses.status === 404 ? 404 : 403).json({ error: akses.error });
 
   const gabungan = {
     date: input.date ?? existing.date,
@@ -455,13 +607,33 @@ export const updateShift = async (req: Request, res: Response) => {
   if (input.status !== undefined) data.status = input.status;
   if (input.notes !== undefined) data.notes = input.notes;
 
-  const shift = await prisma.shiftSchedule.update({
-    where: { id: existing.id },
-    data,
-    select: shiftSelect,
-  });
+  // Baris dari penugasan yang jam/tanggalnya dikoreksi manual tidak boleh
+  // lagi ditimpa oleh perubahan jenis shift atau pengakhiran penugasan.
+  const waktuBerubah =
+    gabungan.date.getTime() !== existing.date.getTime() ||
+    gabungan.startTime !== existing.startTime ||
+    gabungan.endTime !== existing.endTime ||
+    gabungan.breakDuration !== existing.breakDuration.toNumber();
+  if (existing.assignmentId && waktuBerubah) data.isOverride = true;
 
-  res.json(toDTO(shift));
+  try {
+    const shift = await prisma.shiftSchedule.update({
+      where: { id: existing.id },
+      data,
+      select: shiftSelect,
+    });
+    res.json(toDTO(shift));
+  } catch (error) {
+    // Satu penugasan hanya punya satu baris per tanggal (unik assignmentId +
+    // date). Memindahkan barisnya ke tanggal yang sudah berisi split shift
+    // dari penugasan yang sama melanggarnya — itu bentrok, bukan galat server.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return res.status(409).json({
+        error: 'Tanggal itu sudah punya shift dari penugasan yang sama. Ubah atau hapus shift tersebut dulu.',
+      });
+    }
+    throw error;
+  }
 };
 
 /**
@@ -480,8 +652,8 @@ export const cancelShift = async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Jadwal shift tidak ditemukan' });
   }
 
-  const aksesError = await assertCanScheduleEmployee(actor, existing.employeeId);
-  if (aksesError) return res.status(403).json({ error: aksesError });
+  const akses = await assertCanScheduleEmployee(actor, existing.employeeId, { izinkanNonaktif: true });
+  if (!akses.ok) return res.status(akses.status === 404 ? 404 : 403).json({ error: akses.error });
 
   if (existing._count.attendances === 0) {
     await prisma.shiftSchedule.delete({ where: { id: existing.id } });
