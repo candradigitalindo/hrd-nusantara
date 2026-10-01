@@ -49,10 +49,14 @@ class SesiWhatsApp {
 
 /// Keadaan tautan WhatsApp pribadi pengguna yang login (GET /whatsapp/me).
 class TautanWhatsApp {
-  const TautanWhatsApp({required this.status, required this.driverAktif, this.phoneNumber, this.label, this.qrDataUrl, this.catatan, this.tersambungPada, this.terputusPada, this.grupJid, this.grupNama});
+  const TautanWhatsApp({required this.status, required this.driverAktif, this.sedangSambungUlang = false, this.phoneNumber, this.label, this.qrDataUrl, this.catatan, this.tersambungPada, this.terputusPada, this.grupJid, this.grupNama});
   /// never_linked · connecting · pending_scan · connected · disconnected · inactive
   final String status;
   final bool driverAktif;
+  /// 'connecting' karena putus sementara yang sedang dipulihkan server sendiri —
+  /// bukan karena menunggu QR dipindai. Tanpa pembeda ini pengguna disuruh
+  /// memindai kode yang tidak ada.
+  final bool sedangSambungUlang;
   final String? phoneNumber;
   final String? label;
   final String? qrDataUrl;
@@ -66,7 +70,8 @@ class TautanWhatsApp {
   bool get adaGrup => grupJid != null;
   bool get tersambung => status == 'connected';
   bool get belumPernah => status == 'never_linked';
-  bool get menungguScan => status == 'pending_scan' || status == 'connecting';
+  bool get sambungUlangOtomatis => status == 'connecting' && sedangSambungUlang;
+  bool get menungguScan => status == 'pending_scan' || (status == 'connecting' && !sedangSambungUlang);
   bool get perluTindakan => !tersambung && status != 'inactive';
 
   factory TautanWhatsApp.dariJson(Map<String, dynamic> j) {
@@ -74,6 +79,7 @@ class TautanWhatsApp {
     return TautanWhatsApp(
       status: (j['status'] ?? 'never_linked') as String,
       driverAktif: j['driverAktif'] != false,
+      sedangSambungUlang: (j['session'] as Map?)?['sedangSambungUlang'] == true,
       phoneNumber: akun?['phoneNumber'] as String?,
       label: akun?['label'] as String?,
       qrDataUrl: j['qr'] as String?,

@@ -112,9 +112,10 @@ class _KartuStatus extends StatelessWidget {
         ),
       );
     }
-    final nada = t.tersambung ? Nada.sukses : t.menungguScan ? Nada.info : t.status == 'inactive' ? Nada.netral : Nada.bahaya;
+    final nada = t.tersambung ? Nada.sukses : (t.menungguScan || t.sambungUlangOtomatis) ? Nada.info : t.status == 'inactive' ? Nada.netral : Nada.bahaya;
     final judul = switch (t.status) {
       'connected' => 'WhatsApp tersambung',
+      'connecting' when t.sambungUlangOtomatis => 'Menyambung ulang otomatis',
       'connecting' || 'pending_scan' => 'Menunggu pemindaian QR di web',
       'disconnected' => 'Tautan WhatsApp terputus',
       'inactive' => 'Tautan dinonaktifkan HR',
@@ -122,6 +123,7 @@ class _KartuStatus extends StatelessWidget {
     };
     final keterangan = switch (t.status) {
       'connected' => 'Pesan Anda tersinkron ke sistem perusahaan${t.tersambungPada != null ? ' sejak ${formatTanggalWaktu(t.tersambungPada)}' : ''}. Jangan hapus perangkat tertaut "HRD Nusantara" di WhatsApp.',
+      'connecting' when t.sambungUlangOtomatis => 'Sambungan sempat terputus${t.terputusPada != null ? ' ${formatRelatif(t.terputusPada)}' : ''} dan sedang disambungkan kembali oleh sistem. Tidak perlu memindai ulang; status di sini berubah otomatis.',
       'connecting' || 'pending_scan' => 'Kode QR sedang tampil di aplikasi web. Pindai dengan WhatsApp di ponsel ini; status di sini berubah otomatis.',
       'disconnected' => 'Pesan Anda tidak lagi tersinkron${t.terputusPada != null ? ' sejak ${formatRelatif(t.terputusPada)}' : ''}. Masuk ke aplikasi web HRD untuk memindai ulang.',
       'inactive' => 'Hubungi HR untuk mengaktifkannya kembali.',
@@ -138,7 +140,7 @@ class _KartuStatus extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(color: warnaNada(nada, skema).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-                  child: Icon(t.tersambung ? Icons.check_circle : t.menungguScan ? Icons.qr_code_scanner : Icons.link_off, color: warnaNada(nada, skema)),
+                  child: Icon(t.tersambung ? Icons.check_circle : t.sambungUlangOtomatis ? Icons.sync : t.menungguScan ? Icons.qr_code_scanner : Icons.link_off, color: warnaNada(nada, skema)),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -150,7 +152,7 @@ class _KartuStatus extends StatelessWidget {
                     ],
                   ),
                 ),
-                LencanaStatus(t.status, label: switch (t.status) { 'never_linked' => 'Wajib', 'connecting' || 'pending_scan' => 'Menunggu', 'inactive' => 'Nonaktif', _ => labelUntuk(t.status) }, nada: nada),
+                LencanaStatus(t.status, label: switch (t.status) { 'never_linked' => 'Wajib', 'connecting' when t.sambungUlangOtomatis => 'Menyambung', 'connecting' || 'pending_scan' => 'Menunggu', 'inactive' => 'Nonaktif', _ => labelUntuk(t.status) }, nada: nada),
               ],
             ),
             const SizedBox(height: 12),

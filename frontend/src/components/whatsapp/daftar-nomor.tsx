@@ -26,6 +26,10 @@ interface BarisNomor {
 
 export const STATUS: Record<StatusTautanWa, { label: string; titik: string; teks: string }> = {
   connected: { label: "Tersambung", titik: "bg-success", teks: "text-success" },
+  // Putus sementara yang sedang dipulihkan sendiri. Dulu ditampilkan "Perlu
+  // scan ulang", dan HR memindai ulang nomor yang sebenarnya tiga detik lagi
+  // tersambung — tautan lama dilepas, sesi mulai dari nol.
+  connecting: { label: "Menyambung ulang", titik: "bg-info", teks: "text-info" },
   pending_scan: { label: "Perlu scan ulang", titik: "bg-warning", teks: "text-warning" },
   disconnected: { label: "Terputus", titik: "bg-danger", teks: "text-danger" },
   never_linked: { label: "Belum ditautkan", titik: "bg-danger", teks: "text-danger" },
@@ -38,15 +42,18 @@ export const STATUS: Record<StatusTautanWa, { label: string; titik: string; teks
 export const statusAkun = (s: string): StatusTautanWa =>
   s === "connected"
     ? "connected"
-    : s === "disconnected" || s === "inactive"
-      ? "disconnected"
-      : s === "never_linked"
-        ? "never_linked"
-        : "pending_scan";
+    : s === "connecting"
+      ? "connecting"
+      : s === "disconnected" || s === "inactive"
+        ? "disconnected"
+        : s === "never_linked"
+          ? "never_linked"
+          : "pending_scan";
 
 /** Kalimat waktu yang paling berguna untuk keadaan itu. */
 const waktuStatus = (b: BarisNomor) => {
   if (b.status === "connected") return b.lastConnectedAt ? `sejak ${formatRelatif(b.lastConnectedAt)}` : null;
+  if (b.status === "connecting") return b.lastDisconnectedAt ? `terputus ${formatRelatif(b.lastDisconnectedAt)} · dicoba otomatis` : "dicoba otomatis";
   if (b.status === "never_linked") return null;
   const putus = b.lastDisconnectedAt ?? b.lastConnectedAt;
   return putus ? `sejak ${formatRelatif(putus)}` : null;

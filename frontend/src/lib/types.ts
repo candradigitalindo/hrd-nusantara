@@ -1262,7 +1262,7 @@ export interface PesanChat {
 }
 
 /** Kepatuhan: setiap karyawan aktif wajib menautkan WhatsApp-nya. */
-export type StatusTautanWa = "connected" | "disconnected" | "pending_scan" | "never_linked";
+export type StatusTautanWa = "connected" | "connecting" | "disconnected" | "pending_scan" | "never_linked";
 
 export interface BarisKepatuhanWa {
   employee: { id: string; nik: string; name: string; department: Ref | null };

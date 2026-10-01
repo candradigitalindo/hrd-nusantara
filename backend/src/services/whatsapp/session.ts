@@ -37,6 +37,7 @@ import { putuskanReconnect } from './reconnect';
 import { hapusKredensialTersimpan } from './authStore';
 import { petaLidDari, simpanPemetaanLid, type SumberLid } from './lidMap';
 import { simpanKontak, type EntriKontak } from './kontak';
+import { beriTahuKejadianSesi } from '../notification/sessionPush';
 import { prisma } from '../../lib/prisma';
 
 /** Penunjuk satu pesan di WhatsApp; dipakai sebagai titik awal penarikan riwayat. */
@@ -121,7 +122,36 @@ interface Sesi {
   namaGrup: Map<string, string>;
   /** Kapan daftar grup (dan peserta ber-LID-nya) terakhir diambil; maksimal sekali per 6 jam. */
   grupDisinkronPada: number | null;
+  /**
+   * Naik setiap kali soket dibuka atau sesi ditutup sengaja. Soket yang baru
+   * jadi setelah sesinya ditutup atau dibuka ulang (pembukaan yang terlambat)
+   * ketahuan dari sini dan langsung ditutup, bukan menjadi sambungan liar.
+   */
+  generasi: number;
+  /** Kapan pembukaan soket terakhir dimulai; dipakai pengawas mengenali sesi yang macet. */
+  terakhirDicoba: number | null;
+  /** Ada timer sambung ulang yang belum berjalan. */
+  timerAktif: boolean;
+  /** Kejadian "terputus" dari rangkaian gangguan yang sedang berjalan; pemberitahuannya ditunda. */
+  kejadianPutusId: string | null;
+  timerBeritahu: NodeJS.Timeout | null;
 }
+
+/**
+ * Waktu-waktu ketahanan sambungan. Dapat diubah oleh test supaya tidak
+ * menunggu menit-menitan sungguhan.
+ */
+export const WAKTU = {
+  /** Pemegang nomor baru diberi tahu bila selama ini belum tersambung lagi. */
+  jedaBeritahuPutusMs: 10 * 60_000,
+  /** Membuka soket (muat kredensial, versi protokol, jabat tangan awal) lebih lama dari ini dianggap gagal. */
+  batasBukaSoketMs: 45_000,
+  intervalPengawasMs: 60_000,
+  /** Sesi 'connecting' tanpa soket dan tanpa timer selama ini dianggap macet. */
+  macetSetelahMs: 90_000,
+  /** Pengali jeda sambung ulang; test memakai nilai sangat kecil. */
+  skalaJeda: 1,
+};
 
 /** Jeda minimum antar-pengambilan daftar grup per sesi. */
 const JEDA_SINKRON_GRUP_MS = 6 * 60 * 60 * 1000;
@@ -171,7 +201,73 @@ const bersihkanTimer = (sesi: Sesi) => {
     clearTimeout(sesi.timer);
     sesi.timer = null;
   }
+  sesi.timerAktif = false;
 };
+
+const bersihkanTimerBeritahu = (sesi: Sesi) => {
+  if (sesi.timerBeritahu) {
+    clearTimeout(sesi.timerBeritahu);
+    sesi.timerBeritahu = null;
+  }
+};
+
+/**
+ * Menjadwalkan percobaan sambung ulang. Jedanya diacak ±20%: lima nomor
+ * yang putus bersamaan (backend restart, gangguan ISP) tidak lalu menghantam
+ * WhatsApp pada detik yang sama berulang-ulang.
+ */
+const jadwalkanSambungUlang = (sesi: Sesi, jedaMs: number) => {
+  bersihkanTimer(sesi);
+  const jeda = jedaMs > 0 ? Math.round(jedaMs * (0.8 + Math.random() * 0.4) * WAKTU.skalaJeda) : 0;
+  sesi.timerAktif = true;
+  sesi.timer = setTimeout(() => {
+    sesi.timerAktif = false;
+    amanDijalankan('sambung ulang', () => bukaSoketDenganPengaman(sesi));
+  }, jeda);
+  // Timer sambung ulang tidak boleh menahan proses tetap hidup saat backend
+  // diminta berhenti.
+  sesi.timer.unref?.();
+};
+
+/**
+ * Pemberitahuan "terputus" ke pemegang nomor ditunda: gangguan yang pulih
+ * sendiri dalam beberapa detik — yang paling sering terjadi — tidak perlu
+ * diberitahukan, apalagi puluhan kali sehari. Yang dikirim hanya bila
+ * setelah masa tenggang nomornya masih belum tersambung.
+ */
+const jadwalkanPemberitahuanPutus = (sesi: Sesi) => {
+  if (sesi.timerBeritahu) return;
+  sesi.timerBeritahu = setTimeout(() => {
+    sesi.timerBeritahu = null;
+    const id = sesi.kejadianPutusId;
+    if (!id || sesi.status === 'connected' || sesi.ditutupSengaja) return;
+    amanDijalankan('beri tahu putus', async () => {
+      await beriTahuKejadianSesi(id);
+    });
+  }, WAKTU.jedaBeritahuPutusMs);
+  sesi.timerBeritahu.unref?.();
+};
+
+const denganBatasWaktu = <T>(janji: Promise<T>, ms: number, apa: string, saatTerlambat: (hasil: T) => void): Promise<T> =>
+  new Promise<T>((selesai, gagal) => {
+    let terlambat = false;
+    const t = setTimeout(() => {
+      terlambat = true;
+      gagal(new Error(`${apa} lebih dari ${Math.round(ms / 1000)} detik`));
+    }, ms);
+    t.unref?.();
+    janji.then(
+      (hasil) => {
+        clearTimeout(t);
+        if (terlambat) saatTerlambat(hasil);
+        else selesai(hasil);
+      },
+      (error) => {
+        clearTimeout(t);
+        if (!terlambat) gagal(error);
+      }
+    );
+  });
 
 // --- Penanganan event ---
 
@@ -586,6 +682,9 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     sesi.qrDibuatPada = null;
     sesi.percobaan = 0;
     sesi.catatanTerakhir = null;
+    // Tersambung lagi sebelum masa tenggang: pemegang nomor tidak perlu tahu.
+    bersihkanTimerBeritahu(sesi);
+    sesi.kejadianPutusId = null;
     await applySessionEvent({ accountId: sesi.accountId, status: 'connected' });
     catat(`${sesi.phoneNumber ?? sesi.accountId} tersambung`);
 
@@ -632,18 +731,32 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   // QR yang kedaluwarsa bukan sesi yang putus. Mencatatnya sebagai kejadian
   // memberi tahu pemegang nomor bahwa sesinya terputus, belasan kali, untuk
   // nomor yang belum pernah tertaut.
-  if (!keputusan.tahapQr) {
-    await applySessionEvent({
+  //
+  // Satu rangkaian gangguan dicatat sebagai SATU kejadian, pada putus
+  // pertamanya; percobaan-percobaan berikutnya hanya memperbarui catatan di
+  // memori. Dulu tiap percobaan jadi satu kejadian dan satu push ke pemegang
+  // nomor: hampir seratus "sesi terputus" sehari untuk gangguan tiga detik.
+  const rangkaianBaru = sesi.percobaan === 0 || !keputusan.sambungUlang || keputusan.perluScanUlang;
+  if (!keputusan.tahapQr && rangkaianBaru) {
+    const pulihSendiri = keputusan.sambungUlang && !keputusan.perluScanUlang;
+    const hasil = await applySessionEvent({
       accountId: sesi.accountId,
       status: keputusan.perluScanUlang ? 'scan_required' : 'disconnected',
       note: keputusan.catatan,
+      tundaPemberitahuan: pulihSendiri,
     });
+    if (pulihSendiri && hasil.status === 'tercatat') {
+      sesi.kejadianPutusId = hasil.eventId;
+      jadwalkanPemberitahuanPutus(sesi);
+    }
   }
 
   if (!keputusan.sambungUlang) {
     // Tidak ada percobaan berikutnya: timer sisa percobaan sebelumnya dibuang
     // supaya state sesi tidak menyisakan jejak yang membingungkan.
     bersihkanTimer(sesi);
+    bersihkanTimerBeritahu(sesi);
+    sesi.kejadianPutusId = null;
     sesi.status = keputusan.perluScanUlang ? 'pending_scan' : 'disconnected';
     if (keputusan.perluScanUlang) {
       sesi.qr = null;
@@ -657,19 +770,82 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
   // ulang": dari sisi orang yang memindai, tidak ada yang putus.
   sesi.status = keputusan.tahapQr ? 'pending_scan' : 'connecting';
   sesi.percobaan += 1;
-  bersihkanTimer(sesi);
-  sesi.timer = setTimeout(() => {
-    amanDijalankan('sambung ulang', () => bukaSoket(sesi));
-  }, keputusan.jedaMs);
-  // Timer sambung ulang tidak boleh menahan proses tetap hidup saat backend
-  // diminta berhenti.
-  sesi.timer.unref?.();
+  jadwalkanSambungUlang(sesi, keputusan.jedaMs);
+};
+
+/**
+ * Membuka soket dan, bila pembukaannya sendiri gagal (database, jaringan
+ * keluar, batas waktu), menjadwalkan percobaan berikutnya. Tanpa soket tidak
+ * akan ada event 'close' yang melakukannya, dan sesi akan diam di
+ * 'connecting' selamanya — dulu inilah salah satu cara nomor mati senyap.
+ */
+const bukaSoketDenganPengaman = async (sesi: Sesi) => {
+  try {
+    await bukaSoket(sesi);
+  } catch (error) {
+    if (sesi.ditutupSengaja) return;
+    catat(`gagal membuka soket ${sesi.phoneNumber ?? sesi.accountId}`, error);
+    const keputusan = putuskanReconnect(undefined, sesi.percobaan, { menungguScan: sesi.status === 'pending_scan' });
+    sesi.catatanTerakhir = keputusan.catatan;
+    if (!keputusan.sambungUlang) {
+      sesi.status = keputusan.perluScanUlang ? 'pending_scan' : 'disconnected';
+      sesi.qr = null;
+      sesi.qrDibuatPada = null;
+      return;
+    }
+    sesi.status = keputusan.tahapQr ? 'pending_scan' : 'connecting';
+    sesi.percobaan += 1;
+    jadwalkanSambungUlang(sesi, keputusan.jedaMs);
+  }
+};
+
+/**
+ * Pengawas: membuka ulang sesi yang macet — 'connecting' tanpa soket dan
+ * tanpa timer lebih dari batas, atau 'connected' tanpa soket. Keadaan ini
+ * seharusnya tidak terjadi, tetapi sekali terjadi akibatnya nomor berhenti
+ * terpantau tanpa ada yang tahu; pengawas membuatnya pulih sendiri.
+ */
+export const periksaSesiMacet = async (): Promise<string[]> => {
+  const kini = Date.now();
+  const dibukaUlang: string[] = [];
+  for (const sesi of sesiAktif.values()) {
+    if (sesi.ditutupSengaja || sesi.sock !== null || sesi.timerAktif) continue;
+    const macet =
+      sesi.status === 'connected' ||
+      (sesi.status === 'connecting' && (sesi.terakhirDicoba === null || kini - sesi.terakhirDicoba > WAKTU.macetSetelahMs));
+    if (!macet) continue;
+    catat(`sesi ${sesi.phoneNumber ?? sesi.accountId} macet (${sesi.status}); dibuka ulang oleh pengawas`);
+    sesi.status = 'connecting';
+    dibukaUlang.push(sesi.accountId);
+    await bukaSoketDenganPengaman(sesi);
+  }
+  return dibukaUlang;
+};
+
+let pengawas: NodeJS.Timeout | null = null;
+
+export const mulaiPengawasSesi = () => {
+  if (pengawas) return;
+  pengawas = setInterval(() => {
+    amanDijalankan('pengawas sesi', async () => {
+      await periksaSesiMacet();
+    });
+  }, WAKTU.intervalPengawasMs);
+  pengawas.unref?.();
+};
+
+export const hentikanPengawasSesi = () => {
+  if (pengawas) clearInterval(pengawas);
+  pengawas = null;
 };
 
 /** Melepas pairing yang salah nomor: logout supaya WhatsApp di ponsel itu ikut terputus. */
 const lepasTautan = async (sesi: Sesi, catatan: string) => {
   sesi.ditutupSengaja = true;
+  sesi.generasi += 1;
   bersihkanTimer(sesi);
+  bersihkanTimerBeritahu(sesi);
+  sesi.kejadianPutusId = null;
   const sock = sesi.sock;
   sesi.sock = null;
   try {
@@ -688,11 +864,32 @@ const lepasTautan = async (sesi: Sesi, catatan: string) => {
 
 const bukaSoket = async (sesi: Sesi) => {
   if (!buatSoket) throw new Error('Pembuat soket WhatsApp belum dipasang');
+  const pembuat = buatSoket;
 
-  const { sock, simpanKredensial } = await buatSoket({ accountId: sesi.accountId });
+  const generasi = ++sesi.generasi;
+  sesi.terakhirDicoba = Date.now();
+  const tutupTerlambat = (dibuat: SesiDibuat) => {
+    try {
+      dibuat.sock.end();
+    } catch {
+      // Soket yang tidak jadi dipakai; gagal menutupnya tidak berarti apa-apa.
+    }
+  };
+  const { sock, simpanKredensial } = await denganBatasWaktu(
+    pembuat({ accountId: sesi.accountId }),
+    WAKTU.batasBukaSoketMs,
+    'membuka soket',
+    tutupTerlambat
+  );
+
+  // Selama menunggu, sesi ditutup HR atau dibuka ulang oleh percobaan lain:
+  // soket ini sudah tidak ada yang memiliki.
+  if (generasi !== sesi.generasi || sesi.ditutupSengaja) {
+    tutupTerlambat({ sock, simpanKredensial });
+    return;
+  }
 
   sesi.sock = sock;
-  sesi.ditutupSengaja = false;
 
   sock.ev.on('creds.update', () => {
     amanDijalankan('creds.update', simpanKredensial);
@@ -764,7 +961,14 @@ export const connectAccount = async (
   phoneNumber: string | null
 ): Promise<RingkasanSesi> => {
   const adaSebelumnya = sesiAktif.get(accountId);
-  if (adaSebelumnya && (adaSebelumnya.status === 'connected' || adaSebelumnya.status === 'connecting')) {
+  if (adaSebelumnya && adaSebelumnya.status === 'connected') return ringkas(adaSebelumnya);
+  if (adaSebelumnya && adaSebelumnya.status === 'connecting') {
+    // Sedang menunggu jeda sambung ulang (bisa sampai 5 menit): HR yang
+    // menekan "Sambungkan" tidak perlu ikut menunggu — dicoba sekarang.
+    if (adaSebelumnya.timerAktif && !adaSebelumnya.sock) {
+      bersihkanTimer(adaSebelumnya);
+      await bukaSoketDenganPengaman(adaSebelumnya);
+    }
     return ringkas(adaSebelumnya);
   }
 
@@ -781,6 +985,11 @@ export const connectAccount = async (
     catatanTerakhir: null,
     namaGrup: new Map(),
     grupDisinkronPada: null,
+    generasi: 0,
+    terakhirDicoba: null,
+    timerAktif: false,
+    kejadianPutusId: null,
+    timerBeritahu: null,
   };
   sesi.phoneNumber = phoneNumber;
   sesi.status = 'connecting';
@@ -791,6 +1000,8 @@ export const connectAccount = async (
   // berhenti diam-diam, dan nomor itu tidak pernah menyambung sendiri lagi.
   sesi.ditutupSengaja = false;
   bersihkanTimer(sesi);
+  bersihkanTimerBeritahu(sesi);
+  sesi.kejadianPutusId = null;
   sesiAktif.set(accountId, sesi);
 
   await bukaSoket(sesi);
@@ -843,7 +1054,10 @@ export const disconnectAccount = async (
   if (!sesi) return null;
 
   sesi.ditutupSengaja = true;
+  sesi.generasi += 1;
   bersihkanTimer(sesi);
+  bersihkanTimerBeritahu(sesi);
+  sesi.kejadianPutusId = null;
 
   const sock = sesi.sock;
   sesi.sock = null;
@@ -889,7 +1103,9 @@ export const disconnectAccount = async (
 export const shutdownSessions = async () => {
   for (const sesi of sesiAktif.values()) {
     sesi.ditutupSengaja = true;
+    sesi.generasi += 1;
     bersihkanTimer(sesi);
+    bersihkanTimerBeritahu(sesi);
     try {
       sesi.sock?.end();
     } catch {

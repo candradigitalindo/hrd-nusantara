@@ -265,10 +265,16 @@ export interface KejadianSesi {
   status: TipeKejadianSesi;
   occurredAt?: Date;
   note?: string;
+  /**
+   * Jangan langsung memberi tahu pemegang nomor. Dipakai untuk putus yang
+   * sedang disambung ulang sendiri: pemberitahuannya baru layak dikirim bila
+   * beberapa menit kemudian masih belum tersambung (lihat session.ts).
+   */
+  tundaPemberitahuan?: boolean;
 }
 
 export type HasilKejadianSesi =
-  | { status: 'tercatat' }
+  | { status: 'tercatat'; eventId: string }
   | { status: 'nomor_tidak_valid' }
   | { status: 'nomor_tidak_terdaftar' };
 
@@ -313,13 +319,15 @@ export const applySessionEvent = async (kejadian: KejadianSesi): Promise<HasilKe
   // kegagalan mengirim notifikasi tidak boleh membatalkan pencatatan
   // kejadiannya, dan kejadian yang gagal diberitahukan tetap terambil lewat
   // GET /whatsapp/session-events?unnotifiedOnly=true.
-  try {
-    await beriTahuKejadianSesi(idKejadian);
-  } catch (error) {
-    if (env.NODE_ENV !== 'test') console.warn('[push] gagal memberi tahu kejadian sesi:', error);
+  if (!kejadian.tundaPemberitahuan) {
+    try {
+      await beriTahuKejadianSesi(idKejadian);
+    } catch (error) {
+      if (env.NODE_ENV !== 'test') console.warn('[push] gagal memberi tahu kejadian sesi:', error);
+    }
   }
 
-  return { status: 'tercatat' };
+  return { status: 'tercatat', eventId: idKejadian };
 };
 
 // --- Nomor yang dipelajari saat QR tertaut ---

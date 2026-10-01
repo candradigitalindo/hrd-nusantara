@@ -13,9 +13,13 @@ import {
   tungguEventSelesai,
   type SesiDibuat,
   type KunciPesanWhatsApp,
+  WAKTU,
+  periksaSesiMacet,
+  connectAccount,
 } from '../src/services/whatsapp/session';
 import { ALASAN_PUTUS, MAKS_PUTARAN_QR } from '../src/services/whatsapp/reconnect';
 import * as ingest from '../src/services/whatsapp/ingest';
+import { setPengirimPush } from '../src/services/notification/push';
 
 const app = bikinApp();
 
@@ -949,5 +953,150 @@ describe('Pesan masuk lewat Baileys', () => {
 
     const semua = await prisma.whatsAppConversation.findMany({ select: { externalMessageId: true } });
     expect(semua.map((s) => s.externalMessageId)).toEqual(['WA-3']);
+  });
+});
+
+describe('Ketahanan sambungan', () => {
+  const putus = (soket: SoketPalsu, kode: number) =>
+    soket.pancarkan('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: kode } } } });
+  const jeda = (ms: number) => new Promise((selesai) => setTimeout(selesai, ms));
+
+  beforeEach(() => {
+    // Jeda sambung ulang sungguhan sampai 5 menit; di sini dibuat sepersekian milidetik.
+    WAKTU.skalaJeda = 0.00001;
+    WAKTU.jedaBeritahuPutusMs = 60;
+  });
+  afterEach(() => {
+    WAKTU.skalaJeda = 1;
+    WAKTU.jedaBeritahuPutusMs = 10 * 60_000;
+    WAKTU.macetSetelahMs = 90_000;
+    WAKTU.batasBukaSoketMs = 45_000;
+    setPengirimPush(null);
+  });
+
+  it('gangguan panjang terus dicoba tanpa menyerah, dan dicatat sebagai satu kejadian', async () => {
+    // Dulu menyerah setelah 10 percobaan (±5 menit) dan nomor mati sampai HR
+    // menyambungkan manual. Sesinya masih sah; gangguan ISP atau WhatsApp
+    // yang panjang hanya perlu kesabaran.
+    const id = await buatAkun();
+    await sambungkan(id);
+
+    for (let i = 0; i < 12; i += 1) {
+      const sebelum = soketTerakhir!;
+      putus(sebelum, i % 2 === 0 ? ALASAN_PUTUS.timedOut : ALASAN_PUTUS.connectionClosed);
+      await tungguSambungUlang();
+      expect(soketTerakhir).not.toBe(sebelum);
+    }
+
+    const sesi = getSession(id)!;
+    expect(sesi.sedangSambungUlang).toBe(true);
+    expect(sesi.percobaanSambungUlang).toBe(12);
+    expect(sesi.catatan).toContain('masih mencoba');
+
+    // Dua belas putus beruntun = satu rangkaian gangguan = satu kejadian.
+    const kejadian = await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id }, orderBy: { occurredAt: 'asc' } });
+    expect(kejadian.map((k) => k.eventType)).toEqual(['disconnected']);
+
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    expect(getSession(id)?.status).toBe('connected');
+    expect(getSession(id)?.percobaanSambungUlang).toBe(0);
+  });
+
+  it('push "terputus" ditunda: tidak dikirim bila tersambung lagi sebelum masa tenggang', async () => {
+    const kiriman: string[] = [];
+    setPengirimPush(async (tokens, pesan) => {
+      kiriman.push(pesan.title);
+      return { terkirim: tokens.length, gagal: 0, tokenTidakSah: [] };
+    });
+    const id = await buatAkun();
+    await prisma.whatsAppAccount.update({ where: { id }, data: { assignedEmployeeId: budi.id } });
+    await prisma.deviceToken.create({ data: { id: generateULID(), employeeId: budi.id, token: 'tok-budi', platform: 'android' } });
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    // Putus tiga detik lalu tersambung lagi: pemegang nomor tidak perlu diganggu.
+    putus(soketTerakhir!, ALASAN_PUTUS.connectionClosed);
+    await tungguSambungUlang();
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    await jeda(120);
+    expect(kiriman).toEqual([]);
+
+    // Putus dan tidak kunjung tersambung: setelah masa tenggang, diberi tahu sekali.
+    putus(soketTerakhir!, ALASAN_PUTUS.connectionClosed);
+    await tungguSambungUlang();
+    await jeda(120);
+    await tungguEventSelesai();
+    expect(kiriman).toEqual(['Sesi WhatsApp terputus']);
+
+    const terputus = await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id, eventType: 'disconnected' }, orderBy: { occurredAt: 'asc' } });
+    expect(terputus).toHaveLength(2);
+    expect(terputus[0].notifiedAt).toBeNull();
+    expect(terputus[1].notifiedAt).not.toBeNull();
+  });
+
+  it('gagal membuka soket tidak menghentikan rantai percobaan', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const pertama = soketTerakhir!;
+
+    // Pembukaan berikutnya gagal sekali (mis. database sedang sibuk), lalu normal lagi.
+    let sisaGagal = 1;
+    setPembuatSoket(async (): Promise<SesiDibuat> => {
+      if (sisaGagal > 0) {
+        sisaGagal -= 1;
+        throw new Error('database sibuk');
+      }
+      soketTerakhir = new SoketPalsu();
+      return { sock: soketTerakhir, simpanKredensial: async () => {} };
+    });
+
+    putus(pertama, ALASAN_PUTUS.timedOut);
+    await tungguSambungUlang();
+    await tungguSambungUlang();
+
+    // Tanpa pengaman, kegagalan itu meninggalkan sesi 'connecting' tanpa
+    // soket dan tanpa timer — mati senyap.
+    expect(sisaGagal).toBe(0);
+    expect(soketTerakhir).not.toBe(pertama);
+    expect(getSession(id)?.sedangSambungUlang).toBe(true);
+    expect(getSession(id)?.percobaanSambungUlang).toBe(2);
+  });
+
+  it('pengawas membuka ulang sesi yang macet', async () => {
+    WAKTU.batasBukaSoketMs = 30;
+    // Pembukaan yang tidak pernah selesai (jaringan keluar menggantung).
+    setPembuatSoket(() => new Promise<SesiDibuat>(() => {}));
+    const id = await buatAkun();
+    await expect(connectAccount(id, null)).rejects.toThrow('membuka soket');
+    expect(getSession(id)?.status).toBe('connecting');
+    expect(soketTerakhir).toBeNull();
+
+    pasangSoketPalsu();
+    // Belum lewat batas: pengawas tidak ikut campur.
+    expect(await periksaSesiMacet()).toEqual([]);
+    WAKTU.macetSetelahMs = 0;
+    expect(await periksaSesiMacet()).toEqual([id]);
+    expect(soketTerakhir).not.toBeNull();
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    expect(getSession(id)?.status).toBe('connected');
+  });
+
+  it('HR menekan Sambungkan saat sistem menunggu jeda: dicoba saat itu juga', async () => {
+    WAKTU.skalaJeda = 1; // jeda sungguhan 1 detik — tidak akan ditunggu
+    const id = await buatAkun();
+    await sambungkan(id);
+    const pertama = soketTerakhir!;
+    putus(pertama, ALASAN_PUTUS.timedOut);
+    await tungguEventSelesai();
+    expect(getSession(id)?.sedangSambungUlang).toBe(true);
+    expect(soketTerakhir).toBe(pertama);
+
+    await sambungkan(id);
+    await tungguEventSelesai();
+    expect(soketTerakhir).not.toBe(pertama);
   });
 });

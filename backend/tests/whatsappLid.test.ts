@@ -549,3 +549,22 @@ describe('Pemulihan arsip lama yang menyimpan LID sebagai nomor', () => {
     expect(await baris('P3')).toMatchObject({ contactNumber: '628777777777', contactLid: LID_ASING, senderWhatsappNumber: '628777777777' });
   });
 });
+
+describe('Tulisan pemetaan LID yang bersamaan', () => {
+  it('dari banyak sesi sekaligus tidak saling mengunci dan hasilnya utuh', async () => {
+    const { simpanPemetaanLid, rapikanPasangan } = await import('../src/services/whatsapp/lidMap');
+    // Urutan tulis dibuat tetap (urut LID) dan diantrekan satu per satu:
+    // sebelumnya dua INSERT ... ON CONFLICT yang berbarengan dengan urutan
+    // baris berbeda pernah deadlock di produksi.
+    expect(rapikanPasangan([{ lid: '300000000000002', pn: '628000000002' }, { lid: '300000000000001', pn: '628000000001' }]).map((p) => p.lid))
+      .toEqual(['300000000000001', '300000000000002']);
+
+    const pasangan = Array.from({ length: 40 }, (_, i) => ({ lid: `30000000000${String(i).padStart(4, '0')}`, pn: `6280000${String(i).padStart(5, '0')}` }));
+    await Promise.all(
+      Array.from({ length: 12 }, (_, k) =>
+        simpanPemetaanLid(k % 2 === 0 ? pasangan : [...pasangan].reverse(), k % 3 === 0 ? 'grup' : 'alt')
+      )
+    );
+    expect(await prisma.whatsAppLidMap.count({ where: { lid: { startsWith: '30000000000' } } })).toBe(40);
+  });
+});

@@ -33,7 +33,22 @@ export const rapikanPasangan = (pasangan: Iterable<PasanganLid>): PasanganLid[] 
     if (!sahDigit(p.lid) || !sahDigit(p.pn) || p.lid === p.pn) continue;
     perLid.set(p.lid, p.pn);
   }
-  return [...perLid].map(([lid, pn]) => ({ lid, pn }));
+  // Urut tetap: dua tulisan yang bersamaan mengunci baris dengan urutan yang
+  // sama, sehingga tidak saling menunggu (deadlock) di PostgreSQL.
+  return [...perLid].map(([lid, pn]) => ({ lid, pn })).sort((a, b) => (a.lid < b.lid ? -1 : a.lid > b.lid ? 1 : 0));
+};
+
+/**
+ * Semua tulisan ke WhatsAppLidMap diantrekan satu per satu. Pemetaan datang
+ * dari banyak sesi sekaligus (pesan masuk, sinkron grup, cermin store
+ * Baileys) dan dua INSERT ... ON CONFLICT yang berbarengan pernah saling
+ * mengunci; antrean dalam proses menghilangkannya tanpa mengandalkan DB.
+ */
+let antreanTulis: Promise<unknown> = Promise.resolve();
+const berurutan = <T>(kerja: () => Promise<T>): Promise<T> => {
+  const hasil = antreanTulis.then(kerja);
+  antreanTulis = hasil.catch(() => undefined);
+  return hasil;
 };
 
 export interface HasilSimpanLid {
@@ -48,10 +63,16 @@ export interface HasilSimpanLid {
  * nomor lain (pengguna ganti nomor), yang terbaru menang dan jumlahnya
  * dicatat di log.
  */
-export const simpanPemetaanLid = async (
+export const simpanPemetaanLid = (
   pasangan: Iterable<PasanganLid>,
   sumber: SumberLid,
   db: KlienDb = prisma
+): Promise<HasilSimpanLid> => berurutan(() => simpanPemetaanLidLangsung(pasangan, sumber, db));
+
+const simpanPemetaanLidLangsung = async (
+  pasangan: Iterable<PasanganLid>,
+  sumber: SumberLid,
+  db: KlienDb
 ): Promise<HasilSimpanLid> => {
   const rapi = rapikanPasangan(pasangan);
   const hasil: HasilSimpanLid = { tersimpan: 0, konflik: 0 };

@@ -11,7 +11,7 @@ import { prisma } from '../../lib/prisma';
 import { env } from '../../config/env';
 import { buatPembuatSoketBaileys } from './baileysDriver';
 import { akunDenganTautanTersimpan } from './authStore';
-import { connectAccount, setPembuatSoket, shutdownSessions } from './session';
+import { connectAccount, setPembuatSoket, shutdownSessions, mulaiPengawasSesi, hentikanPengawasSesi } from './session';
 
 /**
  * Nomor yang dibuka ulang saat backend mulai: yang benar-benar pernah
@@ -63,9 +63,11 @@ export const mulaiDriverWhatsApp = async () => {
       console.warn(`[whatsapp] gagal menyambungkan ${a.phoneNumber}:`, error);
     }
   }
+  mulaiPengawasSesi();
 };
 
 export const hentikanDriverWhatsApp = async () => {
+  hentikanPengawasSesi();
   await shutdownSessions();
   setPembuatSoket(null);
 };

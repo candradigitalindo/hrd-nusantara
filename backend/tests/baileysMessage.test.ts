@@ -10,7 +10,14 @@ import {
   bacaKontakBaileys,
   pasanganDariPeserta,
 } from '../src/services/whatsapp/baileysMessage';
-import { putuskanReconnect, ALASAN_PUTUS, MAKS_PERCOBAAN, MAKS_PUTARAN_QR } from '../src/services/whatsapp/reconnect';
+import {
+  putuskanReconnect,
+  ALASAN_PUTUS,
+  MAKS_PUTARAN_QR,
+  PERCOBAAN_JEDA_LAMA,
+  JEDA_MAKS_LAMA_MS,
+  JEDA_MIN_SIBUK_MS,
+} from '../src/services/whatsapp/reconnect';
 
 const NOMOR_SENDIRI = '628111111111';
 
@@ -472,13 +479,23 @@ describe('Kebijakan sambung ulang', () => {
     expect(putuskanReconnect(ALASAN_PUTUS.connectionClosed, 9).jedaMs).toBe(60000);
   });
 
-  it('menyerah setelah batas percobaan', () => {
-    // Mencoba selamanya membuat nomor yang benar-benar bermasalah tidak
-    // pernah terlihat sebagai butuh penanganan manual.
-    const k = putuskanReconnect(ALASAN_PUTUS.connectionClosed, MAKS_PERCOBAAN);
+  it('tidak pernah menyerah pada gangguan sementara; setelah lama, mencoba tiap 5 menit', () => {
+    // Dulu menyerah setelah 10 percobaan (±5 menit). Gangguan ISP atau
+    // WhatsApp yang lebih lama dari itu membuat nomor mati sampai HR
+    // menyambungkannya manual — berhari-hari kemudian. Sesinya sendiri
+    // masih sah, jadi tidak ada alasan berhenti mencoba.
+    for (const percobaan of [PERCOBAAN_JEDA_LAMA, 50, 500]) {
+      const k = putuskanReconnect(ALASAN_PUTUS.connectionClosed, percobaan);
+      expect(k.sambungUlang).toBe(true);
+      expect(k.perluScanUlang).toBe(false);
+      expect(k.jedaMs).toBe(JEDA_MAKS_LAMA_MS);
+      expect(k.catatan).toContain('masih mencoba');
+    }
+  });
 
-    expect(k.sambungUlang).toBe(false);
-    expect(k.catatan).toContain('manual');
+  it('server WhatsApp yang sibuk (503) tidak ditembak lagi sedetik kemudian', () => {
+    expect(putuskanReconnect(ALASAN_PUTUS.unavailableService, 0).jedaMs).toBe(JEDA_MIN_SIBUK_MS);
+    expect(putuskanReconnect(ALASAN_PUTUS.unavailableService, 4).jedaMs).toBe(16000);
   });
 
   it('tetap menyambung ulang saat kode putus tidak terbaca', () => {

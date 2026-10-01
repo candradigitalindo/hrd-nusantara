@@ -22,7 +22,19 @@ export const ALASAN_PUTUS = {
   restartRequired: 515,
 } as const;
 
-export const MAKS_PERCOBAAN = 10;
+/**
+ * Jeda antar-percobaan untuk gangguan sementara: 1, 2, 4, 8, 16, 32 detik,
+ * lalu 1 menit, dan sejak percobaan ke-10 setiap 5 menit — tanpa batas
+ * jumlah. Dulu sistem menyerah setelah 10 percobaan (±5 menit); gangguan
+ * jaringan atau WhatsApp yang lebih lama dari itu membuat nomor diam-diam
+ * mati sampai HR menyambungkannya manual, berhari-hari kemudian.
+ */
+export const JEDA_MAKS_AWAL_MS = 60_000;
+export const JEDA_MAKS_LAMA_MS = 5 * 60_000;
+/** Mulai percobaan ke berapa jeda naik ke JEDA_MAKS_LAMA_MS. */
+export const PERCOBAAN_JEDA_LAMA = 10;
+/** WhatsApp menjawab 503 saat servernya sibuk; menembak lagi sedetik kemudian tidak berguna. */
+export const JEDA_MIN_SIBUK_MS = 5_000;
 
 /**
  * Berapa kali QR dibuat untuk satu permintaan sambung. WhatsApp menutup tiap
@@ -31,7 +43,6 @@ export const MAKS_PERCOBAAN = 10;
  */
 export const MAKS_PUTARAN_QR = 3;
 const JEDA_AWAL_MS = 1_000;
-const JEDA_MAKS_MS = 60_000;
 
 export interface KeputusanReconnect {
   sambungUlang: boolean;
@@ -61,7 +72,10 @@ export const putuskanReconnect = (
   percobaan: number,
   opsi: OpsiReconnect = {}
 ): KeputusanReconnect => {
-  const jeda = Math.min(JEDA_AWAL_MS * 2 ** Math.max(0, percobaan), JEDA_MAKS_MS);
+  const jeda =
+    percobaan >= PERCOBAAN_JEDA_LAMA
+      ? JEDA_MAKS_LAMA_MS
+      : Math.min(JEDA_AWAL_MS * 2 ** Math.max(0, percobaan), JEDA_MAKS_AWAL_MS);
 
   switch (kode) {
     // Sesi sudah tidak sah lagi. Menyambung ulang dengan kredensial yang
@@ -108,22 +122,20 @@ export const putuskanReconnect = (
     return { sambungUlang: true, perluScanUlang: false, jedaMs: 0, catatan: 'QR kedaluwarsa, membuat QR baru.', tahapQr: true };
   }
 
-  // Sisanya gangguan sementara: jaringan putus, server WhatsApp sibuk.
-  if (percobaan >= MAKS_PERCOBAAN) {
-    return {
-      sambungUlang: false,
-      perluScanUlang: false,
-      jedaMs: 0,
-      catatan: `Gagal menyambung ulang setelah ${MAKS_PERCOBAAN} percobaan. Perlu disambungkan manual.`,
-      tahapQr: false,
-    };
-  }
-
+  // Sisanya gangguan sementara: jaringan putus, server WhatsApp sibuk,
+  // koneksi ditutup server. Sesinya masih sah, jadi terus dicoba sampai
+  // tersambung lagi; hanya jedanya yang melebar supaya tidak membanjiri
+  // WhatsApp saat gangguannya panjang.
+  const jedaAkhir = kode === ALASAN_PUTUS.unavailableService ? Math.max(jeda, JEDA_MIN_SIBUK_MS) : jeda;
+  const sebab = `Koneksi terputus (kode ${kode ?? 'tidak diketahui'})`;
   return {
     sambungUlang: true,
     perluScanUlang: false,
-    jedaMs: jeda,
-    catatan: `Koneksi terputus (kode ${kode ?? 'tidak diketahui'}). Menyambung ulang dalam ${Math.round(jeda / 1000)} detik.`,
+    jedaMs: jedaAkhir,
+    catatan:
+      percobaan >= PERCOBAAN_JEDA_LAMA
+        ? `${sebab}. Sudah ${percobaan} kali gagal; masih mencoba menyambung ulang setiap ${Math.round(jedaAkhir / 60_000)} menit.`
+        : `${sebab}. Menyambung ulang dalam ${Math.round(jedaAkhir / 1000)} detik.`,
     tahapQr: false,
   };
 };
