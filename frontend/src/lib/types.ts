@@ -260,6 +260,12 @@ export interface Percakapan {
   groupName: string | null;
   /** Peserta grup yang mengirim pesan ini. */
   participantNumber: string | null;
+  /**
+   * Siapa yang menulis pesan ini: lawan bicara atau peserta grup untuk pesan
+   * masuk, pemegang nomor untuk pesan keluar. null bila tidak tercatat (banyak
+   * pesan grup dari sinkron riwayat). Tidak ada sama sekali pada backend lama.
+   */
+  pengirim?: PengirimWa | null;
   /** Berkasnya ada di server; dibuka lewat /whatsapp/conversations/:id/media. */
   mediaTersedia: boolean;
   mediaMimeType: string | null;
@@ -269,24 +275,72 @@ export interface Percakapan {
   mediaStatus: string | null;
 }
 
-/** Satu utas di daftar percakapan: satu lawan bicara (atau grup) per nomor. */
-export interface UtasWa {
+export interface KaryawanWa {
+  id: string;
+  name: string;
+}
+
+/**
+ * Identitas seseorang di WhatsApp. `nomor` hanya berisi nomor asli (digit,
+ * 62…); `lid` adalah ID samaran WhatsApp. Bila yang diketahui hanya LID,
+ * `nomor` null — LID tidak boleh tampil sebagai nomor telepon.
+ */
+export interface PengirimWa {
+  nama: string | null;
+  nomor: string | null;
+  lid: string | null;
+  karyawan: KaryawanWa | null;
+}
+
+/** Satu nomor yang dipantau, untuk panel "pilih nomor dulu" (GET /whatsapp/nomor). */
+export interface NomorWa {
+  id: string;
+  label: string;
+  kind: "company" | "personal";
+  phoneNumber: string | null;
+  employee: { id: string; name: string; department: Ref | null } | null;
+  /** Status efektif sesi: connected | connecting | pending_scan | disconnected | inactive | never_linked. */
+  status: string;
+  /** `grup` selalu 0 bagi yang tidak boleh melihat grup. */
+  jumlah: { chatPribadi: number; grup: number; pesan: number; pesanHariIni: number };
+  pesanTerakhir: { timestamp: string; cuplikan: string; keluar: boolean } | null;
+}
+
+export type JenisUtas = "pribadi" | "grup";
+
+/** Satu chat di daftar milik satu nomor: satu lawan bicara atau satu grup. */
+export interface Utas {
   kunci: string;
   accountId: string;
+  jenis: JenisUtas;
+  /** Kunci arsip: nomor asli, LID bila belum terselesaikan, atau kunci grup. */
   contactNumber: string;
   groupJid: string | null;
-  groupName: string | null;
+  /** Lawan bicara chat pribadi; nama = nama di kontak ponsel, profil WhatsApp, atau nama bisnis. */
+  kontak: { nama: string | null; nomor: string | null; lid: string | null; karyawan: KaryawanWa | null } | null;
+  grup: { jid: string; nama: string | null } | null;
   jumlahPesan: number;
-  account: { id: string; label: string; phoneNumber: string | null; kind: string } | null;
-  relatedEmployee: { id: string; nik: string; name: string } | null;
   pesanTerakhir: {
+    id: string;
+    timestamp: string;
     cuplikan: string;
     messageType: string;
-    direction: "incoming" | "outgoing";
-    timestamp: string;
-    participantNumber: string | null;
-    adaBerkas: boolean;
+    keluar: boolean;
+    pengirim: { nama: string | null; nomor: string | null } | null;
+    adaBerkas?: boolean;
   } | null;
+  account: { id: string; label: string; phoneNumber: string | null };
+}
+
+export interface JumlahUtas {
+  semua: number;
+  pribadi: number;
+  grup: number;
+}
+
+/** Respons GET /whatsapp/threads. */
+export interface DaftarUtasWa extends Halaman<Utas> {
+  jumlah: JumlahUtas;
 }
 
 /** Angka ringkas untuk kepala halaman pemantauan WhatsApp. */

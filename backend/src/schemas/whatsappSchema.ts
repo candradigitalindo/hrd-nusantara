@@ -8,6 +8,16 @@ export const MESSAGE_TYPES = ['text', 'image', 'document', 'audio', 'video'] as 
 
 const nomor = z.string().trim().min(8).max(25);
 
+/**
+ * pantau=1: permintaan latar (polling) dari halaman yang sedang terbuka. Tidak
+ * dicatat di jejak audit — yang dicatat adalah saat orang membuka atau
+ * berpindah halaman, bukan setiap 15 detik selama halamannya terbuka.
+ */
+const pantauField = z
+  .enum(['0', '1', 'true', 'false'])
+  .optional()
+  .transform((v) => v === '1' || v === 'true');
+
 // --- Nomor perusahaan ---
 
 export const createAccountSchema = z
@@ -86,18 +96,28 @@ export const listConversationQuerySchema = z.object({
   search: z.string().trim().min(2).max(200).optional(),
   startDate: dateOnlyField.optional(),
   endDate: dateOnlyField.optional(),
+  pantau: pantauField,
 });
+
+export const JENIS_UTAS = ['semua', 'pribadi', 'grup'] as const;
 
 /**
  * Daftar utas percakapan: satu baris per lawan bicara (atau grup) per nomor.
- * Satu kotak pencarian: angka dianggap nomor kontak, selain itu kata di
- * dalam isi pesan.
+ * Satu kotak pencarian: angka dianggap nomor (kontak, LID, atau pengirim
+ * grup), selain itu nama kontak, nama grup, atau kata di dalam isi pesan.
  */
 export const listThreadQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(30),
   accountId: ulidField.optional(),
   q: z.string().trim().max(200).optional(),
+  jenis: z.enum(JENIS_UTAS).default('semua'),
+  pantau: pantauField,
+});
+
+/** Daftar nomor yang dipantau, untuk panel "pilih nomor dulu". */
+export const nomorQuerySchema = z.object({
+  pantau: pantauField,
 });
 
 /**
@@ -148,6 +168,7 @@ export type PurgeInput = z.infer<typeof purgeSchema>;
 export type DisconnectInput = z.infer<typeof disconnectSchema>;
 export type TarikRiwayatInput = z.infer<typeof tarikRiwayatSchema>;
 export type ListThreadQuery = z.infer<typeof listThreadQuerySchema>;
+export type NomorQuery = z.infer<typeof nomorQuerySchema>;
 
 // --- Kepatuhan: setiap karyawan wajib menautkan WhatsApp-nya ---
 

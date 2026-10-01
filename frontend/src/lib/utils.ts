@@ -132,6 +132,40 @@ export const LABEL_LINGKUP: Record<string, string> = {
   EMPLOYEE: "Diri sendiri",
 };
 
+/**
+ * Digit yang tampak seperti LID WhatsApp (ID samaran pengganti nomor), bukan
+ * nomor telepon: 15 digit atau lebih, atau 14 digit yang tidak diawali 62.
+ * Aturannya sama dengan penanda LID di backend (pemulihanLid).
+ */
+const polaLid = (digit: string) => digit.length >= 15 || (digit.length === 14 && !digit.startsWith("62"));
+
+/**
+ * Benar bila yang diketahui dari seorang kontak hanya LID-nya: nomornya
+ * kosong padahal LID ada, nomornya sama dengan LID (belum terselesaikan),
+ * atau digitnya sendiri berpola LID (baris lama sebelum kolom LID ada).
+ */
+export const tampakLid = (nomor: string | null | undefined, lid?: string | null): boolean => {
+  const n = (nomor ?? "").replace(/\D/g, "");
+  if (!n) return Boolean(lid);
+  if (lid && n === lid.replace(/\D/g, "")) return true;
+  return polaLid(n);
+};
+
+/**
+ * Nomor WhatsApp dari digit tersimpan: "62812345678901" → "+62 812-3456-78901".
+ * Nomor di luar Indonesia cukup "+<digit>". LID tidak pernah diberi "+":
+ * pemanggil semestinya sudah menyaringnya lewat tampakLid, ini hanya jaring
+ * pengaman supaya ID samaran tidak pernah terbaca sebagai nomor telepon.
+ */
+export const formatNomorWa = (digit: string | null | undefined): string => {
+  const d = (digit ?? "").replace(/\D/g, "");
+  if (!d) return "—";
+  if (polaLid(d)) return d;
+  if (!d.startsWith("62") || d.length < 9) return `+${d}`;
+  const sisa = d.slice(2);
+  return `+62 ${[sisa.slice(0, 3), sisa.slice(3, 7), sisa.slice(7)].filter(Boolean).join("-")}`;
+};
+
 export const inisial = (nama: string) =>
   nama
     .split(/\s+/)

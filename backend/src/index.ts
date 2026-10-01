@@ -7,6 +7,7 @@ import { mulaiPush, hentikanPush } from './services/notification/bootstrap';
 import { pastikanPeranSistem } from './services/roles/system';
 import { mulaiPembersihLokasi, hentikanPembersihLokasi } from './controllers/locationTrackingController';
 import { mulaiPerpanjanganPenugasan, hentikanPerpanjanganPenugasan } from './services/shiftAssignment';
+import { mulaiPemulihanLid, hentikanPemulihanLid } from './services/whatsapp/pemulihanLid';
 
 const app = createApp();
 
@@ -30,6 +31,9 @@ const server = app.listen(env.PORT, () => {
   mulaiDriverWhatsApp().catch((error) => {
     console.warn('[whatsapp] driver gagal dinyalakan:', error);
   });
+  // Arsip lama yang menyimpan LID seolah nomor telepon diperbaiki di latar,
+  // sesaat setelah boot lalu tiap jam. Tidak menahan API.
+  mulaiPemulihanLid();
 });
 
 const shutdown = (signal: string) => {
@@ -39,6 +43,7 @@ const shutdown = (signal: string) => {
     hentikanPush();
     hentikanPembersihLokasi();
     hentikanPerpanjanganPenugasan();
+    hentikanPemulihanLid();
     await prisma.$disconnect();
     process.exit(0);
   });

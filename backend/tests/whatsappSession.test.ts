@@ -634,6 +634,38 @@ describe('Menarik percakapan lama atas permintaan', () => {
     expect(pribadi?.waktu).toBe(1789000000);
   });
 
+  it('chat ber-LID diminta lewat JID LID-nya, yang paling baru bergerak didahulukan', async () => {
+    const id = await siapkan();
+    soketTerakhir!.pancarkan('messages.upsert', {
+      type: 'notify',
+      messages: [
+        pesanBaileys({ key: { remoteJid: '214751418265748@lid', fromMe: false, id: 'L-1' }, messageTimestamp: 1789000100 }),
+        pesanBaileys({ key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id: 'WA-1' }, messageTimestamp: 1789000000 }),
+        pesanBaileys({
+          key: { remoteJid: '12036301234567890@g.us', fromMe: false, id: 'G-1', participant: '88014471852141@lid' },
+          messageTimestamp: 1789000200,
+        }),
+      ],
+    });
+    await tungguEventSelesai();
+
+    expectStatus(await tarik(id, superToken), 200);
+    const permintaan = soketTerakhir!.permintaanRiwayat;
+    // "<lid>@s.whatsapp.net" adalah JID yang tidak ada; dan urutan nomor dulu
+    // mendahulukan grup dan LID di atas nomor 62… pada akun yang ramai.
+    expect(permintaan.map((p) => p.kunci.remoteJid)).toEqual([
+      '12036301234567890@g.us',
+      '214751418265748@lid',
+      '628222222222@s.whatsapp.net',
+    ]);
+    expect(permintaan[0].kunci.participant).toBe('88014471852141@lid');
+
+    // Kontak yang hanya dikenal lewat LID bisa disasar dengan LID-nya.
+    soketTerakhir!.permintaanRiwayat = [];
+    expectStatus(await tarik(id, superToken, { contactNumber: '214751418265748' }), 200);
+    expect(soketTerakhir!.permintaanRiwayat.map((p) => p.kunci.remoteJid)).toEqual(['214751418265748@lid']);
+  });
+
   it('bisa dibatasi ke satu nomor kontak saja', async () => {
     const id = await siapkan();
     soketTerakhir!.pancarkan('messages.upsert', {

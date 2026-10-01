@@ -36,8 +36,13 @@ export interface AsalGrup {
   jid: string;
   /** Angka dari JID; dipakai sebagai contactNumber supaya satu grup satu utas. */
   kunci: string;
-  /** Peserta yang mengirim; null bila WhatsApp tidak menyebutkannya. */
+  /**
+   * Peserta yang mengirim; null bila WhatsApp tidak menyebutkannya. Berisi
+   * digit LID bila nomor aslinya belum diketahui (sama dengan participantLid).
+   */
   participantNumber: string | null;
+  /** Digit LID peserta, bila WhatsApp menyebutnya lewat LID. */
+  participantLid?: string | null;
   nama?: string | null;
 }
 
@@ -52,11 +57,18 @@ export interface PesanMasuk {
   /** Keterangan berkas dari pesannya; berkas fisiknya menyusul lewat `media`. */
   media?: { mimeType: string | null; fileName: string | null };
   grup?: AsalGrup;
+  /**
+   * Digit LID lawan bicara chat pribadi yang dialamatkan lewat LID. Bila
+   * nomor aslinya belum diketahui, from/to berisi digit yang sama.
+   */
+  contactLid?: string | null;
+  /** Nama profil WhatsApp pengirim (pesan masuk saja). */
+  senderName?: string | null;
 }
 
 export type HasilIngest =
   | { status: 'tersimpan'; conversationId: string; direction: string }
-  | { status: 'duplikat'; conversationId: string | null }
+  | { status: 'duplikat'; conversationId: string | null; ditambal?: boolean }
   | { status: 'ditolak'; alasan: string };
 
 export interface OpsiIngest {
@@ -70,6 +82,11 @@ export interface OpsiIngest {
    * mana yang menerima, jadi memakai penentuan lingkup lewat nomor.
    */
   accountId?: string;
+  /**
+   * Pesan ini sudah diketahui ada di arsip akun ini (riwayat yang ditarik
+   * ulang): langsung ditambal, tanpa mencoba menyimpannya lagi.
+   */
+  sudahAda?: boolean;
 }
 
 type Lingkup = { contactNumber: string; direction: 'incoming' | 'outgoing' };
@@ -122,6 +139,8 @@ export const ingestMessage = async (pesan: PesanMasuk, opsi: OpsiIngest = {}): P
     lingkup = { contactNumber: hasil.contactNumber!, direction: hasil.direction! };
   }
 
+  if (opsi.sudahAda) return tambalDuplikat(akun.id, pesan, lingkup);
+
   try {
     const percakapan = await prisma.whatsAppConversation.create({
       data: {
@@ -142,6 +161,9 @@ export const ingestMessage = async (pesan: PesanMasuk, opsi: OpsiIngest = {}): P
         groupJid: pesan.grup?.jid ?? null,
         groupName: pesan.grup?.nama ?? null,
         participantNumber: pesan.grup?.participantNumber ?? null,
+        participantLid: pesan.grup?.participantLid ?? null,
+        contactLid: pesan.grup ? null : (pesan.contactLid ?? null),
+        senderName: pesan.senderName ?? null,
         mediaPath: opsi.berkas?.path ?? null,
         mediaMimeType: opsi.berkas?.mimeType ?? pesan.media?.mimeType ?? null,
         mediaSizeBytes: opsi.berkas?.sizeBytes ?? null,
@@ -157,14 +179,78 @@ export const ingestMessage = async (pesan: PesanMasuk, opsi: OpsiIngest = {}): P
     return { status: 'tersimpan', conversationId: percakapan.id, direction: percakapan.direction };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      const ada = await prisma.whatsAppConversation.findUnique({
-        where: { accountId_externalMessageId: { accountId: akun.id, externalMessageId: pesan.externalMessageId } },
-        select: { id: true },
-      });
-      return { status: 'duplikat', conversationId: ada?.id ?? null };
+      return tambalDuplikat(akun.id, pesan, lingkup);
     }
     throw error;
   }
+};
+
+/**
+ * Pesan yang sudah ada di arsip: yang masih kosong atau masih LID ditambal
+ * dari salinan yang baru datang.
+ *
+ * Pesan riwayat yang ditarik ulang membawa pengirim grup yang dulu tidak
+ * tercatat, dan pesan yang dulu hanya dikenal lewat LID kini bisa membawa
+ * nomor aslinya. Tanpa ini, "Tarik riwayat" tidak pernah memperbaiki
+ * apa pun: semua yang datang dianggap duplikat lalu dibuang. Yang sudah
+ * terisi nomor asli tidak pernah ditimpa.
+ */
+const tambalDuplikat = async (accountId: string, pesan: PesanMasuk, lingkup: Lingkup): Promise<HasilIngest> => {
+  const ada = await prisma.whatsAppConversation.findUnique({
+    where: { accountId_externalMessageId: { accountId, externalMessageId: pesan.externalMessageId } },
+    select: {
+      id: true,
+      contactNumber: true,
+      contactLid: true,
+      groupJid: true,
+      groupName: true,
+      participantNumber: true,
+      participantLid: true,
+      senderName: true,
+      senderWhatsappNumber: true,
+      receiverWhatsappNumber: true,
+      direction: true,
+    },
+  });
+  if (!ada) return { status: 'duplikat', conversationId: null };
+
+  const data: Prisma.WhatsAppConversationUpdateInput = {};
+
+  if (pesan.grup) {
+    if (ada.groupJid === pesan.grup.jid) {
+      const nomor = pesan.grup.participantNumber;
+      const lid = pesan.grup.participantLid ?? null;
+      const nomorAsli = nomor && nomor !== lid ? nomor : null;
+      const lamaMasihLid = !!ada.participantNumber && ada.participantNumber === (ada.participantLid ?? lid);
+      if (nomor && (ada.participantNumber === null || (nomorAsli && lamaMasihLid && ada.participantNumber !== nomorAsli))) {
+        data.participantNumber = nomor;
+        // Pesan masuk tanpa peserta dulu dicatat atas nama grupnya.
+        if (
+          ada.direction === 'incoming' &&
+          (ada.senderWhatsappNumber === ada.contactNumber || ada.senderWhatsappNumber === ada.participantNumber)
+        ) {
+          data.senderWhatsappNumber = nomor;
+        }
+      }
+      if (lid && !ada.participantLid) data.participantLid = lid;
+    }
+    if (!ada.groupName && pesan.grup.nama) data.groupName = pesan.grup.nama;
+  } else if (!ada.groupJid) {
+    const lid = pesan.contactLid ?? null;
+    const nomorAsli = lid && lingkup.contactNumber !== lid ? lingkup.contactNumber : null;
+    if (lid && nomorAsli && ada.contactNumber === lid) {
+      data.contactNumber = nomorAsli;
+      if (ada.senderWhatsappNumber === lid) data.senderWhatsappNumber = nomorAsli;
+      if (ada.receiverWhatsappNumber === lid) data.receiverWhatsappNumber = nomorAsli;
+    }
+    if (lid && !ada.contactLid && (ada.contactNumber === lid || ada.contactNumber === nomorAsli)) data.contactLid = lid;
+  }
+
+  if (!ada.senderName && pesan.senderName) data.senderName = pesan.senderName;
+
+  if (Object.keys(data).length === 0) return { status: 'duplikat', conversationId: ada.id };
+  await prisma.whatsAppConversation.update({ where: { id: ada.id }, data });
+  return { status: 'duplikat', conversationId: ada.id, ditambal: true };
 };
 
 // --- Kejadian sesi ---

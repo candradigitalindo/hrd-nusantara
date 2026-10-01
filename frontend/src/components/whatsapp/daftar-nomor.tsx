@@ -5,7 +5,7 @@ import { BellRing, Building2, History, LogOut, MessagesSquare, Plus, QrCode, Sma
 import { Button, TombolAksi } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { SkeletonBaris } from "@/components/ui/skeleton";
-import { cn, formatRelatif } from "@/lib/utils";
+import { cn, formatNomorWa, formatRelatif } from "@/lib/utils";
 import type { AkunWhatsApp, BarisKepatuhanWa, Departemen, StatusTautanWa } from "@/lib/types";
 
 export type SaringanNomor = "semua" | "perlu" | "tersambung";
@@ -24,16 +24,25 @@ interface BarisNomor {
   akun: AkunWhatsApp | null;
 }
 
-const STATUS: Record<StatusTautanWa, { label: string; titik: string; teks: string }> = {
+export const STATUS: Record<StatusTautanWa, { label: string; titik: string; teks: string }> = {
   connected: { label: "Tersambung", titik: "bg-success", teks: "text-success" },
   pending_scan: { label: "Perlu scan ulang", titik: "bg-warning", teks: "text-warning" },
   disconnected: { label: "Terputus", titik: "bg-danger", teks: "text-danger" },
   never_linked: { label: "Belum ditautkan", titik: "bg-danger", teks: "text-danger" },
 };
 
-/** Status sesi nomor perusahaan dibakukan ke empat keadaan yang sama dengan nomor karyawan. */
-const statusAkun = (s: string): StatusTautanWa =>
-  s === "connected" ? "connected" : s === "disconnected" ? "disconnected" : "pending_scan";
+/**
+ * Status sesi (tersimpan maupun efektif) dibakukan ke empat keadaan yang sama
+ * dengan nomor karyawan. Nomor yang dinonaktifkan dihitung terputus.
+ */
+export const statusAkun = (s: string): StatusTautanWa =>
+  s === "connected"
+    ? "connected"
+    : s === "disconnected" || s === "inactive"
+      ? "disconnected"
+      : s === "never_linked"
+        ? "never_linked"
+        : "pending_scan";
 
 /** Kalimat waktu yang paling berguna untuk keadaan itu. */
 const waktuStatus = (b: BarisNomor) => {
@@ -204,7 +213,7 @@ export const PanelNomor = ({
                   </p>
                   <p className="truncate text-xs text-muted">
                     {b.keterangan}
-                    {b.nomor ? <span className="tabular-nums"> · +{b.nomor}</span> : ""}
+                    {b.nomor ? <span className="tabular-nums"> · {formatNomorWa(b.nomor)}</span> : ""}
                   </p>
                   <p className="mt-0.5 truncate text-xs">
                     <span className={cn("font-medium", st.teks)}>{st.label}</span>

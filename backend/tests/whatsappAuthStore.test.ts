@@ -1,10 +1,11 @@
 import { prisma, resetDatabase } from './helpers/db';
-import { isCiphertext } from '../src/utils/fieldCrypto';
+import { encryptField, isCiphertext } from '../src/utils/fieldCrypto';
 import { generateULID } from '../src/utils/generateULID';
 import {
   akunDenganTautanTersimpan,
   hapusKredensialTersimpan,
   muatAuthState,
+  salinPemetaanTersimpan,
   type AlatBaileys,
 } from '../src/services/whatsapp/authStore';
 import { akunUntukDibukaUlang } from '../src/services/whatsapp/bootstrap';
@@ -254,5 +255,92 @@ describe('Nomor yang dibuka ulang saat backend mulai', () => {
     });
 
     expect(await akunDenganTautanTersimpan([id])).toEqual(new Set());
+  });
+});
+
+describe('Pemetaan LID -> nomor dicerminkan ke tabel permanen', () => {
+  const LID = '214751418265748';
+  const NOMOR = '628222222222';
+
+  const peta = async () =>
+    (await prisma.whatsAppLidMap.findMany({ orderBy: { lid: 'asc' } })).map((m) => ({ lid: m.lid, pn: m.pn, source: m.source }));
+
+  it('setiap tulisan lid-mapping Baileys ikut tercatat permanen', async () => {
+    const id = await buatAkun();
+    const { state } = await muatAuthState(id, alat);
+
+    // Bentuk persis seperti LIDMappingStore Baileys menulisnya.
+    await state.keys.set({ 'lid-mapping': { [NOMOR]: LID, [`${LID}_reverse`]: NOMOR } });
+
+    expect(await peta()).toEqual([{ lid: LID, pn: NOMOR, source: 'authkey' }]);
+    // Store Baileys sendiri tetap utuh.
+    expect(await state.keys.get('lid-mapping', [`${LID}_reverse`])).toEqual({ [`${LID}_reverse`]: NOMOR });
+  });
+
+  it('tetap ada setelah sesi di-logout dan store-nya dihapus', async () => {
+    // Inilah alasannya: hapusKredensialTersimpan membuang SELURUH kunci akun,
+    // termasuk pemetaan yang tidak bisa ditanyakan ulang ke WhatsApp.
+    const id = await buatAkun();
+    const { state } = await muatAuthState(id, alat);
+    await state.keys.set({ 'lid-mapping': { [NOMOR]: LID, [`${LID}_reverse`]: NOMOR } });
+
+    await hapusKredensialTersimpan(id);
+
+    expect(await jumlahBaris(id)).toBe(0);
+    expect(await peta()).toEqual([{ lid: LID, pn: NOMOR, source: 'authkey' }]);
+  });
+
+  it('kategori lain tidak tercermin', async () => {
+    const id = await buatAkun();
+    const { state } = await muatAuthState(id, alat);
+    await state.keys.set({ session: { [`${LID}.0`]: { a: 1 } }, 'pre-key': { '1': { private: Buffer.from('x') } } });
+
+    expect(await peta()).toEqual([]);
+  });
+
+  it('menyalin pemetaan lama dari semua akun, dan aman diulang', async () => {
+    const a = await buatAkun();
+    const b = await buatAkun();
+    // Ditulis langsung, seperti yang sudah ada sebelum pencerminan dipasang.
+    const tulis = (accountId: string, keyId: string, nilai: string) =>
+      prisma.whatsAppAuthKey.create({
+        data: { id: generateULID(), accountId, category: 'lid-mapping', keyId, value: encryptField(JSON.stringify(nilai)) },
+      });
+    await tulis(a, `${LID}_reverse`, NOMOR);
+    await tulis(a, NOMOR, LID);
+    await tulis(b, '628333333333', '88014471852141');
+    await prisma.whatsAppAuthKey.create({
+      data: { id: generateULID(), accountId: b, category: 'lid-mapping', keyId: '1_reverse', value: 'v1.rusak.rusak.rusak' },
+    });
+
+    const pertama = await salinPemetaanTersimpan();
+    expect(pertama).toMatchObject({ dibaca: 4, dilewati: 1, tersimpan: 2, konflik: 0 });
+    expect(await peta()).toEqual([
+      { lid: LID, pn: NOMOR, source: 'authkey' },
+      { lid: '88014471852141', pn: '628333333333', source: 'authkey' },
+    ]);
+
+    const kedua = await salinPemetaanTersimpan();
+    expect(kedua).toMatchObject({ tersimpan: 0, konflik: 0 });
+  });
+
+  it('pemetaan baru dari pesan live tidak ditimpa salinan store yang lebih tua', async () => {
+    const id = await buatAkun();
+    await prisma.whatsAppAuthKey.create({
+      data: {
+        id: generateULID(),
+        accountId: id,
+        category: 'lid-mapping',
+        keyId: `${LID}_reverse`,
+        value: encryptField(JSON.stringify(NOMOR)),
+        updatedAt: new Date(Date.now() - 60_000),
+      },
+    });
+    // Pengguna ganti nomor; yang terbaru dipelajari dari pesan live.
+    await prisma.whatsAppLidMap.create({ data: { lid: LID, pn: '628999999999', source: 'alt' } });
+
+    await salinPemetaanTersimpan();
+
+    expect(await peta()).toEqual([{ lid: LID, pn: '628999999999', source: 'alt' }]);
   });
 });

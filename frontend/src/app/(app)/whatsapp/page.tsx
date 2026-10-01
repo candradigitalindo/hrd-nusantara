@@ -9,6 +9,7 @@ import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { PanelPercakapan } from "@/components/whatsapp/percakapan";
+import { pilihNomorWa } from "@/components/whatsapp/nomor-terpilih";
 import { PanelNomor, type SaringanNomor } from "@/components/whatsapp/daftar-nomor";
 import { DialogDaftarNomor, DialogQr, DialogTarikRiwayat } from "@/components/whatsapp/dialog-nomor";
 import { cn, formatRelatif, formatTanggal } from "@/lib/utils";
@@ -19,33 +20,44 @@ const SEHARI_MS = 24 * 60 * 60 * 1000;
 /** "sekitar 2 jam yang lalu" → "2 jam lalu": muat di satu sel ringkasan, juga di ponsel. */
 const relatifRingkas = (nilai: string) => formatRelatif(nilai).replace(/^(sekitar|kurang dari) /, "").replace(" yang lalu", " lalu");
 
-/** Satu angka di kepala halaman. Bisa ditekan bila angka itu menunjuk ke tindakan. */
+/**
+ * Satu angka di kepala halaman, satu baris: angka lalu labelnya. Ringkas
+ * supaya panel percakapan di bawahnya tidak terdorong jauh; rincian angka
+ * per nomor ada di panel nomor. Bisa ditekan bila angka itu menunjuk ke
+ * tindakan.
+ */
 const Angka = ({
   label,
   nilai,
-  keterangan,
+  rincian,
   nada,
   onClick,
 }: {
   label: string;
   nilai: React.ReactNode;
-  keterangan?: React.ReactNode;
+  /** Keterangan tambahan: tooltip, dan ikut terbaca pembaca layar. */
+  rincian?: string;
   nada?: "peringatan" | "bahaya";
   onClick?: () => void;
 }) => {
   const isi = (
     <>
-      <p className="text-xs text-muted">{label}</p>
-      <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", nada === "peringatan" && "text-warning", nada === "bahaya" && "text-danger")}>{nilai}</p>
-      {keterangan && <p className="mt-0.5 truncate text-xs text-muted">{keterangan}</p>}
+      <span className={cn("shrink-0 text-base font-semibold tabular-nums sm:text-lg", nada === "peringatan" && "text-warning", nada === "bahaya" && "text-danger")}>{nilai}</span>
+      <span className={cn("min-w-0 text-xs md:truncate", nada === "bahaya" ? "font-medium text-danger" : "text-muted")}>
+        {label}
+        {rincian && <span className="sr-only"> ({rincian})</span>}
+      </span>
     </>
   );
+  // Di ponsel (dua kolom) label turun ke bawah angkanya, bukan terpotong. Dari
+  // md ke atas tetap satu baris: tinggi panel percakapan dihitung dari situ.
+  const kelas = "flex min-w-0 flex-wrap items-baseline gap-x-2 bg-surface px-3 py-2 md:flex-nowrap";
   return onClick ? (
-    <button type="button" onClick={onClick} className="min-w-0 bg-surface px-4 py-3 text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+    <button type="button" title={rincian} onClick={onClick} className={cn(kelas, "text-left transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring")}>
       {isi}
     </button>
   ) : (
-    <div className="min-w-0 bg-surface px-4 py-3">{isi}</div>
+    <div className={kelas} title={rincian}>{isi}</div>
   );
 };
 
@@ -60,7 +72,6 @@ export default function HalamanWhatsApp() {
 
   const [tab, setTab] = React.useState<"percakapan" | "nomor">("percakapan");
   const [saringan, setSaringan] = React.useState<SaringanNomor>("semua");
-  const [accountId, setAccountId] = React.useState("");
   const [formBuka, setFormBuka] = React.useState(false);
   const [qrUntuk, setQrUntuk] = React.useState<AkunWhatsApp | null>(null);
   const [tarikUntuk, setTarikUntuk] = React.useState<AkunWhatsApp | null>(null);
@@ -136,34 +147,35 @@ export default function HalamanWhatsApp() {
     <>
       <PageHeader
         title="Pemantauan WhatsApp"
-        description="Percakapan nomor karyawan dan nomor perusahaan, tersimpan terenkripsi. Membaca di sini tidak menandai pesan terbaca di ponsel."
+        // Cukup satu baris di layar lebar: tinggi panel percakapan dihitung dari situ.
+        description="Percakapan nomor karyawan dan nomor perusahaan, tersimpan terenkripsi."
       />
 
       {/* gap-px di atas latar garis: pembatas antarsel rapi di 2 maupun 4 kolom. */}
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border md:grid-cols-4">
         <Angka
-          label="Nomor tersambung"
+          label="nomor tersambung"
           nilai={kepatuhan.isLoading ? "—" : `${nomorTersambung}/${nomorTotal}`}
-          keterangan={nomorTotal ? `${Math.round((nomorTersambung / nomorTotal) * 100)}% terpantau` : "Belum ada nomor"}
+          rincian={nomorTotal ? `${Math.round((nomorTersambung / nomorTotal) * 100)}% terpantau` : "Belum ada nomor"}
           onClick={() => bukaNomor("tersambung")}
         />
         <Angka
-          label="Perlu tindakan"
+          label="perlu tindakan"
           nilai={kepatuhan.isLoading ? "—" : perlu}
           nada={perlu > 0 ? "peringatan" : undefined}
-          keterangan={perlu > 0 ? "Lihat daftarnya" : "Semua nomor tersambung"}
+          rincian={perlu > 0 ? "Lihat daftarnya" : "Semua nomor tersambung"}
           onClick={() => bukaNomor("perlu")}
         />
         <Angka
-          label="Pesan hari ini"
+          label="pesan hari ini"
           nilai={r ? r.pesanHariIni.toLocaleString("id-ID") : "—"}
-          keterangan={r ? `${r.pesanTujuhHari.toLocaleString("id-ID")} dalam 7 hari · ${r.totalPesan.toLocaleString("id-ID")} total` : undefined}
+          rincian={r ? `${r.pesanTujuhHari.toLocaleString("id-ID")} dalam 7 hari · ${r.totalPesan.toLocaleString("id-ID")} total` : undefined}
         />
         <Angka
-          label="Pesan terakhir"
+          label={sepi ? "sepi >24 jam, periksa sambungan" : "pesan terakhir"}
           nilai={r?.pesanTerakhir ? relatifRingkas(r.pesanTerakhir) : "Belum ada"}
           nada={sepi ? "bahaya" : undefined}
-          keterangan={sepi ? "Sepi >24 jam — periksa sambungan" : r?.pesanTerakhir ? formatTanggal(r.pesanTerakhir, "EEEE, d MMM HH:mm") : undefined}
+          rincian={r?.pesanTerakhir ? formatTanggal(r.pesanTerakhir, "EEEE, d MMM HH:mm") : undefined}
         />
       </div>
 
@@ -186,15 +198,7 @@ export default function HalamanWhatsApp() {
       </div>
 
       {tab === "percakapan" ? (
-        <PanelPercakapan
-          akun={akun.data ?? []}
-          accountId={accountId}
-          onAccountId={setAccountId}
-          seluruhIsi={seluruhIsi}
-          nomorTersambung={nomorTersambung}
-          nomorTotal={nomorTotal}
-          onLihatNomor={() => bukaNomor("perlu")}
-        />
+        <PanelPercakapan seluruhIsi={seluruhIsi} onKelolaNomor={() => bukaNomor("semua")} />
       ) : (
         <PanelNomor
           kepatuhan={kepatuhan.data?.data ?? []}
@@ -213,7 +217,7 @@ export default function HalamanWhatsApp() {
           onPutus={(a, logout) => setPutus({ akun: a, logout })}
           onTarik={setTarikUntuk}
           onLihatPercakapan={(id) => {
-            setAccountId(id);
+            pilihNomorWa(id);
             setTab("percakapan");
           }}
           onDaftarkan={() => setFormBuka(true)}

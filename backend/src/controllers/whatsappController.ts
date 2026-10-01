@@ -11,6 +11,14 @@ import fs from 'fs/promises';
 import { DateTime } from 'luxon';
 import { ingestMessage, applySessionEvent } from '../services/whatsapp/ingest';
 import { connectAccount, disconnectAccount, getSession, getQrString, listGroups, statusEfektif, tarikRiwayat, GalatSesiWhatsApp } from '../services/whatsapp/session';
+import {
+  identitasDari,
+  muatBukuNama,
+  muatKaryawanPerNomor,
+  cuplikanDari,
+  type CariNama,
+  type KunciKontak,
+} from '../services/whatsapp/identitas';
 import { kirimKeKaryawan } from '../services/notification/push';
 import { toDataURL } from 'qrcode';
 import { env } from '../config/env';
@@ -26,6 +34,7 @@ import type {
   DisconnectInput,
   TarikRiwayatInput,
   ListThreadQuery,
+  NomorQuery,
   ComplianceQuery,
   RemindInput,
   AttendanceGroupInput,
@@ -220,6 +229,9 @@ const conversationSelect = {
   groupJid: true,
   groupName: true,
   participantNumber: true,
+  contactLid: true,
+  participantLid: true,
+  senderName: true,
   mediaPath: true,
   mediaMimeType: true,
   mediaSizeBytes: true,
@@ -231,15 +243,59 @@ const conversationSelect = {
 
 type ConversationRow = Prisma.WhatsAppConversationGetPayload<{ select: typeof conversationSelect }>;
 
+/** Pengirim satu pesan seperti yang ditampilkan: nama, nomor asli (atau null bila hanya LID), dan karyawan. */
+interface PengirimDTO {
+  nama: string | null;
+  nomor: string | null;
+  lid: string | null;
+  karyawan: { id: string; name: string } | null;
+}
+
+/** Siapa pengirim pesan masuk: lawan bicara (pribadi) atau peserta grup. null bila WhatsApp tidak menyebutnya. */
+const identitasPengirimMasuk = (row: Pick<ConversationRow, 'groupJid' | 'contactNumber' | 'contactLid' | 'participantNumber' | 'participantLid'>) =>
+  row.groupJid
+    ? row.participantNumber
+      ? identitasDari(row.participantNumber, row.participantLid)
+      : null
+    : identitasDari(row.contactNumber, row.contactLid);
+
+const pengirimDari = (
+  row: ConversationRow,
+  cariNama: CariNama,
+  karyawan: Map<string, { id: string; name: string }>
+): PengirimDTO | null => {
+  if (row.direction === 'outgoing') {
+    // Yang mengirim adalah nomor yang dipantau, atas nama pemegangnya saat itu.
+    return {
+      nama: row.relatedEmployee?.name ?? row.account.label,
+      nomor: row.account.phoneNumber,
+      lid: null,
+      karyawan: row.relatedEmployee ? { id: row.relatedEmployee.id, name: row.relatedEmployee.name } : null,
+    };
+  }
+  const siapa = identitasPengirimMasuk(row);
+  if (!siapa) return row.senderName ? { nama: row.senderName, nomor: null, lid: null, karyawan: null } : null;
+  return {
+    nama: cariNama({ accountId: row.accountId, ...siapa }) ?? row.senderName,
+    nomor: siapa.nomor,
+    lid: siapa.lid,
+    karyawan: siapa.nomor ? (karyawan.get(siapa.nomor) ?? null) : null,
+  };
+};
+
 /**
  * Lokasi berkas tidak pernah ikut keluar — yang dikirim hanya penanda bahwa
  * berkasnya ada. Membukanya lewat GET /whatsapp/conversations/:id/media,
  * yang memeriksa peran dan mencatat siapa membuka apa.
  */
-const conversationDTO = ({ mediaPath, messageBody, ...row }: ConversationRow) => ({
+const conversationDTO = (
+  { mediaPath, messageBody, ...row }: ConversationRow,
+  pengirim: PengirimDTO | null = null
+) => ({
   ...row,
   messageBody: decryptField(messageBody),
   mediaTersedia: mediaPath !== null,
+  pengirim,
 });
 
 /**
@@ -254,12 +310,19 @@ const bolehSeluruhIsi = (role: Role) => role === Role.SUPER_ADMIN;
 
 export const getConversations = async (req: Request, res: Response) => {
   const query = req.query as unknown as ListConversationQuery;
+  const bolehGrup = bolehSeluruhIsi(req.user!.role);
+
+  // Penyaring groupJid tidak boleh membuka pintu grup bagi selain Super Admin:
+  // dulu ?groupJid=… menimpa penyaring groupJid: null di bawah.
+  if (query.groupJid && !bolehGrup) {
+    return res.json({ data: [], pagination: { page: query.page, limit: query.limit, total: 0, totalPages: 1 } });
+  }
 
   const where: Prisma.WhatsAppConversationWhereInput = {
     ...(query.accountId ? { accountId: query.accountId } : {}),
     ...(query.employeeId ? { employeeId: query.employeeId } : {}),
     ...(query.direction ? { direction: query.direction } : {}),
-    ...(bolehSeluruhIsi(req.user!.role) ? {} : { groupJid: null }),
+    ...(bolehGrup ? {} : { groupJid: null }),
     ...(query.groupJid ? { groupJid: query.groupJid } : {}),
   };
 
@@ -309,28 +372,44 @@ export const getConversations = async (req: Request, res: Response) => {
   // Arsip ini memuat percakapan pelanggan dan tamu yang tidak pernah menjadi
   // bagian dari perusahaan. Siapa membaca apa, dan dengan penyaring apa,
   // harus bisa dijawab saat diaudit — itu inti pertanggungjawaban UU PDP.
-  res.locals.audit = {
-    action: 'whatsapp.conversations.read',
-    entity: 'WhatsAppConversation',
-    summary: `Membaca ${data.length} percakapan dari ${total} hasil`,
-    metadata: {
-      penyaring: {
-        accountId: query.accountId,
-        employeeId: query.employeeId,
-        contactNumber: query.contactNumber,
-        direction: query.direction,
-        pencarian: query.search,
-        startDate: query.startDate,
-        endDate: query.endDate,
+  // Penyegaran latar (pantau=1) dari halaman yang sudah terbuka tidak
+  // dicatat ulang: pembukaannya sudah tercatat.
+  if (!query.pantau) {
+    res.locals.audit = {
+      action: 'whatsapp.conversations.read',
+      entity: 'WhatsAppConversation',
+      summary: `Membaca ${data.length} percakapan dari ${total} hasil`,
+      metadata: {
+        penyaring: {
+          accountId: query.accountId,
+          employeeId: query.employeeId,
+          contactNumber: query.contactNumber,
+          groupJid: query.groupJid,
+          direction: query.direction,
+          pencarian: query.search,
+          startDate: query.startDate,
+          endDate: query.endDate,
+        },
+        total,
       },
-      total,
-    },
-  };
+    };
+  }
+
+  // Nama dan status karyawan pengirim, dengan satu kueri masing-masing.
+  const pengirimMasuk = data.flatMap((row) => {
+    if (row.direction === 'outgoing') return [];
+    const siapa = identitasPengirimMasuk(row);
+    return siapa ? [{ accountId: row.accountId, ...siapa }] : [];
+  });
+  const [cariNama, karyawan] = await Promise.all([
+    muatBukuNama(pengirimMasuk),
+    muatKaryawanPerNomor(pengirimMasuk.map((p) => p.nomor)),
+  ]);
 
   res.json({
     // Token pencarian tidak pernah ikut keluar: tidak berguna bagi pembaca
     // dan hanya memperbesar permukaan kalau responsnya bocor.
-    data: data.map(conversationDTO),
+    data: data.map((row) => conversationDTO(row, pengirimDari(row, cariNama, karyawan))),
     pagination: {
       page: query.page,
       limit: query.limit,
@@ -342,27 +421,99 @@ export const getConversations = async (req: Request, res: Response) => {
 
 // ============ Utas percakapan ============
 
+/** ILIKE '%teks%' dengan tanda % dan _ dari pengguna diperlakukan sebagai huruf biasa. */
+const polaMirip = (teks: string) => `%${teks.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+
+interface Pencarian {
+  /** CTE tambahan (diakhiri koma) yang dipakai kondisi; ditaruh paling depan di WITH. */
+  cte: Prisma.Sql;
+  /** Kondisi per pesan; sebuah utas cocok bila salah satu pesannya cocok. */
+  kondisi: Prisma.Sql;
+}
+
 /**
- * Pencarian satu kotak: yang tampak seperti nomor dicocokkan ke nomor kontak,
- * selain itu dicari sebagai kata di dalam isi pesan lewat indeks buta.
- * Mengembalikan null bila yang dicari habis oleh tanda baca — pencarian
- * seperti itu tidak boleh diam-diam berubah menjadi "tampilkan semua".
+ * Pencarian satu kotak.
+ *
+ * Yang tampak seperti nomor (>= 4 digit) dicocokkan ke nomor kontak, LID,
+ * dan nomor pengirim grup. Selain itu: nama kontak (nama di buku kontak,
+ * nama profil, nama bisnis — juga nama pengirim grup), nama karyawan pemilik
+ * nomor, nama grup, ATAU kata di dalam isi pesan lewat indeks buta.
+ *
+ * undefined: tanpa pencarian. null: yang dicari habis oleh tanda baca —
+ * pencarian seperti itu tidak boleh diam-diam berubah menjadi "tampilkan
+ * semua".
  */
-const saringanCari = (q: string | undefined): Prisma.WhatsAppConversationWhereInput | null => {
+const pencarianUtas = (q: string | undefined, accountId: string | undefined): Pencarian | null | undefined => {
   const teks = q?.trim();
-  if (!teks) return {};
+  if (!teks) return undefined;
 
   const angka = teks.replace(/[\s+\-()]/g, '');
   if (/^\d{4,}$/.test(angka)) {
     // 0812… ditulis orang, 62812… yang tersimpan: keduanya harus ketemu.
     const inti = angka.startsWith('0') ? angka.slice(1) : angka.startsWith('62') ? angka.slice(2) : angka;
-    return { contactNumber: { contains: inti } };
+    const pola = `%${inti}%`;
+    return {
+      cte: Prisma.empty,
+      kondisi: Prisma.sql`(c."contactNumber" LIKE ${pola} OR c."contactLid" LIKE ${pola} OR c."participantNumber" LIKE ${pola})`,
+    };
   }
 
   const token = tokenizeText(teks).map(blindIndex);
   if (token.length === 0) return null;
-  return { searchTokens: { hasEvery: token } };
+
+  const pola = polaMirip(teks);
+  const hanyaAkun = accountId ? Prisma.sql`AND k."accountId" = ${accountId}` : Prisma.empty;
+  return {
+    cte: Prisma.sql`
+      kontak_cocok AS (
+        SELECT k."accountId", k."number", k."lid"
+        FROM "WhatsAppContact" AS k
+        WHERE (k."savedName" ILIKE ${pola} OR k."pushName" ILIKE ${pola} OR k."verifiedName" ILIKE ${pola}) ${hanyaAkun}
+      ),
+      karyawan_cocok AS (
+        SELECT e."phoneNumber" FROM "Employee" AS e
+        WHERE e."phoneNumber" IS NOT NULL AND e."name" ILIKE ${pola}
+      ),`,
+    kondisi: Prisma.sql`(
+      c."searchTokens" @> ${token}::text[]
+      OR c."groupName" ILIKE ${pola}
+      OR c."senderName" ILIKE ${pola}
+      OR (c."accountId", c."contactNumber") IN (SELECT "accountId", "number" FROM kontak_cocok)
+      OR (c."accountId", c."contactLid") IN (SELECT "accountId", "lid" FROM kontak_cocok)
+      OR (c."accountId", c."participantNumber") IN (SELECT "accountId", "number" FROM kontak_cocok)
+      OR (c."accountId", c."participantLid") IN (SELECT "accountId", "lid" FROM kontak_cocok)
+      OR c."contactNumber" IN (SELECT "phoneNumber" FROM karyawan_cocok)
+      OR c."participantNumber" IN (SELECT "phoneNumber" FROM karyawan_cocok)
+    )`,
+  };
 };
+
+interface BarisUtas {
+  accountId: string;
+  contactNumber: string;
+  groupJid: string | null;
+  contactLid: string | null;
+  jumlahPesan: number;
+  terakhir: Date;
+  jumlahPribadi: number;
+  jumlahGrup: number;
+}
+
+interface PesanTerakhirUtas {
+  i: number;
+  id: string;
+  messageBody: string;
+  messageType: string;
+  direction: string;
+  timestamp: Date;
+  participantNumber: string | null;
+  participantLid: string | null;
+  senderName: string | null;
+  employeeId: string | null;
+  adaBerkas: boolean;
+  namaGrup: string | null;
+  namaPengirimTerakhir: string | null;
+}
 
 /**
  * Daftar utas: satu baris per lawan bicara atau grup, per nomor yang
@@ -371,86 +522,335 @@ const saringanCari = (q: string | undefined): Prisma.WhatsAppConversationWhereIn
  * Arsip yang ditampilkan sebagai deretan pesan lepas sulit diikuti — pesan
  * dari lima pelanggan bercampur jadi satu. Utas mengembalikan bentuk yang
  * dikenal semua orang dari WhatsApp itu sendiri.
+ *
+ * Pengelompokan, urutan, dan paginasi dikerjakan database: arsip bisa
+ * ratusan ribu pesan, dan daftar ini disegarkan tiap beberapa detik.
  */
 export const getThreads = async (req: Request, res: Response) => {
-  const { page, limit, accountId, q } = req.query as unknown as ListThreadQuery;
+  const { page, limit, accountId, q, jenis, pantau } = req.query as unknown as ListThreadQuery;
+  const bolehGrup = bolehSeluruhIsi(req.user!.role);
 
-  const cari = saringanCari(q);
-  if (cari === null) {
-    return res.json({ data: [], pagination: { page, limit, total: 0, totalPages: 1 } });
+  const kirim = (data: unknown[], jumlah: { pribadi: number; grup: number }, total: number) =>
+    res.json({
+      data,
+      jumlah: { semua: jumlah.pribadi + jumlah.grup, pribadi: jumlah.pribadi, grup: jumlah.grup },
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+    });
+
+  const cari = pencarianUtas(q, accountId);
+  if (cari === null) return kirim([], { pribadi: 0, grup: 0 }, 0);
+
+  const syarat: Prisma.Sql[] = [];
+  if (accountId) syarat.push(Prisma.sql`c."accountId" = ${accountId}`);
+  if (!bolehGrup) syarat.push(Prisma.sql`c."groupJid" IS NULL`);
+  const where = syarat.length > 0 ? Prisma.sql`WHERE ${Prisma.join(syarat, ' AND ')}` : Prisma.empty;
+
+  // Utas cocok bila SALAH SATU pesannya cocok, tapi angka dan pesan
+  // terakhirnya tetap dihitung dari seluruh isi utas.
+  const cteUtas = Prisma.sql`
+    basis AS (
+      SELECT c."accountId", c."contactNumber", c."groupJid", c."timestamp", c."contactLid",
+             ${cari ? Prisma.sql`COALESCE(${cari.kondisi}, FALSE)` : Prisma.sql`TRUE`} AS "cocok"
+      FROM "WhatsAppConversation" AS c
+      ${where}
+    ),
+    utas AS (
+      SELECT b."accountId", b."contactNumber", b."groupJid",
+             COUNT(*)::int AS "jumlahPesan",
+             MAX(b."timestamp") AS "terakhir",
+             MAX(b."contactLid") AS "contactLid"
+      FROM basis AS b
+      GROUP BY b."accountId", b."contactNumber", b."groupJid"
+      HAVING bool_or(b."cocok")
+    )`;
+  const awalan = Prisma.sql`WITH ${cari ? cari.cte : Prisma.empty} ${cteUtas}`;
+  const saringJenis =
+    jenis === 'pribadi'
+      ? Prisma.sql`WHERE u."groupJid" IS NULL`
+      : jenis === 'grup'
+        ? Prisma.sql`WHERE u."groupJid" IS NOT NULL`
+        : Prisma.empty;
+
+  const halaman = await prisma.$queryRaw<BarisUtas[]>`
+    ${awalan},
+    dihitung AS (
+      SELECT u.*,
+             (COUNT(*) FILTER (WHERE u."groupJid" IS NULL) OVER ())::int AS "jumlahPribadi",
+             (COUNT(*) FILTER (WHERE u."groupJid" IS NOT NULL) OVER ())::int AS "jumlahGrup"
+      FROM utas AS u
+    )
+    SELECT * FROM dihitung AS u
+    ${saringJenis}
+    ORDER BY u."terakhir" DESC, u."accountId", u."contactNumber", u."groupJid" NULLS FIRST
+    OFFSET ${(page - 1) * limit}::int
+    LIMIT ${limit}::int
+  `;
+
+  let jumlah: { pribadi: number; grup: number };
+  if (halaman.length > 0) {
+    jumlah = { pribadi: halaman[0].jumlahPribadi, grup: halaman[0].jumlahGrup };
+  } else {
+    // Halaman di luar jangkauan: angkanya tetap dibutuhkan untuk pilihan jenis.
+    const [h] = await prisma.$queryRaw<{ pribadi: number; grup: number }[]>`
+      ${awalan}
+      SELECT (COUNT(*) FILTER (WHERE "groupJid" IS NULL))::int AS "pribadi",
+             (COUNT(*) FILTER (WHERE "groupJid" IS NOT NULL))::int AS "grup"
+      FROM utas
+    `;
+    jumlah = h ?? { pribadi: 0, grup: 0 };
+  }
+  const total = jenis === 'pribadi' ? jumlah.pribadi : jenis === 'grup' ? jumlah.grup : jumlah.pribadi + jumlah.grup;
+
+  const data = await rincianUtas(halaman);
+
+  if (!pantau) {
+    res.locals.audit = {
+      action: 'whatsapp.threads.read',
+      entity: 'WhatsAppConversation',
+      summary: `Membaca daftar ${data.length} utas dari ${total}`,
+      metadata: { accountId, jenis, pencarian: q, total },
+    };
   }
 
-  const where: Prisma.WhatsAppConversationWhereInput = {
-    ...(accountId ? { accountId } : {}),
-    ...(bolehSeluruhIsi(req.user!.role) ? {} : { groupJid: null }),
-    ...cari,
-  };
+  return kirim(data, jumlah, total);
+};
 
-  const semuaUtas = await prisma.whatsAppConversation.groupBy({
-    by: ['accountId', 'contactNumber', 'groupJid'],
-    where,
-    _count: { _all: true },
-    _max: { timestamp: true },
-    orderBy: { _max: { timestamp: 'desc' } },
+/** Pesan terakhir, nama, dan karyawan untuk utas-utas satu halaman — beberapa kueri, bukan satu per utas. */
+const rincianUtas = async (halaman: BarisUtas[]) => {
+  if (halaman.length === 0) return [];
+
+  // Grup kosong dikirim sebagai '' karena larik parameter tidak bisa memuat null.
+  const terakhir = await prisma.$queryRaw<PesanTerakhirUtas[]>`
+    SELECT t."i"::int AS "i", x.*, nm."groupName" AS "namaGrup", sn."senderName" AS "namaPengirimTerakhir"
+    FROM UNNEST(
+      ${halaman.map((u) => u.accountId)}::text[],
+      ${halaman.map((u) => u.contactNumber)}::text[],
+      ${halaman.map((u) => u.groupJid ?? '')}::text[]
+    ) WITH ORDINALITY AS t("accountId", "contactNumber", "groupJid", "i")
+    CROSS JOIN LATERAL (
+      SELECT c."id", c."messageBody", c."messageType", c."direction", c."timestamp",
+             c."participantNumber", c."participantLid", c."senderName", c."employeeId",
+             (c."mediaPath" IS NOT NULL) AS "adaBerkas"
+      FROM "WhatsAppConversation" AS c
+      WHERE c."accountId" = t."accountId" AND c."contactNumber" = t."contactNumber"
+        AND c."groupJid" IS NOT DISTINCT FROM NULLIF(t."groupJid", '')
+      ORDER BY c."timestamp" DESC
+      LIMIT 1
+    ) AS x
+    LEFT JOIN LATERAL (
+      -- Nama grup dari pesan terakhir yang mencatatnya: pesan terakhir sendiri
+      -- bisa tanpa nama bila keterangan grup gagal dibaca saat itu.
+      SELECT c."groupName" FROM "WhatsAppConversation" AS c
+      WHERE t."groupJid" <> '' AND c."accountId" = t."accountId" AND c."contactNumber" = t."contactNumber"
+        AND c."groupJid" = t."groupJid" AND c."groupName" IS NOT NULL
+      ORDER BY c."timestamp" DESC
+      LIMIT 1
+    ) AS nm ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT c."senderName" FROM "WhatsAppConversation" AS c
+      WHERE t."groupJid" = '' AND c."accountId" = t."accountId" AND c."contactNumber" = t."contactNumber"
+        AND c."groupJid" IS NULL AND c."senderName" IS NOT NULL
+      ORDER BY c."timestamp" DESC
+      LIMIT 1
+    ) AS sn ON TRUE
+  `;
+  const perUrutan = new Map(terakhir.map((t) => [t.i, t]));
+
+  // Siapa lawan bicara tiap utas pribadi, dan siapa pengirim pesan terakhir tiap grup.
+  const kontakUtas = halaman.map((u) => (u.groupJid ? null : identitasDari(u.contactNumber, u.contactLid)));
+  const pengirimGrup = halaman.map((u, idx) => {
+    const t = perUrutan.get(idx + 1);
+    return u.groupJid && t && t.direction !== 'outgoing' && t.participantNumber
+      ? identitasDari(t.participantNumber, t.participantLid)
+      : null;
+  });
+  const kunciNama: KunciKontak[] = halaman.flatMap((u, idx) => {
+    const siapa = kontakUtas[idx] ?? pengirimGrup[idx];
+    return siapa ? [{ accountId: u.accountId, ...siapa }] : [];
   });
 
-  const halaman = semuaUtas.slice((page - 1) * limit, page * limit);
+  const [cariNama, karyawan, akun, pemegang] = await Promise.all([
+    muatBukuNama(kunciNama),
+    muatKaryawanPerNomor(kunciNama.map((k) => k.nomor)),
+    prisma.whatsAppAccount.findMany({
+      where: { id: { in: [...new Set(halaman.map((u) => u.accountId))] } },
+      select: { id: true, label: true, phoneNumber: true, kind: true },
+    }),
+    prisma.employee.findMany({
+      where: { id: { in: [...new Set(terakhir.flatMap((t) => (t.employeeId ? [t.employeeId] : [])))] } },
+      select: { id: true, nik: true, name: true },
+    }),
+  ]);
+  const akunPer = new Map(akun.map((a) => [a.id, a]));
+  const pemegangPer = new Map(pemegang.map((p) => [p.id, p]));
 
-  const data = await Promise.all(
-    halaman.map(async (u) => {
-      const terakhir = await prisma.whatsAppConversation.findFirst({
-        where: { ...where, accountId: u.accountId, contactNumber: u.contactNumber, groupJid: u.groupJid },
-        orderBy: { timestamp: 'desc' },
-        select: {
-          messageBody: true,
-          messageType: true,
-          direction: true,
-          timestamp: true,
-          groupName: true,
-          participantNumber: true,
-          mediaPath: true,
-          account: { select: { id: true, label: true, phoneNumber: true, kind: true } },
-          relatedEmployee: { select: { id: true, nik: true, name: true } },
-        },
-      });
+  return halaman.map((u, idx) => {
+    const t = perUrutan.get(idx + 1) ?? null;
+    const a = akunPer.get(u.accountId) ?? null;
+    const relatedEmployee = t?.employeeId ? (pemegangPer.get(t.employeeId) ?? null) : null;
+    const siapa = kontakUtas[idx];
 
-      const isi = terakhir ? decryptField(terakhir.messageBody) : '';
+    const kontak = siapa
+      ? {
+          nama: cariNama({ accountId: u.accountId, ...siapa }) ?? t?.namaPengirimTerakhir ?? null,
+          nomor: siapa.nomor,
+          lid: siapa.lid,
+          karyawan: siapa.nomor ? (karyawan.get(siapa.nomor) ?? null) : null,
+        }
+      : null;
+    const grup = u.groupJid ? { jid: u.groupJid, nama: t?.namaGrup ?? null } : null;
+
+    let pengirim: { nama: string | null; nomor: string | null } | null = null;
+    if (t?.direction === 'outgoing') {
+      pengirim = { nama: relatedEmployee?.name ?? a?.label ?? null, nomor: a?.phoneNumber ?? null };
+    } else if (kontak) {
+      pengirim = { nama: kontak.nama, nomor: kontak.nomor };
+    } else if (pengirimGrup[idx]) {
+      const p = pengirimGrup[idx]!;
+      pengirim = { nama: cariNama({ accountId: u.accountId, ...p }) ?? t?.senderName ?? null, nomor: p.nomor };
+    } else if (t?.senderName) {
+      pengirim = { nama: t.senderName, nomor: null };
+    }
+
+    const isi = t ? decryptField(t.messageBody) : '';
+    return {
+      kunci: `${u.accountId}:${u.groupJid ?? u.contactNumber}`,
+      accountId: u.accountId,
+      jenis: u.groupJid ? ('grup' as const) : ('pribadi' as const),
+      contactNumber: u.contactNumber,
+      groupJid: u.groupJid,
+      kontak,
+      grup,
+      jumlahPesan: u.jumlahPesan,
+      pesanTerakhir: t
+        ? {
+            id: t.id,
+            timestamp: t.timestamp,
+            // Cuplikan, bukan isi utuh: daftar utas tidak perlu memuat
+            // seluruh pesan panjang hanya untuk satu baris pratinjau.
+            cuplikan: cuplikanDari(isi),
+            messageType: t.messageType,
+            keluar: t.direction === 'outgoing',
+            pengirim,
+            adaBerkas: t.adaBerkas,
+            // Bentuk lama, untuk klien yang belum diperbarui.
+            direction: t.direction,
+            participantNumber: t.participantNumber,
+          }
+        : null,
+      account: a,
+      // Bentuk lama, untuk klien yang belum diperbarui.
+      groupName: grup?.nama ?? null,
+      relatedEmployee,
+    };
+  });
+};
+
+/**
+ * Nomor yang dipantau, untuk panel "pilih nomor dulu": status sesi, berapa
+ * chat dan grupnya, berapa pesan hari ini, dan pesan terakhirnya.
+ *
+ * Angkanya dihitung sekaligus untuk semua nomor (satu GROUP BY), bukan satu
+ * kueri per nomor. Baris grup hanya ikut terhitung untuk Super Admin, sama
+ * seperti daftar utas.
+ */
+export const getNomorDipantau = async (req: Request, res: Response) => {
+  const { pantau } = req.query as unknown as NomorQuery;
+  const bolehGrup = bolehSeluruhIsi(req.user!.role);
+  const awalHariIni = DateTime.now().setZone(env.APP_TIMEZONE).startOf('day').toJSDate();
+  const gerbang = bolehGrup ? Prisma.empty : Prisma.sql`AND c."groupJid" IS NULL`;
+
+  const [akun, angka, terakhir] = await Promise.all([
+    prisma.whatsAppAccount.findMany({
+      select: {
+        id: true,
+        label: true,
+        kind: true,
+        phoneNumber: true,
+        isActive: true,
+        sessionStatus: true,
+        lastConnectedAt: true,
+        assignedEmployee: { select: { id: true, name: true, department: { select: { id: true, name: true } } } },
+      },
+    }),
+    prisma.$queryRaw<{ accountId: string; chatPribadi: number; grup: number; pesan: number; pesanHariIni: number }[]>`
+      SELECT c."accountId",
+             (COUNT(DISTINCT c."contactNumber") FILTER (WHERE c."groupJid" IS NULL))::int AS "chatPribadi",
+             (COUNT(DISTINCT c."groupJid"))::int AS "grup",
+             COUNT(*)::int AS "pesan",
+             (COUNT(*) FILTER (WHERE c."timestamp" >= (${awalHariIni.toISOString()}::timestamptz AT TIME ZONE 'UTC')))::int AS "pesanHariIni"
+      FROM "WhatsAppConversation" AS c
+      WHERE TRUE ${gerbang}
+      GROUP BY c."accountId"
+    `,
+    prisma.$queryRaw<{ accountId: string; messageBody: string; messageType: string; direction: string; timestamp: Date }[]>`
+      SELECT a."id" AS "accountId", t."messageBody", t."messageType", t."direction", t."timestamp"
+      FROM "WhatsAppAccount" AS a
+      CROSS JOIN LATERAL (
+        SELECT c."messageBody", c."messageType", c."direction", c."timestamp"
+        FROM "WhatsAppConversation" AS c
+        WHERE c."accountId" = a."id" ${gerbang}
+        ORDER BY c."timestamp" DESC
+        LIMIT 1
+      ) AS t
+    `,
+  ]);
+
+  const angkaPer = new Map(angka.map((n) => [n.accountId, n]));
+  const terakhirPer = new Map(terakhir.map((t) => [t.accountId, t]));
+
+  const data = akun
+    .map((a) => {
+      const n = angkaPer.get(a.id);
+      const t = terakhirPer.get(a.id);
       return {
-        kunci: `${u.accountId}:${u.groupJid ?? u.contactNumber}`,
-        accountId: u.accountId,
-        contactNumber: u.contactNumber,
-        groupJid: u.groupJid,
-        groupName: terakhir?.groupName ?? null,
-        jumlahPesan: u._count._all,
-        account: terakhir?.account ?? null,
-        relatedEmployee: terakhir?.relatedEmployee ?? null,
-        pesanTerakhir: terakhir
+        id: a.id,
+        label: a.label,
+        kind: a.kind,
+        phoneNumber: a.phoneNumber,
+        isActive: a.isActive,
+        employee: a.assignedEmployee
+          ? { id: a.assignedEmployee.id, name: a.assignedEmployee.name, department: a.assignedEmployee.department }
+          : null,
+        status: statusEfektif(a, getSession(a.id)),
+        jumlah: {
+          chatPribadi: n?.chatPribadi ?? 0,
+          grup: bolehGrup ? (n?.grup ?? 0) : 0,
+          pesan: n?.pesan ?? 0,
+          pesanHariIni: n?.pesanHariIni ?? 0,
+        },
+        pesanTerakhir: t
           ? {
-              // Cuplikan, bukan isi utuh: daftar utas tidak perlu memuat
-              // seluruh pesan panjang hanya untuk satu baris pratinjau.
-              cuplikan: isi.length > 140 ? `${isi.slice(0, 140)}…` : isi,
-              messageType: terakhir.messageType,
-              direction: terakhir.direction,
-              timestamp: terakhir.timestamp,
-              participantNumber: terakhir.participantNumber,
-              adaBerkas: terakhir.mediaPath !== null,
+              timestamp: t.timestamp,
+              cuplikan: cuplikanDari(decryptField(t.messageBody)),
+              keluar: t.direction === 'outgoing',
+              messageType: t.messageType,
             }
           : null,
       };
     })
-  );
+    // Nomor pribadi yang belum pernah tertaut dan nomor nonaktif tanpa arsip
+    // tidak punya apa pun untuk dibuka di sini; pengelolaannya di tab Nomor.
+    .filter((d) => (d.isActive && d.phoneNumber) || d.jumlah.pesan > 0)
+    .sort((x, y) => {
+      const wx = x.pesanTerakhir ? new Date(x.pesanTerakhir.timestamp).getTime() : -Infinity;
+      const wy = y.pesanTerakhir ? new Date(y.pesanTerakhir.timestamp).getTime() : -Infinity;
+      if (wx !== wy) return wy > wx ? 1 : -1;
+      return x.label.localeCompare(y.label, 'id');
+    });
 
-  res.locals.audit = {
-    action: 'whatsapp.threads.read',
-    entity: 'WhatsAppConversation',
-    summary: `Membaca daftar ${data.length} utas dari ${semuaUtas.length}`,
-    metadata: { accountId, pencarian: q, total: semuaUtas.length },
-  };
+  // Daftar ini memuat cuplikan pesan terakhir tiap nomor, jadi pembukaannya
+  // dicatat seperti daftar utas; penyegaran latar (pantau=1) tidak.
+  if (!pantau) {
+    res.locals.audit = {
+      action: 'whatsapp.nomor.read',
+      entity: 'WhatsAppAccount',
+      summary: `Membaca daftar ${data.length} nomor yang dipantau`,
+      metadata: { jumlah: data.length },
+    };
+  }
 
-  res.json({
-    data,
-    pagination: { page, limit, total: semuaUtas.length, totalPages: Math.ceil(semuaUtas.length / limit) || 1 },
-  });
+  res.json({ data });
 };
 
 /**

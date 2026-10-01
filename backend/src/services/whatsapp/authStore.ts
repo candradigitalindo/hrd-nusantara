@@ -15,9 +15,13 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { decryptField, encryptField } from '../../utils/fieldCrypto';
 import { generateULID } from '../../utils/generateULID';
+import { cerminkanKunciLid, simpanPemetaanLid, rapikanPasangan, type HasilSimpanLid } from './lidMap';
+import type { PasanganLid } from './baileysMessage';
 
 const KATEGORI_CREDS = 'creds';
 const ID_CREDS = '';
+/** Pemetaan LID -> nomor milik Baileys; dicerminkan ke WhatsAppLidMap. */
+const KATEGORI_LID = 'lid-mapping';
 
 /// Baris per perintah INSERT. Saat pertama tertaut Baileys menulis ratusan
 /// pre-key sekaligus; satu perintah raksasa memperlambat semua akun lain.
@@ -189,6 +193,12 @@ export const muatAuthState = async (accountId: string, alat: AlatBaileys): Promi
             if (!masihBerlaku()) return;
             await terapkan(accountId, tulis, hapus);
           });
+          // Pemetaan LID -> nomor ikut terhapus bersama kredensial setiap kali
+          // sesi di-logout atau dipindai ulang (hapusKredensialTersimpan).
+          // Semua tulisan Baileys ke kategori ini lewat sini, jadi di sinilah
+          // satu-satunya titik untuk menyalinnya ke tabel permanen. Dicatat
+          // walau generasinya sudah basi: pemetaannya tetap benar.
+          if (data[KATEGORI_LID]) await cerminkanKunciLid(data[KATEGORI_LID]);
         },
       },
     },
@@ -238,4 +248,93 @@ export const akunDenganTautanTersimpan = async (accountIds: string[]): Promise<S
     }
   }
   return hasil;
+};
+
+// --- Salinan pemetaan LID yang sudah tersimpan ---
+
+const BATCH_SALIN = 1000;
+
+export interface HasilSalinPemetaan extends HasilSimpanLid {
+  /** Baris 'lid-mapping' yang dibaca. */
+  dibaca: number;
+  /** Baris yang tidak bisa didekripsi atau isinya bukan pemetaan. */
+  dilewati: number;
+}
+
+/**
+ * Menyalin seluruh pemetaan LID -> nomor yang sudah ada di store Baileys
+ * (semua akun) ke WhatsAppLidMap. Aman diulang.
+ *
+ * Pencerminan di keys.set hanya menangkap tulisan BARU; yang tertulis sebelum
+ * pencerminan ada harus disalin sekali, sebelum logout berikutnya
+ * menghapusnya. Bila beberapa baris menyebut LID yang sama dengan nomor
+ * berbeda, yang paling baru diperbarui yang dipakai — dan baris yang lebih
+ * lama dari pemetaan yang sudah tercatat tidak menimpanya.
+ *
+ * @param opsi.sejak hanya baris yang berubah sejak waktu ini (penyalinan berkala).
+ */
+export const salinPemetaanTersimpan = async (opsi: { sejak?: Date } = {}): Promise<HasilSalinPemetaan> => {
+  const terbaru = new Map<string, { pn: string; waktu: number; balik: boolean }>();
+  let dibaca = 0;
+  let dilewati = 0;
+  let kursor: string | undefined;
+
+  for (;;) {
+    const baris = await prisma.whatsAppAuthKey.findMany({
+      where: { category: KATEGORI_LID, ...(opsi.sejak ? { updatedAt: { gte: opsi.sejak } } : {}) },
+      select: { id: true, keyId: true, value: true, updatedAt: true },
+      orderBy: { id: 'asc' },
+      take: BATCH_SALIN,
+      ...(kursor ? { cursor: { id: kursor }, skip: 1 } : {}),
+    });
+    if (baris.length === 0) break;
+    kursor = baris[baris.length - 1].id;
+
+    for (const b of baris) {
+      dibaca += 1;
+      let nilai: unknown;
+      try {
+        nilai = JSON.parse(decryptField(b.value));
+      } catch {
+        dilewati += 1;
+        continue;
+      }
+      const balik = b.keyId.endsWith('_reverse');
+      const pasangan: PasanganLid[] = rapikanPasangan(
+        typeof nilai === 'string' && nilai
+          ? [balik ? { lid: b.keyId.slice(0, -'_reverse'.length), pn: nilai } : { lid: nilai, pn: b.keyId }]
+          : []
+      );
+      if (pasangan.length === 0) {
+        dilewati += 1;
+        continue;
+      }
+      const { lid, pn } = pasangan[0];
+      const waktu = b.updatedAt.getTime();
+      const ada = terbaru.get(lid);
+      // Baris "<lid>_reverse" adalah sumber utama arah LID -> nomor; baris
+      // maju hanya dipakai bila lebih baru.
+      if (!ada || waktu > ada.waktu || (waktu === ada.waktu && balik && !ada.balik)) {
+        terbaru.set(lid, { pn, waktu, balik });
+      }
+    }
+  }
+
+  // Pemetaan yang tercatat SESUDAH baris store-nya diperbarui (mis. dari
+  // pesan live) lebih segar; jangan ditimpa salinan yang lebih tua.
+  const kandidat = [...terbaru];
+  const segar = new Map<string, number>();
+  for (let i = 0; i < kandidat.length; i += BATCH_SALIN) {
+    const ada = await prisma.whatsAppLidMap.findMany({
+      where: { lid: { in: kandidat.slice(i, i + BATCH_SALIN).map(([lid]) => lid) } },
+      select: { lid: true, pn: true, updatedAt: true },
+    });
+    for (const a of ada) segar.set(a.lid, a.updatedAt.getTime());
+  }
+  const dipakai = kandidat
+    .filter(([lid, v]) => !segar.has(lid) || v.waktu >= segar.get(lid)!)
+    .map(([lid, v]) => ({ lid, pn: v.pn }));
+
+  const hasil = await simpanPemetaanLid(dipakai, 'authkey');
+  return { ...hasil, dibaca, dilewati };
 };

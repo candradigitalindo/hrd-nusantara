@@ -11,28 +11,34 @@ import { generateULID } from '../utils/generateULID';
  * yang lupa mengisi id. Extension ini jaring pengamannya: satu tempat untuk
  * 24 model, jadi kelalaian tidak perlu diulang-ulang dicek di tiap controller.
  */
+/**
+ * Model yang kunci utamanya bukan kolom `id`: WhatsAppLidMap berkunci LID
+ * itu sendiri. Mengisi `id` di sini membuat Prisma menolak create-nya.
+ */
+const TANPA_KOLOM_ID = new Set<string>(['WhatsAppLidMap']);
+
 const ulidExtension = Prisma.defineExtension({
   name: 'ulid-primary-key',
   query: {
     $allModels: {
-      create({ args, query }) {
+      create({ model, args, query }) {
         const data = args.data as Record<string, unknown> | undefined;
-        if (data && data.id == null) data.id = generateULID();
+        if (data && data.id == null && !TANPA_KOLOM_ID.has(model)) data.id = generateULID();
         return query(args);
       },
-      createMany({ args, query }) {
+      createMany({ model, args, query }) {
         const rows = (Array.isArray(args.data) ? args.data : [args.data]) as Record<
           string,
           unknown
         >[];
         for (const row of rows) {
-          if (row && row.id == null) row.id = generateULID();
+          if (row && row.id == null && !TANPA_KOLOM_ID.has(model)) row.id = generateULID();
         }
         return query(args);
       },
-      upsert({ args, query }) {
+      upsert({ model, args, query }) {
         const data = args.create as Record<string, unknown> | undefined;
-        if (data && data.id == null) data.id = generateULID();
+        if (data && data.id == null && !TANPA_KOLOM_ID.has(model)) data.id = generateULID();
         return query(args);
       },
     },

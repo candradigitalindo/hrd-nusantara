@@ -7,6 +7,7 @@ import {
   getConversations,
   getConversationMedia,
   getThreads,
+  getNomorDipantau,
   getRingkasan,
   tarikRiwayatAkun,
   getSessionEvents,
@@ -32,6 +33,7 @@ import {
   listConversationQuerySchema,
   tarikRiwayatSchema,
   listThreadQuerySchema,
+  nomorQuerySchema,
   listSessionEventQuerySchema,
   markNotifiedSchema,
   purgeSchema,
@@ -148,6 +150,14 @@ router.get(
   '/whatsapp/ringkasan',
   requirePermission(...lihatAtauKelola('whatsapp')),
   asyncHandler(getRingkasan)
+);
+// Panel "pilih nomor dulu": nomor yang dipantau beserta status dan angka
+// arsipnya. Baris grup ikut dihitung hanya untuk Super Admin.
+router.get(
+  '/whatsapp/nomor',
+  requirePermission(...lihatAtauKelola('whatsapp')),
+  validate(nomorQuerySchema, 'query'),
+  asyncHandler(getNomorDipantau)
 );
 
 // Berkas media (foto, video, pesan suara, dokumen) — hanya Super Admin, dan

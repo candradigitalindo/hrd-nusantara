@@ -1,14 +1,15 @@
 import { createHmac } from 'crypto';
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { prisma, resetDatabase, makeEmployee } from './helpers/db';
+import { prisma, resetDatabase, makeEmployee, makeDepartment, tungguJejakAudit } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { env } from '../src/config/env';
 import fs from 'fs/promises';
 import path from 'path';
 import { generateULID } from '../src/utils/generateULID';
-import { encryptField } from '../src/utils/fieldCrypto';
+import { encryptField, buildSearchTokens } from '../src/utils/fieldCrypto';
+import { tungguAuditSelesai } from '../src/services/audit/record';
 
 const app = bikinApp();
 
@@ -472,6 +473,301 @@ describe('Utas percakapan dan ringkasan', () => {
   it('karyawan biasa tidak boleh membuka utas maupun ringkasan', async () => {
     expectStatus(await request(app).get('/api/whatsapp/threads').set(auth(budiToken)), 403);
     expectStatus(await request(app).get('/api/whatsapp/ringkasan').set(auth(budiToken)), 403);
+  });
+});
+
+describe('Pemantauan per nomor: pilih nomor, lalu chat-nya', () => {
+  const GRUP = '12036301234567890@g.us';
+  const LID_MISTERIUS = '214751418265748';
+  const NOMOR_SARI = '628222222222';
+  const NOMOR_ANDI = '628333333333';
+
+  let superToken: string;
+  let akunA: string;
+  let akunB: string;
+  let andi: { id: string };
+
+  const buat = (accountId: string, isi: string, data: Record<string, unknown>) =>
+    prisma.whatsAppConversation.create({
+      data: {
+        id: generateULID(),
+        accountId,
+        externalMessageId: `x-${generateULID()}`,
+        senderWhatsappNumber: NOMOR_SARI,
+        receiverWhatsappNumber: '628111111111',
+        contactNumber: NOMOR_SARI,
+        messageBody: encryptField(isi),
+        searchTokens: buildSearchTokens(isi),
+        messageType: 'text',
+        direction: 'incoming',
+        timestamp: new Date('2026-09-20T10:00:00.000Z'),
+        ...data,
+      },
+    });
+
+  beforeEach(async () => {
+    await makeEmployee({ email: 'super@resto.id', nik: 'SA-1', role: Role.SUPER_ADMIN });
+    superToken = await login(app, 'super@resto.id');
+    const dapur = await makeDepartment('Dapur');
+    await prisma.employee.update({ where: { id: budi.id }, data: { departmentId: dapur.id, name: 'Budi Kasir' } });
+    // Tanpa kata sandi: tidak perlu login, dan hash bcrypt-nya mahal.
+    andi = await makeEmployee({ email: 'andi@resto.id', nik: 'EMP-9', name: 'Andi Saputra', phoneNumber: NOMOR_ANDI, password: null });
+    const siti = await makeEmployee({ email: 'siti@resto.id', nik: 'EMP-2', name: 'Siti Waiter', password: null });
+
+    expectStatus(await daftarkanNomor(), 201);
+    akunA = (await prisma.whatsAppAccount.findFirstOrThrow({ select: { id: true } })).id;
+    akunB = (
+      await prisma.whatsAppAccount.create({
+        data: { id: generateULID(), kind: 'personal', label: 'Siti Waiter', phoneNumber: '628444444444', assignedEmployeeId: siti.id },
+      })
+    ).id;
+    // Nomor pribadi yang belum pernah tertaut: tidak ada apa pun untuk dibuka.
+    await prisma.whatsAppAccount.create({ data: { id: generateULID(), kind: 'personal', label: 'Belum Tertaut', phoneNumber: null } });
+
+    // Akun A: Andi (karyawan), Sari (tersimpan di kontak), LID tak dikenal, satu grup.
+    await buat(akunA, 'Shift besok jam berapa?', {
+      contactNumber: NOMOR_ANDI,
+      senderWhatsappNumber: NOMOR_ANDI,
+      timestamp: new Date('2026-09-19T08:00:00.000Z'),
+    });
+    await buat(akunA, 'Mau pesan katering 50 porsi', { senderName: 'Sari' });
+    await buat(akunA, 'Baik bu, kami siapkan', {
+      direction: 'outgoing',
+      senderWhatsappNumber: '628111111111',
+      receiverWhatsappNumber: NOMOR_SARI,
+      employeeId: budi.id,
+      timestamp: new Date('2026-09-20T10:05:00.000Z'),
+    });
+    await buat(akunA, 'Halo, ini siapa ya', {
+      contactNumber: LID_MISTERIUS,
+      contactLid: LID_MISTERIUS,
+      senderWhatsappNumber: LID_MISTERIUS,
+      senderName: 'Pelanggan Misterius',
+      timestamp: new Date('2026-09-21T08:00:00.000Z'),
+    });
+    const grup = { groupJid: GRUP, contactNumber: '12036301234567890', receiverWhatsappNumber: '12036301234567890' };
+    await buat(akunA, 'Stok ayam habis', {
+      ...grup,
+      groupName: 'Tim Dapur',
+      participantNumber: NOMOR_ANDI,
+      participantLid: '88014471852141',
+      senderWhatsappNumber: NOMOR_ANDI,
+      senderName: 'Andi',
+      timestamp: new Date('2026-09-22T09:00:00.000Z'),
+    });
+    await buat(akunA, 'Siap', { ...grup, senderWhatsappNumber: '12036301234567890', timestamp: new Date('2026-09-22T09:05:00.000Z') });
+    await prisma.whatsAppContact.create({
+      data: { id: generateULID(), accountId: akunA, number: NOMOR_SARI, savedName: 'Bu Sari Catering', pushName: 'Sari' },
+    });
+
+    // Akun B: satu pesan hari ini.
+    await buat(akunB, 'Izin telat 10 menit', {
+      contactNumber: '628555555555',
+      senderWhatsappNumber: '628555555555',
+      receiverWhatsappNumber: '628444444444',
+      timestamp: new Date(),
+    });
+  });
+
+  describe('GET /whatsapp/nomor', () => {
+    it('merangkum tiap nomor yang dipantau, pesan terakhir paling baru di atas', async () => {
+      const res = await request(app).get('/api/whatsapp/nomor').set(auth(superToken));
+      expectStatus(res, 200);
+
+      expect(res.body.data.map((n: { id: string }) => n.id)).toEqual([akunB, akunA]);
+      const a = res.body.data[1];
+      expect(a).toMatchObject({
+        label: 'CS Outlet Kemang',
+        kind: 'company',
+        phoneNumber: '628111111111',
+        status: 'never_linked',
+        employee: { id: budi.id, department: { name: 'Dapur' } },
+        jumlah: { chatPribadi: 3, grup: 1, pesan: 6, pesanHariIni: 0 },
+        pesanTerakhir: { cuplikan: 'Siap', keluar: false },
+      });
+      expect(res.body.data[0]).toMatchObject({ kind: 'personal', jumlah: { chatPribadi: 1, grup: 0, pesan: 1, pesanHariIni: 1 } });
+    });
+
+    it('baris grup tidak ikut terhitung untuk selain Super Admin', async () => {
+      const res = await request(app).get('/api/whatsapp/nomor').set(auth(hrToken));
+      expectStatus(res, 200);
+
+      const a = res.body.data.find((n: { id: string }) => n.id === akunA);
+      expect(a.jumlah).toEqual({ chatPribadi: 3, grup: 0, pesan: 4, pesanHariIni: 0 });
+      expect(a.pesanTerakhir).toMatchObject({ cuplikan: 'Halo, ini siapa ya' });
+    });
+
+    it('penyegaran latar (pantau=1) tidak dicatat di jejak audit', async () => {
+      expectStatus(await request(app).get('/api/whatsapp/nomor?pantau=1').set(auth(hrToken)), 200);
+      expectStatus(await request(app).get('/api/whatsapp/nomor').set(auth(hrToken)), 200);
+
+      expect(await tungguJejakAudit({ action: 'whatsapp.nomor.read' })).not.toBeNull();
+      await tungguAuditSelesai();
+      expect(await prisma.auditLog.count({ where: { action: 'whatsapp.nomor.read' } })).toBe(1);
+    });
+
+    it('karyawan biasa tidak boleh membukanya', async () => {
+      expectStatus(await request(app).get('/api/whatsapp/nomor').set(auth(budiToken)), 403);
+    });
+  });
+
+  describe('GET /whatsapp/threads per nomor', () => {
+    const utas = (query: string, token = superToken) =>
+      request(app).get(`/api/whatsapp/threads?accountId=${akunA}${query}`).set(auth(token));
+
+    it('memberi nama kontak, nomor asli atau LID, karyawan, dan jumlah per jenis', async () => {
+      const res = await utas('');
+      expectStatus(res, 200);
+
+      expect(res.body.jumlah).toEqual({ semua: 4, pribadi: 3, grup: 1 });
+      expect(res.body.pagination).toMatchObject({ total: 4, totalPages: 1 });
+      const [grup, misterius, sari, karyawan] = res.body.data;
+
+      expect(grup).toMatchObject({
+        jenis: 'grup',
+        groupJid: GRUP,
+        kontak: null,
+        // Pesan terakhir grup tanpa nama; nama diambil dari pesan terakhir yang mencatatnya.
+        grup: { jid: GRUP, nama: 'Tim Dapur' },
+        jumlahPesan: 2,
+        account: { id: akunA, label: 'CS Outlet Kemang', phoneNumber: '628111111111' },
+      });
+      expect(grup.pesanTerakhir).toMatchObject({ cuplikan: 'Siap', keluar: false, pengirim: null });
+
+      // LID bukan nomor: tidak boleh pernah muncul sebagai nomor.
+      expect(misterius).toMatchObject({
+        jenis: 'pribadi',
+        kontak: { nama: 'Pelanggan Misterius', nomor: null, lid: LID_MISTERIUS, karyawan: null },
+        grup: null,
+      });
+
+      expect(sari).toMatchObject({
+        contactNumber: NOMOR_SARI,
+        kontak: { nama: 'Bu Sari Catering', nomor: NOMOR_SARI, lid: null, karyawan: null },
+        jumlahPesan: 2,
+      });
+      expect(sari.pesanTerakhir).toMatchObject({
+        cuplikan: 'Baik bu, kami siapkan',
+        keluar: true,
+        messageType: 'text',
+        pengirim: { nama: 'Budi Kasir', nomor: '628111111111' },
+      });
+
+      expect(karyawan.kontak).toMatchObject({ nomor: NOMOR_ANDI, karyawan: { id: andi.id, name: 'Andi Saputra' } });
+    });
+
+    it('menyaring per jenis dan memaginasi di database', async () => {
+      const pribadi = await utas('&jenis=pribadi');
+      expect(pribadi.body.data.map((u: { jenis: string }) => u.jenis)).toEqual(['pribadi', 'pribadi', 'pribadi']);
+      expect(pribadi.body.pagination.total).toBe(3);
+      expect(pribadi.body.jumlah).toEqual({ semua: 4, pribadi: 3, grup: 1 });
+
+      const grup = await utas('&jenis=grup');
+      expect(grup.body.data.map((u: { groupJid: string }) => u.groupJid)).toEqual([GRUP]);
+
+      const hal2 = await utas('&limit=1&page=2');
+      expect(hal2.body.data).toHaveLength(1);
+      expect(hal2.body.data[0].kontak.lid).toBe(LID_MISTERIUS);
+      expect(hal2.body.pagination).toMatchObject({ page: 2, limit: 1, total: 4, totalPages: 4 });
+
+      // Halaman di luar jangkauan tetap membawa angka per jenis.
+      const kosong = await utas('&limit=10&page=9');
+      expect(kosong.body.data).toEqual([]);
+      expect(kosong.body.jumlah).toEqual({ semua: 4, pribadi: 3, grup: 1 });
+    });
+
+    it('mencari nama kontak, nama grup, nama karyawan, nomor, dan isi pesan', async () => {
+      const cari = async (q: string) =>
+        (await utas(`&q=${encodeURIComponent(q)}`)).body.data.map((u: { contactNumber: string }) => u.contactNumber);
+
+      expect(await cari('catering')).toEqual([NOMOR_SARI]); // nama di buku kontak
+      expect(await cari('misterius')).toEqual([LID_MISTERIUS]); // nama profil pengirim
+      expect(await cari('tim dapur')).toEqual(['12036301234567890']); // nama grup
+      // Nama karyawan: chat dengannya dan grup tempat ia menulis.
+      expect(await cari('andi saputra')).toEqual(['12036301234567890', NOMOR_ANDI]);
+      expect(await cari('0822 2222 222')).toEqual([NOMOR_SARI]); // nomor seperti ditulis orang
+      expect(await cari('katering')).toEqual([NOMOR_SARI]); // kata di isi pesan
+      expect(await cari('%')).toEqual([]);
+    });
+
+    it('utas yang cocok tetap menampilkan pesan terakhir dan jumlah utuhnya', async () => {
+      const res = await utas('&q=katering');
+      expect(res.body.data[0]).toMatchObject({ jumlahPesan: 2, pesanTerakhir: { cuplikan: 'Baik bu, kami siapkan' } });
+    });
+
+    it('selain Super Admin tidak melihat grup sama sekali', async () => {
+      const res = await utas('&jenis=grup', hrToken);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.jumlah).toEqual({ semua: 3, pribadi: 3, grup: 0 });
+    });
+
+    it('penyegaran latar (pantau=1) tidak dicatat di jejak audit', async () => {
+      expectStatus(await utas('&pantau=1'), 200);
+      expectStatus(await utas(''), 200);
+
+      expect(await tungguJejakAudit({ action: 'whatsapp.threads.read' })).not.toBeNull();
+      await tungguAuditSelesai();
+      expect(await prisma.auditLog.count({ where: { action: 'whatsapp.threads.read' } })).toBe(1);
+    });
+  });
+
+  describe('GET /whatsapp/conversations menyebut pengirimnya', () => {
+    it('grup: nama, nomor asli, LID, dan karyawan; yang tidak tercatat dibiarkan kosong', async () => {
+      const res = await request(app)
+        .get(`/api/whatsapp/conversations?accountId=${akunA}&groupJid=${encodeURIComponent(GRUP)}`)
+        .set(auth(superToken));
+      expectStatus(res, 200);
+
+      const [siap, stok] = res.body.data;
+      expect(siap.pengirim).toBeNull();
+      expect(stok.pengirim).toEqual({
+        nama: 'Andi',
+        nomor: NOMOR_ANDI,
+        lid: '88014471852141',
+        karyawan: { id: andi.id, name: 'Andi Saputra' },
+      });
+    });
+
+    it('pribadi: pesan keluar atas nama pemegang nomor, pesan masuk atas nama kontak', async () => {
+      const res = await request(app)
+        .get(`/api/whatsapp/conversations?accountId=${akunA}&contactNumber=${NOMOR_SARI}`)
+        .set(auth(hrToken));
+      expectStatus(res, 200);
+
+      const [keluar, masuk] = res.body.data;
+      expect(keluar.pengirim).toEqual({
+        nama: 'Budi Kasir',
+        nomor: '628111111111',
+        lid: null,
+        karyawan: { id: budi.id, name: 'Budi Kasir' },
+      });
+      expect(masuk.pengirim).toEqual({ nama: 'Bu Sari Catering', nomor: NOMOR_SARI, lid: null, karyawan: null });
+    });
+
+    it('selain Super Admin tidak bisa membuka grup lewat penyaring groupJid', async () => {
+      const res = await request(app)
+        .get(`/api/whatsapp/conversations?accountId=${akunA}&groupJid=${encodeURIComponent(GRUP)}`)
+        .set(auth(hrToken));
+      expectStatus(res, 200);
+      expect(res.body.data).toEqual([]);
+    });
+
+    it('LID yang belum dikenal tidak pernah disebut sebagai nomor', async () => {
+      const res = await request(app)
+        .get(`/api/whatsapp/conversations?accountId=${akunA}&contactNumber=${LID_MISTERIUS}`)
+        .set(auth(hrToken));
+      expect(res.body.data[0].pengirim).toEqual({ nama: 'Pelanggan Misterius', nomor: null, lid: LID_MISTERIUS, karyawan: null });
+    });
+
+    it('penyegaran latar (pantau=1) tidak dicatat di jejak audit', async () => {
+      const url = `/api/whatsapp/conversations?accountId=${akunA}&contactNumber=${NOMOR_SARI}`;
+      expectStatus(await request(app).get(`${url}&pantau=1`).set(auth(hrToken)), 200);
+      expectStatus(await request(app).get(url).set(auth(hrToken)), 200);
+
+      expect(await tungguJejakAudit({ action: 'whatsapp.conversations.read' })).not.toBeNull();
+      await tungguAuditSelesai();
+      expect(await prisma.auditLog.count({ where: { action: 'whatsapp.conversations.read' } })).toBe(1);
+    });
   });
 });
 

@@ -1596,6 +1596,7 @@ model WhatsAppAccount {
   conversations WhatsAppConversation[]
   sessionEvents WhatsAppSessionEvent[]
   authKeys      WhatsAppAuthKey[]
+  contacts      WhatsAppContact[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1690,7 +1691,24 @@ model WhatsAppConversation {
 
   /// Peserta grup yang mengirim pesan ini. null untuk percakapan pribadi,
   /// karena pengirimnya sudah jelas dari senderWhatsappNumber.
+  /// Berisi nomor asli bila diketahui; bila WhatsApp hanya menyebut LID-nya
+  /// dan pemetaannya belum ada, berisi digit LID (sama dengan participantLid).
   participantNumber String?
+
+  /// LID (ID samaran WhatsApp, digit tanpa "@lid") lawan bicara chat pribadi
+  /// yang dialamatkan lewat LID. Bila nomor aslinya belum diketahui,
+  /// contactNumber berisi digit yang sama — tanda bahwa itu BUKAN nomor
+  /// telepon dan tidak boleh ditampilkan dengan "+". Dipakai juga untuk
+  /// meminta riwayat ("<lid>@lid").
+  contactLid String?
+
+  /// Sama seperti contactLid, untuk peserta grup yang mengirim pesan.
+  participantLid String?
+
+  /// Nama profil WhatsApp (pushName) pengirim saat pesan masuk. null untuk
+  /// pesan keluar dan untuk arsip lama. Disimpan terbuka seperti nomor, supaya
+  /// bisa dicari; hanya pemegang izin whatsapp yang bisa membacanya.
+  senderName String?
 
   /// Terenkripsi AES-256-GCM (lihat src/utils/fieldCrypto.ts). Jangan
   /// dibaca langsung dari database: pakai decryptField.
@@ -1737,8 +1755,63 @@ model WhatsAppConversation {
   @@index([accountId, timestamp])
   @@index([contactNumber])
   @@index([groupJid, timestamp])
+  /// Daftar utas: pesan terakhir dan jumlah pesan per lawan bicara.
+  @@index([accountId, contactNumber, timestamp])
+  @@index([accountId, contactLid])
   /// GIN: pencarian memakai hasEvery pada array token.
   @@index([searchTokens], type: Gin)
+}
+
+/// Pemetaan LID ke nomor asli.
+///
+/// WhatsApp makin sering menyebut lawan bicara lewat LID ("2147…@lid"), ID
+/// samaran yang BUKAN nomor telepon. Nomor aslinya hanya diketahui dari
+/// sumber tertentu: atribut pesan live (remoteJidAlt/participantAlt), store
+/// Baileys (kategori 'lid-mapping' di WhatsAppAuthKey), daftar peserta grup,
+/// dan kontak. Store Baileys ikut terhapus setiap kali sesi di-logout atau
+/// dipindai ulang, jadi pemetaannya dicerminkan ke sini supaya permanen.
+///
+/// Global, bukan per akun: LID melekat pada pengguna WhatsApp, jadi
+/// pemetaan yang dipelajari satu nomor berlaku untuk semua nomor yang dipantau.
+model WhatsAppLidMap {
+  /// Digit LID tanpa domain dan tanpa nomor perangkat.
+  lid       String   @id
+  /// Digit nomor asli dalam bentuk baku (62…).
+  pn        String
+  /// authkey | alt | riwayat | grup | kontak — dari mana pemetaan ini dipelajari.
+  source    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([pn])
+}
+
+/// Nama kontak seperti yang terlihat oleh satu nomor yang dipantau.
+///
+/// Satu orang satu baris per akun: bila LID-nya kemudian diketahui nomornya,
+/// baris LID-saja digabung ke baris bernomor. Nama disimpan terbuka (seperti
+/// nomor dan nama grup) supaya bisa dicari; hanya pemegang izin whatsapp yang
+/// bisa membacanya.
+model WhatsAppContact {
+  id           String          @id
+  account      WhatsAppAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId    String
+  /// Digit nomor asli; null bila baru LID-nya yang diketahui.
+  number       String?
+  /// Digit LID; null bila kontak ini belum pernah muncul lewat LID.
+  lid          String?
+  /// Nama di buku kontak ponsel pemegang nomor (contacts.upsert `name`).
+  savedName    String?
+  /// Nama profil WhatsApp kontak (pushName pesan / contacts `notify`).
+  pushName     String?
+  /// Nama bisnis terverifikasi.
+  verifiedName String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([accountId, number])
+  @@unique([accountId, lid])
+  @@index([accountId])
 }
 
 model ComplaintOrDisciplinaryAction {

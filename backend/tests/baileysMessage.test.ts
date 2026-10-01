@@ -1,8 +1,14 @@
 import {
   nomorDariJid,
+  digitJid,
+  jenisJid,
+  tampakLid,
   isiDariPesan,
   waktuDariTimestamp,
   normalizeBaileysMessage,
+  lidDalamPesan,
+  bacaKontakBaileys,
+  pasanganDariPeserta,
 } from '../src/services/whatsapp/baileysMessage';
 import { putuskanReconnect, ALASAN_PUTUS, MAKS_PERCOBAAN, MAKS_PUTARAN_QR } from '../src/services/whatsapp/reconnect';
 
@@ -22,6 +28,33 @@ describe('Membaca JID WhatsApp', () => {
 
   it('mengembalikan null kalau tidak ada angka sama sekali', () => {
     expect(nomorDariJid('status@broadcast')).toBeNull();
+  });
+
+  it('membuang domain, perangkat, dan agen dari LID', () => {
+    expect(digitJid('214751418265748:3@lid')).toBe('214751418265748');
+    expect(digitJid('214751418265748_1:3@lid')).toBe('214751418265748');
+  });
+
+  it('membedakan nomor, LID, grup, dan siaran', () => {
+    // LID adalah ID samaran WhatsApp, bukan nomor telepon. Tanpa pembedaan
+    // ini digitnya tersimpan seolah nomor HP dan tampil sebagai "+2147…".
+    expect(jenisJid('628222222222@s.whatsapp.net')).toBe('pn');
+    expect(jenisJid('628222222222@c.us')).toBe('pn');
+    expect(jenisJid('628222222222:99@hosted')).toBe('pn');
+    expect(jenisJid('214751418265748@lid')).toBe('lid');
+    expect(jenisJid('214751418265748:99@hosted.lid')).toBe('lid');
+    expect(jenisJid('12036301234567890@g.us')).toBe('grup');
+    expect(jenisJid('status@broadcast')).toBe('siaran');
+    expect(jenisJid('120363111111111111@newsletter')).toBe('siaran');
+    expect(jenisJid('628222222222')).toBeNull();
+  });
+
+  it('mengenali digit yang tampak LID di arsip lama', () => {
+    expect(tampakLid('214751418265748')).toBe(true); // 15 digit
+    expect(tampakLid('88014471852141')).toBe(true); // 14 digit, bukan 62
+    expect(tampakLid('62812345678901')).toBe(false); // 14 digit nomor Indonesia
+    expect(tampakLid('628222222222')).toBe(false);
+    expect(tampakLid(null)).toBe(false);
   });
 });
 
@@ -74,6 +107,35 @@ describe('Mengambil isi pesan', () => {
       type: 'video',
       media: { mimeType: 'video/mp4', fileName: null },
     });
+  });
+
+  it('membuka pesan sementara, sekali lihat, dan dokumen berketerangan', () => {
+    // Chat yang menyalakan pesan sementara membungkus SEMUA pesannya; tanpa
+    // dibuka, chat itu tidak pernah terarsip sama sekali.
+    expect(isiDariPesan({ ephemeralMessage: { message: { conversation: 'rahasia' } } })).toEqual({
+      body: 'rahasia',
+      type: 'text',
+    });
+    expect(
+      isiDariPesan({ viewOnceMessageV2: { message: { imageMessage: { caption: 'sekali', mimetype: 'image/png' } } } })
+    ).toMatchObject({ body: 'sekali', type: 'image' });
+    expect(isiDariPesan({ viewOnceMessage: { message: { videoMessage: { mimetype: 'video/mp4' } } } })).toMatchObject({
+      type: 'video',
+    });
+    expect(
+      isiDariPesan({ viewOnceMessageV2Extension: { message: { audioMessage: { mimetype: 'audio/ogg' } } } })
+    ).toMatchObject({ type: 'audio' });
+    expect(
+      isiDariPesan({
+        documentWithCaptionMessage: {
+          message: { documentMessage: { caption: 'kontrak', fileName: 'k.pdf', mimetype: 'application/pdf' } },
+        },
+      })
+    ).toMatchObject({ body: 'kontrak', type: 'document', media: { fileName: 'k.pdf' } });
+    // Bungkus bersarang: pesan sementara yang sekali lihat.
+    expect(
+      isiDariPesan({ ephemeralMessage: { message: { viewOnceMessage: { message: { conversation: 'dalam' } } } } })
+    ).toEqual({ body: 'dalam', type: 'text' });
   });
 
   it('melewatkan yang bukan percakapan', () => {
@@ -155,6 +217,7 @@ describe('Menerjemahkan pesan Baileys', () => {
       jid: '12036301234567890@g.us',
       kunci: '12036301234567890',
       participantNumber: '628333333333',
+      participantLid: null,
     });
     expect(hasil.pesan.from).toBe('628333333333');
     expect(hasil.pesan.to).toBe('12036301234567890');
@@ -195,6 +258,182 @@ describe('Menerjemahkan pesan Baileys', () => {
     const hasil = normalizeBaileysMessage(mentah({ message: { stickerMessage: {} } }), NOMOR_SENDIRI);
 
     expect(hasil).toEqual({ status: 'dilewati', alasan: 'jenis_tidak_didukung' });
+  });
+
+  it('melewatkan kanal WhatsApp (newsletter)', () => {
+    // Kanal bukan percakapan dengan seseorang; dulu terarsip sebagai chat
+    // pribadi "+120363…".
+    expect(
+      normalizeBaileysMessage(
+        mentah({ key: { remoteJid: '120363111111111111@newsletter', fromMe: false, id: 'N1' } }),
+        NOMOR_SENDIRI
+      )
+    ).toEqual({ status: 'dilewati', alasan: 'siaran' });
+  });
+});
+
+describe('Lawan bicara yang disebut lewat LID', () => {
+  const LID = '214751418265748';
+  const mentah = (key: Record<string, unknown>, ubah: Record<string, unknown> = {}) => ({
+    key: { fromMe: false, id: 'L1', ...key },
+    message: { conversation: 'Halo kak' },
+    messageTimestamp: 1789000000,
+    ...ubah,
+  });
+
+  it('memakai nomor asli dari remoteJidAlt dan mencatat pasangannya', () => {
+    const hasil = normalizeBaileysMessage(
+      mentah({ remoteJid: `${LID}@lid`, remoteJidAlt: '628222222222@s.whatsapp.net', addressingMode: 'lid' }, { pushName: 'Sari' }),
+      NOMOR_SENDIRI
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.from).toBe('628222222222');
+    expect(hasil.pesan.to).toBe(NOMOR_SENDIRI);
+    expect(hasil.pesan.contactLid).toBe(LID);
+    expect(hasil.pesan.senderName).toBe('Sari');
+    expect(hasil.pasangan).toEqual([{ lid: LID, pn: '628222222222' }]);
+    expect(hasil.pengirim).toEqual({ nomor: '628222222222', lid: LID, pushName: 'Sari', verifiedName: null });
+  });
+
+  it('memakai peta LID yang sudah dikenal bila pesannya tidak membawa nomor', () => {
+    const hasil = normalizeBaileysMessage(
+      mentah({ remoteJid: `${LID}:7@lid` }),
+      NOMOR_SENDIRI,
+      new Map([[LID, '628222222222']])
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.from).toBe('628222222222');
+    expect(hasil.pesan.contactLid).toBe(LID);
+    expect(hasil.pasangan).toEqual([]);
+  });
+
+  it('LID yang belum dikenal tetap diarsipkan, ditandai sebagai LID', () => {
+    const hasil = normalizeBaileysMessage(mentah({ remoteJid: `${LID}@lid` }), NOMOR_SENDIRI);
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    // Digit LID menjadi kunci utas, tapi contactLid yang sama menandai bahwa
+    // itu bukan nomor telepon.
+    expect(hasil.pesan.from).toBe(LID);
+    expect(hasil.pesan.contactLid).toBe(LID);
+    expect(hasil.pengirim).toMatchObject({ nomor: null, lid: LID });
+  });
+
+  it('pesan keluar tidak salah mengambil nomor sendiri dari remoteJidAlt', () => {
+    // Pada pesan yang kita kirim, alamat alternatifnya bisa sender_pn milik
+    // kita sendiri. Memakainya berarti kontak itu tercatat sebagai diri kita.
+    const hasil = normalizeBaileysMessage(
+      mentah({ remoteJid: `${LID}@lid`, remoteJidAlt: `${NOMOR_SENDIRI}:3@s.whatsapp.net`, fromMe: true }),
+      NOMOR_SENDIRI
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.from).toBe(NOMOR_SENDIRI);
+    expect(hasil.pesan.to).toBe(LID);
+    expect(hasil.pasangan).toEqual([]);
+    expect(hasil.pesan.senderName).toBeNull();
+    expect(hasil.pengirim).toBeNull();
+  });
+
+  it('chat bernomor yang membawa LID di sebelahnya ikut mencatat LID-nya', () => {
+    const hasil = normalizeBaileysMessage(
+      mentah({ remoteJid: '628222222222@s.whatsapp.net', remoteJidAlt: `${LID}@lid`, addressingMode: 'pn' }),
+      NOMOR_SENDIRI
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.from).toBe('628222222222');
+    expect(hasil.pesan.contactLid).toBe(LID);
+    expect(hasil.pasangan).toEqual([{ lid: LID, pn: '628222222222' }]);
+  });
+
+  it('grup: pengirim LID diganti nomor asli dari participantAlt', () => {
+    const hasil = normalizeBaileysMessage(
+      mentah(
+        { remoteJid: '12036301234567890@g.us', participant: `${LID}@lid`, participantAlt: '628333333333@s.whatsapp.net' },
+        { pushName: 'Andi Dapur' }
+      ),
+      NOMOR_SENDIRI
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.grup).toMatchObject({ participantNumber: '628333333333', participantLid: LID });
+    expect(hasil.pesan.from).toBe('628333333333');
+    expect(hasil.pesan.senderName).toBe('Andi Dapur');
+    expect(hasil.pasangan).toEqual([{ lid: LID, pn: '628333333333' }]);
+    expect(hasil.pengirim).toEqual({ nomor: '628333333333', lid: LID, pushName: 'Andi Dapur', verifiedName: null });
+  });
+
+  it('grup dari riwayat: pengirimnya di field participant level atas', () => {
+    // Pesan history sync tidak mengisi key.participant; tanpa membaca field
+    // ini pengirim grup tercatat kosong (68 ribu pesan di produksi).
+    const hasil = normalizeBaileysMessage(
+      mentah({ remoteJid: '12036301234567890@g.us' }, { participant: `${LID}@lid` }),
+      NOMOR_SENDIRI,
+      new Map([[LID, '628333333333']])
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.grup).toMatchObject({ participantNumber: '628333333333', participantLid: LID });
+    expect(lidDalamPesan(mentah({ remoteJid: '12036301234567890@g.us' }, { participant: `${LID}@lid` }))).toEqual([LID]);
+  });
+
+  it('grup: pengirim LID yang belum dikenal tetap tercatat sebagai LID', () => {
+    const hasil = normalizeBaileysMessage(
+      mentah({ remoteJid: '12036301234567890@g.us', participant: `${LID}@lid` }),
+      NOMOR_SENDIRI
+    );
+
+    expect(hasil.status).toBe('ok');
+    if (hasil.status !== 'ok') return;
+    expect(hasil.pesan.grup).toMatchObject({ participantNumber: LID, participantLid: LID });
+    expect(hasil.pengirim).toMatchObject({ nomor: null, lid: LID });
+  });
+});
+
+describe('Membaca kontak Baileys', () => {
+  it('kontak ber-LID dengan nomor aslinya', () => {
+    expect(
+      bacaKontakBaileys({ id: '214751418265748@lid', phoneNumber: '628222222222@s.whatsapp.net', name: ' Bu  Sari ', notify: 'Sari' })
+    ).toEqual({ nomor: '628222222222', lid: '214751418265748', savedName: 'Bu Sari', pushName: 'Sari', verifiedName: null });
+  });
+
+  it('kontak bernomor dengan LID-nya', () => {
+    expect(bacaKontakBaileys({ id: '628222222222@s.whatsapp.net', lid: '214751418265748@lid' })).toEqual({
+      nomor: '628222222222',
+      lid: '214751418265748',
+      savedName: null,
+      pushName: null,
+      verifiedName: null,
+    });
+  });
+
+  it('melewati grup, kanal, dan kontak tanpa isi apa pun', () => {
+    expect(bacaKontakBaileys({ id: '12036301234567890@g.us', name: 'Tim Dapur' })).toBeNull();
+    expect(bacaKontakBaileys({ id: '120363111111111111@newsletter', name: 'Promo' })).toBeNull();
+    expect(bacaKontakBaileys({ id: '628222222222@s.whatsapp.net' })).toBeNull();
+    expect(bacaKontakBaileys(null)).toBeNull();
+  });
+
+  it('peserta grup membawa pasangan LID dan nomor', () => {
+    expect(pasanganDariPeserta({ id: '214751418265748@lid', phoneNumber: '628222222222@s.whatsapp.net' })).toEqual({
+      lid: '214751418265748',
+      pn: '628222222222',
+    });
+    expect(pasanganDariPeserta({ id: '628222222222@s.whatsapp.net', lid: '214751418265748@lid' })).toEqual({
+      lid: '214751418265748',
+      pn: '628222222222',
+    });
+    expect(pasanganDariPeserta({ id: '214751418265748@lid' })).toBeNull();
+    expect(pasanganDariPeserta({})).toBeNull();
   });
 });
 
