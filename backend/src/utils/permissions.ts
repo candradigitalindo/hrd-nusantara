@@ -30,6 +30,13 @@ export interface DefinisiHalaman {
   induk?: string;
   /** Aksi yang tersedia di halaman ini, beserta keterangan apa yang dibuka. */
   aksi: Partial<Record<Aksi, string>>;
+  /**
+   * Menu yang hanya terbuka bagi lingkup Super Admin (requireRole), bukan
+   * lewat izin. Barisnya tetap ada supaya pengelola peran melihat menu itu
+   * sengaja dikunci, bukan terlupa; aksinya harus kosong agar tidak muncul
+   * kotak centang yang tidak membuka apa-apa.
+   */
+  hanyaSuperAdmin?: boolean;
 }
 
 export const MATRIKS_IZIN: readonly DefinisiHalaman[] = [
@@ -115,13 +122,20 @@ export const MATRIKS_IZIN: readonly DefinisiHalaman[] = [
     aksi: { ubah: 'Setujui atau tolak lembur' },
   },
   {
-    halaman: 'shift', label: 'Jadwal shift', kelompok: 'Kehadiran & Cuti', induk: 'presensi',
-    aksi: { lihat: 'Lihat jadwal shift tim', buat: 'Buat jadwal shift', ubah: 'Ubah jadwal shift', hapus: 'Hapus jadwal shift' },
+    halaman: 'shift', label: 'Jadwal Shift', kelompok: 'Kehadiran & Cuti',
+    aksi: {
+      lihat: 'Lihat jadwal, jenis shift, penugasan, dan rekap tim',
+      buat: 'Buat jenis shift, jadwal, dan penugasan berulang',
+      ubah: 'Ubah jenis shift dan jadwal, akhiri penugasan',
+      hapus: 'Batalkan jadwal, nonaktifkan jenis shift, hapus penugasan',
+    },
   },
   {
-    halaman: 'lokasi', label: 'Lokasi kerja & QR absensi', kelompok: 'Kehadiran & Cuti', induk: 'presensi',
-    aksi: { lihat: 'Lihat daftar lokasi kerja', buat: 'Tambah lokasi kerja', ubah: 'Ubah lokasi dan putar ulang QR' },
+    halaman: 'lokasi', label: 'Lokasi Kerja', kelompok: 'Kehadiran & Cuti',
+    aksi: { lihat: 'Lihat lokasi kerja dan QR absensinya', buat: 'Tambah lokasi kerja', ubah: 'Ubah lokasi dan putar ulang QR' },
   },
+  // Data lokasi 24 jam: hanya Super Admin (lihat locationTrackingRoutes.ts).
+  { halaman: 'pemantauan', label: 'Pemantauan Lokasi', kelompok: 'Kehadiran & Cuti', aksi: {}, hanyaSuperAdmin: true },
   {
     halaman: 'cuti', label: 'Cuti & Izin', kelompok: 'Kehadiran & Cuti',
     aksi: { lihat: 'Lihat saldo, ajukan, dan batalkan cuti sendiri' },

@@ -37,6 +37,30 @@ describe('Katalog izin dan peran sistem', () => {
     expect((res.body.pages as { halaman: string }[]).map((p) => p.halaman)).toEqual(expect.arrayContaining(['dashboard', 'karyawan', 'presensi_tim', 'peran']));
   });
 
+  it('menu khusus Super Admin tampil terkunci di matriks, tanpa izin yang bisa diberikan', async () => {
+    const token = await bikinPemilik();
+    const res = await request(app).get('/api/roles/permissions').set(auth(token));
+    expectStatus(res, 200);
+    type Baris = { halaman: string; label: string; kelompok: string; induk?: string; aksi: Record<string, string>; hanyaSuperAdmin?: boolean };
+    const pages = res.body.pages as Baris[];
+    expect(pages.find((p) => p.halaman === 'pemantauan')).toMatchObject({ label: 'Pemantauan Lokasi', hanyaSuperAdmin: true, aksi: {} });
+    // Baris terkunci tanpa aksi: kotak centangnya tidak akan membuka apa pun.
+    for (const p of pages.filter((h) => h.hanyaSuperAdmin)) expect(p.aksi).toEqual({});
+    expect(IZIN.some((i) => i.halaman === 'pemantauan')).toBe(false);
+    expectStatus(
+      await request(app).post('/api/roles').set(auth(token)).send({ name: 'Pengawas Lokasi', baseRole: 'HR_ADMIN', permissions: ['pemantauan.lihat'] }),
+      400
+    );
+    // Baris utama mengikuti menu sidebar Kehadiran & Cuti, urutannya juga.
+    expect(pages.filter((p) => p.kelompok === 'Kehadiran & Cuti' && !p.induk).map((p) => p.label)).toEqual([
+      'Presensi',
+      'Jadwal Shift',
+      'Lokasi Kerja',
+      'Pemantauan Lokasi',
+      'Cuti & Izin',
+    ]);
+  });
+
   it('empat peran sistem tersedia dan tidak dibuat ganda saat dipanggil ulang', async () => {
     await pastikanPeranSistem();
     const token = await bikinPemilik();

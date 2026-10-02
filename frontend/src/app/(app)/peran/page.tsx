@@ -159,6 +159,16 @@ export default function HalamanPeran() {
 
   /** Satu baris: nama halaman + empat sel aksi. Sel kosong berarti aksi itu memang tidak ada di halamannya. */
   const Baris = ({ p }: { p: DefinisiHalamanIzin }) => {
+    if (p.hanyaSuperAdmin) {
+      return (
+        <tr className="border-t border-border">
+          <th scope="row" className="py-2 pl-3 pr-2 text-left text-sm font-medium text-muted">{p.label}</th>
+          <td colSpan={KOLOM.length} className="px-4 py-2 text-xs text-muted" title="Tidak bisa diberikan ke peran lain">
+            <span className="inline-flex items-center gap-1.5"><Lock className="h-3.5 w-3.5" aria-hidden /> Khusus Super Admin</span>
+          </td>
+        </tr>
+      );
+    }
     const kunci = kunciHalaman(p);
     const semua = kunci.every((k) => dipilih.has(k));
     const sebagian = !semua && kunci.some((k) => dipilih.has(k));

@@ -37,6 +37,8 @@ export interface DefinisiHalamanIzin {
   kelompok: string;
   induk?: string;
   aksi: Partial<Record<AksiIzin, string>>;
+  /** Menu khusus Super Admin: tampil terkunci, tanpa izin yang bisa diberikan. */
+  hanyaSuperAdmin?: boolean;
 }
 
 export interface KatalogIzin {
