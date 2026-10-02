@@ -193,24 +193,34 @@ void main() {
     expect(laporan.last, containsPair('permission', 'denied_forever'));
   });
 
-  testWidgets('baris Profil: belum disetujui → pemberitahuan lengkap, lalu berjalan', (tester) async {
+  testWidgets('pemberitahuan Akses Lokasi: isi lengkap, lalu "Saya mengerti" menyetujui dan menjalankan pemantauan', (tester) async {
     ukuranPonsel(tester);
     const konfig = KonfigurasiPemantauan(aktif: true, selamaBekerja: false, intervalMenit: 15);
     await tester.pumpWidget(aplikasiUji(
-      const Scaffold(body: Card(child: BarisPemantauan())),
+      Consumer(
+        builder: (context, ref, _) => Scaffold(
+          body: Center(child: FilledButton(onPressed: () => tampilkanPemberitahuanPemantauan(context, ref), child: const Text('Buka pemberitahuan'))),
+        ),
+      ),
       overrides: [pemantauLokasiProvider.overrideWith(() => PemantauTetap(const StatusPemantauan(konfigurasi: konfig, setuju: false, izin: 'granted_while_in_use')))],
     ));
     await tester.pumpAndSettle();
-    expect(find.text('Belum Anda setujui · ketuk untuk membaca'), findsOneWidget);
 
-    await tester.tap(find.text('Pemantauan lokasi'));
+    await tester.tap(find.text('Buka pemberitahuan'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('24 jam sehari, aplikasi ini mengirim lokasi Anda ke HRD Nusantara setiap 15 menit'), findsOneWidget);
-    expect(find.textContaining('hanya dapat dilihat oleh Super Admin'), findsOneWidget);
+    expect(find.text('Akses Lokasi'), findsOneWidget);
+    // Alasan utama (absensi) disebut dulu, tetapi pemantauan berkala tetap
+    // dijelaskan apa adanya — cakupan, interval, siapa yang melihat.
+    expect(find.textContaining('memastikan absensi dilakukan di lokasi kerja'), findsOneWidget);
+    expect(find.textContaining('24 jam sehari, lokasi Anda dikirim ke HRD Nusantara setiap 15 menit'), findsOneWidget);
+    expect(find.textContaining('Hanya Super Admin yang dapat melihatnya'), findsOneWidget);
     await potret(tester, 'pemantauan-pemberitahuan');
 
     await tester.tap(find.text('Saya mengerti'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('24 jam sehari · tiap 15 menit'), findsOneWidget);
+    expect(find.text('Akses Lokasi'), findsNothing);
+    final status = ProviderScope.containerOf(tester.element(find.byType(Scaffold))).read(pemantauLokasiProvider);
+    expect(status.setuju, isTrue);
+    expect(status.berjalan, isTrue);
   });
 }

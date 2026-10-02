@@ -32,6 +32,12 @@ import '../whatsapp/repo_whatsapp.dart';
 /// bagian hanya tampil bila menunya termasuk peran pengguna (izin
 /// `<halaman>.lihat`, sama dengan sidebar web), dan
 /// datanya baru diminta bila bagian itu memang tampil.
+/// Bertambah setiap aplikasi dibuka lagi setelah layarnya ditutup sementara
+/// mesin Flutter tetap hidup (Pemantauan Lokasi, lihat app.dart): beranda lalu
+/// memuat ulang datanya seperti aplikasi yang baru dibuka, bukan menampilkan
+/// presensi dan jadwal kemarin.
+final dibukaUlangProvider = StateProvider<int>((ref) => 0);
+
 class LayarBeranda extends ConsumerWidget {
   const LayarBeranda({super.key});
 
@@ -70,7 +76,11 @@ class LayarBeranda extends ConsumerWidget {
     final pelatihan = bolehPelatihan
         ? ref.watch(pelatihanMendatangProvider)
         : null;
-    final tautanWa = bolehWa ? ref.watch(tautanWhatsAppProvider).value : null;
+    // valueOrNull, bukan value: di Riverpod 2.6 `.value` melempar ulang galat
+    // provider yang gagal, dan satu permintaan yang gagal (mis. riwayat
+    // presensi) membuat seluruh Beranda tidak tergambar. Bagian yang gagal
+    // cukup kosong; bagian lain tetap tampil.
+    final tautanWa = bolehWa ? ref.watch(tautanWhatsAppProvider).valueOrNull : null;
     final penilaian = bolehKinerja ? ref.watch(penilaianProvider) : null;
 
     Future<void> segarkan() async {
@@ -93,12 +103,14 @@ class LayarBeranda extends ConsumerWidget {
       ]);
     }
 
+    ref.listen(dibukaUlangProvider, (_, _) => segarkan());
+
     final tindakan = _susunTindakan(
       context,
-      pengumuman: pengumuman?.value,
-      survei: survei?.value,
-      cuti: cuti?.value,
-      penilaian: penilaian?.value,
+      pengumuman: pengumuman?.valueOrNull,
+      survei: survei?.valueOrNull,
+      cuti: cuti?.valueOrNull,
+      penilaian: penilaian?.valueOrNull,
       saya: p?.id ?? '',
       waPerluTindakan:
           tautanWa != null && tautanWa.perluTindakan && tautanWa.driverAktif,
@@ -119,7 +131,7 @@ class LayarBeranda extends ConsumerWidget {
                       presensi: presensi!,
                       shift: shift ?? const AsyncValue.data(null),
                       fleksibel: fleksibel,
-                      riwayat: riwayat!.value ?? const [],
+                      riwayat: riwayat!.valueOrNull ?? const [],
                     )
                   : null,
             ),
@@ -581,8 +593,8 @@ class _KartuPresensiHariIni extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final skema = Theme.of(context).colorScheme;
-    final s = shift.value;
-    final hariIni = presensi.value;
+    final s = shift.valueOrNull;
+    final hariIni = presensi.valueOrNull;
     final adaShift = s != null;
 
     final (String labelStatus, Nada nadaStatusHariIni) = presensi.isLoading
@@ -1016,8 +1028,8 @@ class _RingkasanKehadiran extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
-    final daftar = riwayat.value ?? const <Presensi>[];
-    final shifts = jadwal.value ?? const <Shift>[];
+    final daftar = riwayat.valueOrNull ?? const <Presensi>[];
+    final shifts = jadwal.valueOrNull ?? const <Shift>[];
     // Dihitung per tanggal, bukan per baris: masuk-pulang dua kali sehari
     // (sesi ganda, umum pada jam fleksibel) tetap satu hari hadir.
     final hadir = daftar
@@ -1283,7 +1295,7 @@ class _JadwalMingguIni extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
-    final shifts = jadwal.value ?? const <Shift>[];
+    final shifts = jadwal.valueOrNull ?? const <Shift>[];
     final sekarang = DateTime.now();
     final hariIni = DateTime(sekarang.year, sekarang.month, sekarang.day);
     return SizedBox(
@@ -1380,13 +1392,13 @@ class _KartuCuti extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
-    final d = saldo.value ?? const <SaldoCuti>[];
+    final d = saldo.valueOrNull ?? const <SaldoCuti>[];
     final tahunan =
         d
             .where((s) => s.jenisNama.toLowerCase().contains('tahun'))
             .firstOrNull ??
         d.firstOrNull;
-    final menunggu = (riwayat.value ?? const <Cuti>[])
+    final menunggu = (riwayat.valueOrNull ?? const <Cuti>[])
         .where((c) => c.status == 'pending')
         .length;
     final rasio = tahunan == null || tahunan.jatah == 0
@@ -1425,7 +1437,7 @@ class _KartuGaji extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final terakhir = (slip.value ?? const <SlipGaji>[]).firstOrNull;
+    final terakhir = (slip.valueOrNull ?? const <SlipGaji>[]).firstOrNull;
     return _KartuRingkas(
       ikon: Icons.receipt_long_outlined,
       nada: Nada.peringatan,
@@ -1536,7 +1548,7 @@ class _KartuKinerja extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final skema = Theme.of(context).colorScheme;
-    final daftar = penilaian.value ?? const <Penilaian>[];
+    final daftar = penilaian.valueOrNull ?? const <Penilaian>[];
     final terbaru = nilaiTerbaru(
       daftar.where((r) => r.sayaDinilai(saya) && r.adaHasil).toList(),
     );

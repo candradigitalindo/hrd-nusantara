@@ -33,6 +33,22 @@ class _PemicuSesi extends ChangeNotifier {
 /// (mis. persetujuan Pemantauan Lokasi dari MaterialApp.builder).
 final kunciNavigatorAkar = GlobalKey<NavigatorState>();
 
+/// Navigator tiap tab (StatefulShellRoute): layar yang dibuka dari sebuah tab —
+/// kamera wajah, pindai QR, lembar absen — ada di sini, bukan di navigator akar.
+final kunciNavigatorTab = List.generate(5, (_) => GlobalKey<NavigatorState>());
+
+/// Menutup dialog dan layar yang sedang terbuka — di navigator akar maupun di
+/// tiap tab — lalu kembali ke beranda. Dipakai saat Activity ditutup padahal
+/// mesin Flutter dipertahankan untuk Pemantauan Lokasi: layar yang bergantung
+/// pada Activity itu (kamera, pemindai) tidak boleh tersisa di hadapan
+/// karyawan saat aplikasi dibuka lagi.
+void kembaliKeBeranda(GoRouter router) {
+  for (final kunci in [...kunciNavigatorTab, kunciNavigatorAkar]) {
+    kunci.currentState?.popUntil((rute) => rute.isFirst);
+  }
+  router.go('/');
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   final pemicu = _PemicuSesi(ref);
   ref.onDispose(pemicu.dispose);
@@ -60,11 +76,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       StatefulShellRoute.indexedStack(
         builder: (context, state, shell) => Cangkang(navigationShell: shell),
         branches: [
-          StatefulShellBranch(routes: [GoRoute(path: '/', builder: (_, _) => const LayarBeranda())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/presensi', builder: (_, _) => const LayarPresensi())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/cuti', builder: (_, _) => const LayarCuti())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/gaji', builder: (_, _) => const LayarGaji())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/profil', builder: (_, _) => const LayarProfil())]),
+          StatefulShellBranch(navigatorKey: kunciNavigatorTab[0], routes: [GoRoute(path: '/', builder: (_, _) => const LayarBeranda())]),
+          StatefulShellBranch(navigatorKey: kunciNavigatorTab[1], routes: [GoRoute(path: '/presensi', builder: (_, _) => const LayarPresensi())]),
+          StatefulShellBranch(navigatorKey: kunciNavigatorTab[2], routes: [GoRoute(path: '/cuti', builder: (_, _) => const LayarCuti())]),
+          StatefulShellBranch(navigatorKey: kunciNavigatorTab[3], routes: [GoRoute(path: '/gaji', builder: (_, _) => const LayarGaji())]),
+          StatefulShellBranch(navigatorKey: kunciNavigatorTab[4], routes: [GoRoute(path: '/profil', builder: (_, _) => const LayarProfil())]),
         ],
       ),
       GoRoute(path: '/jadwal', builder: (_, _) => const LayarJadwal()),

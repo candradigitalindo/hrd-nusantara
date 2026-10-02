@@ -8,8 +8,6 @@ import '../../core/widget/widget_umum.dart';
 import '../../firebase_options.dart';
 import '../antrean/mesin_antrean.dart';
 import '../auth/sesi_provider.dart';
-import '../pemantauan/layanan_pemantauan.dart';
-import '../pemantauan/layar_pemantauan.dart';
 import '../wajah/model_wajah.dart';
 import '../wajah/repo_wajah.dart';
 
@@ -149,7 +147,6 @@ class LayarProfil extends ConsumerWidget {
               ],
             ),
           ),
-          const BarisPemantauanDiKartu(),
           const JudulBagian('Notifikasi'),
           Card(
             child: ListTile(
@@ -267,20 +264,6 @@ class _LayarGantiPasswordState extends ConsumerState<LayarGantiPassword> {
         ),
       ),
       ),
-    );
-  }
-}
-
-/// Pemantauan Lokasi hanya tampil bila diaktifkan perusahaan.
-class BarisPemantauanDiKartu extends ConsumerWidget {
-  const BarisPemantauanDiKartu({super.key});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (!ref.watch(pemantauLokasiProvider.select((s) => s.aktif))) return const SizedBox.shrink();
-    return const Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [JudulBagian('Privasi'), Card(child: BarisPemantauan())],
     );
   }
 }

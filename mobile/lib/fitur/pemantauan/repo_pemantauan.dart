@@ -55,10 +55,19 @@ class TitikLokasi {
 class RepoPemantauan {
   RepoPemantauan(this._api);
   final KlienApi _api;
+  static const _kunciKonfigurasi = 'pemantauan-konfigurasi';
 
   /// Tersalin offline: ponsel tetap tahu harus memantau walau tanpa sinyal.
   Future<KonfigurasiPemantauan> konfigurasi() async =>
-      KonfigurasiPemantauan.dariJson(await _api.getObjek('/location-tracking/config', cache: 'pemantauan-konfigurasi'));
+      KonfigurasiPemantauan.dariJson(await _api.getObjek('/location-tracking/config', cache: _kunciKonfigurasi));
+
+  /// Salinan terakhir dari server, tanpa menyentuh jaringan — untuk
+  /// menyalakan pemantauan secepatnya setelah ponsel restart, sebelum sinyal
+  /// siap. null = belum pernah tersimpan.
+  Future<KonfigurasiPemantauan?> konfigurasiTersimpan() async {
+    final isi = (await _api.cache?.baca(_kunciKonfigurasi))?.data;
+    return isi is Map ? KonfigurasiPemantauan.dariJson(Map<String, dynamic>.from(isi)) : null;
+  }
 
   /// `enabled: false` di jawaban berarti pemantauan sudah dimatikan.
   Future<Map<String, dynamic>> kirim(List<TitikLokasi> titik) =>

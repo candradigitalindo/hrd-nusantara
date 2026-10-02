@@ -68,7 +68,12 @@ class KlienApi {
           // Login yang salah juga 401, tapi itu bukan sesi habis; rute sesi
           // sendiri tidak ikut diperbarui supaya tidak berputar-putar.
           final ruteSesi = jalur.contains('/auth/login') || jalur.contains('/auth/refresh') || jalur.contains('/auth/logout');
-          if (e.response?.statusCode == 401 && !ruteSesi) {
+          // Permintaan yang terkirim tanpa token (dibuat saat belum login)
+          // memang ditolak 401; itu bukan sesi yang habis. Memperlakukannya
+          // sebagai sesi habis memanggil keluar() — yang menghapus token login
+          // yang mungkin baru saja tersimpan — dan membuang refresh token.
+          final tanpaToken = e.requestOptions.headers['Authorization'] == null;
+          if (e.response?.statusCode == 401 && !ruteSesi && !tanpaToken) {
             // Token akses kedaluwarsa: tukar lewat refresh token lalu ulangi
             // permintaannya sekali. Yang sudah diulang dan tetap 401 berarti
             // sesinya memang berakhir.

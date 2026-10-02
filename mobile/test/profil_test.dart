@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hrd_nusantara/fitur/auth/sesi_provider.dart';
 import 'package:hrd_nusantara/fitur/pemantauan/layanan_pemantauan.dart';
+import 'package:hrd_nusantara/fitur/pemantauan/repo_pemantauan.dart';
 import 'package:hrd_nusantara/fitur/profil/layar_profil.dart';
 import 'package:hrd_nusantara/fitur/wajah/model_wajah.dart';
 import 'package:hrd_nusantara/fitur/wajah/repo_wajah.dart';
@@ -41,5 +42,25 @@ void main() {
     }
     expect(find.text('Versi 0.2.0+202609230125 · build 29835285'), findsOneWidget);
     await potret(tester, 'profil');
+  });
+
+  testWidgets('profil: tidak ada bagian Privasi / baris Pemantauan lokasi, walau pemantauan aktif', (tester) async {
+    ukuranPonsel(tester, tinggi: 1400);
+    const konfig = KonfigurasiPemantauan(aktif: true, selamaBekerja: false, intervalMenit: 15);
+    await tester.pumpWidget(aplikasiUji(const LayarProfil(), overrides: [
+      penggunaProvider.overrideWithValue(pengguna),
+      pemantauLokasiProvider.overrideWith(() => PemantauTetap(const StatusPemantauan(konfigurasi: konfig, setuju: false, izin: 'denied'))),
+      statusWajahProvider.overrideWith((ref) async => StatusWajah.dariJson(jsonStatusWajah())),
+    ]));
+    await tester.pumpAndSettle();
+
+    // JudulBagian menampilkan judul dengan huruf besar.
+    expect(find.text('PRIVASI'), findsNothing);
+    expect(find.text('Pemantauan lokasi'), findsNothing);
+    expect(find.textContaining('Belum Anda setujui'), findsNothing);
+    // Kontrol positif: bagian lain di bawahnya tetap tampil, jadi asersi di atas
+    // memang membaca layar yang sama (bukan lolos karena salah huruf).
+    expect(find.text('NOTIFIKASI'), findsOneWidget);
+    await potret(tester, 'profil-pemantauan-aktif');
   });
 }

@@ -5,6 +5,7 @@ import '../../core/api/klien_api.dart';
 import '../../core/api/status_jaringan.dart';
 import '../../core/format.dart';
 import '../antrean/mesin_antrean.dart';
+import '../auth/sesi_provider.dart';
 import '../antrean/model_antrean.dart';
 import 'model_presensi.dart';
 
@@ -62,6 +63,14 @@ Presensi? gabungTertunda(Presensi? server, Iterable<ItemAntrean> antrean, DateTi
 final repoPresensiProvider = Provider<RepoPresensi>((ref) => RepoPresensi(ref.watch(klienApiProvider)));
 
 final riwayatPresensiProvider = FutureProvider.autoDispose<List<Presensi>>((ref) {
+  // Mengikuti akun yang login. Provider ini dihidupkan sejak aplikasi mulai
+  // (Pemantauan Lokasi mendengarkan presensi hari ini), jadi tanpa ini ia
+  // meminta riwayat saat masih di layar login — ditolak 401 — dan galat itu
+  // tersimpan: Beranda sesudah login membaca galat lama, bukan data. Dengan
+  // bergantung pada id pengguna, riwayat dimuat ulang begitu login dan tidak
+  // terbawa ke akun berikutnya di ponsel yang sama.
+  final idPengguna = ref.watch(penggunaProvider.select((p) => p?.id));
+  if (idPengguna == null) return Future.value(const <Presensi>[]);
   ref.watch(sambunganProvider);
   // Presensi dari antrean yang baru terkirim harus segera tampil dari server.
   ref.watch(antreanProvider.select((s) => s.terkirim));
@@ -81,7 +90,16 @@ final presensiHariIniProvider = FutureProvider.autoDispose<Presensi?>((ref) asyn
   // antrean berubah, bukan setiap kali status antrean lain bergerak.
   ref.watch(antreanProvider.select((s) => s.item.where((i) => i.jenis.startsWith('presensi-')).map((i) => '${i.id}:${i.status.name}').join(',')));
   final daftar = await ref.watch(riwayatPresensiProvider.future);
-  final server = daftar.where((p) => p.tanggal != null && DateFormat('yyyy-MM-dd').format(p.tanggal!) == hariIni).firstOrNull;
+  // Sesi yang masih terbuka adalah sesi hari ini walau check-in-nya sebelum
+  // tengah malam: shift malam (22:00–06:00) dan siapa pun yang membuka
+  // Beranda lewat pukul 00:00. Dulu disaring dari tanggal check-in, sehingga
+  // sesudah tengah malam tombolnya berubah jadi "Check-in", ditolak server
+  // ("sudah check-in"), dan karyawan tidak bisa check-out dari aplikasi.
+  // Batas 16 jam mengikuti server: lebih dari itu dianggap lupa check-out.
+  final terbuka = daftar
+      .where((p) => p.masihTerbuka && p.status != 'no_checkout' && sekarang.difference(p.jamMasuk!) < const Duration(hours: 16))
+      .firstOrNull;
+  final server = terbuka ?? daftar.where((p) => p.tanggal != null && DateFormat('yyyy-MM-dd').format(p.tanggal!) == hariIni).firstOrNull;
   return gabungTertunda(server, ref.read(antreanProvider).item, sekarang);
 });
 

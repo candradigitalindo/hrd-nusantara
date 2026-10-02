@@ -8,6 +8,9 @@ import 'core/widget/bingkai_jaringan.dart';
 import 'fitur/antrean/layar_antrean.dart';
 import 'fitur/antrean/mesin_antrean.dart';
 import 'fitur/auth/sesi_provider.dart';
+import 'fitur/beranda/layar_beranda.dart' show dibukaUlangProvider;
+import 'fitur/pemantauan/kanal_pemantauan.dart';
+import 'fitur/pemantauan/layanan_pemantauan.dart';
 import 'fitur/pemantauan/layar_pemantauan.dart';
 import 'fitur/notifikasi/layanan_push.dart';
 import 'router.dart';
@@ -21,6 +24,11 @@ class AplikasiHrd extends ConsumerStatefulWidget {
 }
 
 class _AplikasiHrdState extends ConsumerState<AplikasiHrd> {
+  late final AppLifecycleListener _siklus;
+
+  /// Layar sempat ditutup sementara mesin Flutter tetap hidup.
+  bool _dibukaUlang = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,6 +40,30 @@ class _AplikasiHrdState extends ConsumerState<AplikasiHrd> {
         push.daftarkan();
       }
     }, fireImmediately: true);
+    // Android: aplikasi ditutup (diusap / Kembali) tetapi mesin Flutter
+    // dipertahankan agar Pemantauan Lokasi terus berjalan. Saat dibuka lagi,
+    // karyawan mulai dari beranda, bukan dari layar yang tadi terbuka.
+    ref.read(kanalPemantauanProvider).saatAktivitasDitutup(() {
+      ref.read(pemantauLokasiProvider.notifier).aktivitasDitutup();
+      kembaliKeBeranda(ref.read(routerProvider));
+      _dibukaUlang = true;
+    });
+    _siklus = AppLifecycleListener(onResume: _saatDibukaUlang);
+  }
+
+  /// Aplikasi dibuka lagi setelah layarnya ditutup: data dimuat ulang seperti
+  /// aplikasi yang baru dibuka, dan notifikasi push yang membukanya diarahkan.
+  void _saatDibukaUlang() {
+    if (!_dibukaUlang) return;
+    _dibukaUlang = false;
+    ref.read(dibukaUlangProvider.notifier).state++;
+    if (widget.firebaseAktif) ref.read(layananPushProvider).bukaPesanAwal();
+  }
+
+  @override
+  void dispose() {
+    _siklus.dispose();
+    super.dispose();
   }
 
   @override

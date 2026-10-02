@@ -12,6 +12,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Pemantauan Lokasi yang tahan lama: dinyalakan lagi setelah ponsel restart,
+         dan meminta dikecualikan dari penghemat baterai (sistem sering menghentikan
+         layanan latar aplikasi yang tidak dikecualikan). Aplikasi ini dibagikan
+         sebagai APK internal; bila suatu saat dipublikasikan ke Play,
+         REQUEST_IGNORE_BATTERY_OPTIMIZATIONS wajib dibenarkan atau dihapus. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <!-- Deteksi fake GPS: memindai aplikasi terpasang yang meminta ACCESS_MOCK_LOCATION.
          Aplikasi ini didistribusikan sebagai APK internal (bukan Play Store); bila
          suatu saat dipublikasikan ke Play, izin ini wajib dibenarkan atau dihapus
@@ -50,6 +57,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Alarm "pemantauan terhenti" (PengingatReceiver) dan penyalaan ulang
+             sesudah ponsel restart/aplikasi diperbarui (BootReceiver). Keduanya
+             tidak diekspor: sistem tetap bisa menyampaikan siaran ke penerima
+             yang tidak diekspor, aplikasi lain tidak. -->
+        <receiver android:name=".PengingatReceiver" android:exported="false"/>
+        <receiver android:name=".BootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

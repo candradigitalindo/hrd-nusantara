@@ -105,6 +105,20 @@ class LayananPush {
     }
   }
 
+  /// Notifikasi yang diketuk saat aplikasi tertutup tetapi mesin Flutter-nya
+  /// masih hidup (Pemantauan Lokasi): FCM tidak memicu onMessageOpenedApp
+  /// untuk Activity baru, hanya menyimpannya untuk getInitialMessage().
+  Future<void> bukaPesanAwal() async {
+    if (!_siap) return;
+    try {
+      final awal = await FirebaseMessaging.instance.getInitialMessage();
+      final rute = awal == null ? null : ruteUntukPesan(awal.data);
+      if (rute != null) saatDiketuk?.call(rute);
+    } catch (e) {
+      debugPrint('Pesan pembuka tidak terbaca: $e');
+    }
+  }
+
   Future<void> _kirimToken(String token) async {
     try {
       await _ref.read(klienApiProvider).post('/devices', {'token': token, 'platform': Platform.isIOS ? 'ios' : 'android'});

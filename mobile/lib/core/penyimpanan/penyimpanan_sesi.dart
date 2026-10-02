@@ -16,6 +16,7 @@ class PenyimpananSesi {
   static const _kunciCache = 'hrd_kunci_cache';
   static const _kunciAntrean = 'hrd_kunci_antrean';
   static const _awalanSetujuPantau = 'hrd_setuju_pantau_';
+  static const _awalanPenyiapanPantau = 'hrd_penyiapan_pantau_';
 
   Future<String?> bacaToken() => _storage.read(key: _kunciToken);
   Future<void> simpanToken(String token) => _storage.write(key: _kunciToken, value: token);
@@ -59,6 +60,16 @@ class PenyimpananSesi {
   Future<void> simpanSetujuPantau(String karyawanId, bool setuju) => setuju
       ? _storage.write(key: '$_awalanSetujuPantau$karyawanId', value: DateTime.now().toUtc().toIso8601String())
       : _storage.delete(key: '$_awalanSetujuPantau$karyawanId');
+
+  /// Kapan karyawan terakhir ditawari pengaturan agar pemantauan bertahan di
+  /// latar (pengecualian baterai dsb.); tidak ditawarkan lagi dalam 7 hari.
+  Future<DateTime?> bacaPenyiapanTerakhir(String karyawanId) async {
+    final isi = await _storage.read(key: '$_awalanPenyiapanPantau$karyawanId');
+    return isi == null ? null : DateTime.tryParse(isi);
+  }
+
+  Future<void> simpanPenyiapanTerakhir(String karyawanId, DateTime waktu) =>
+      _storage.write(key: '$_awalanPenyiapanPantau$karyawanId', value: waktu.toUtc().toIso8601String());
 
   Future<void> hapusSemua() async {
     await _storage.delete(key: _kunciToken);
