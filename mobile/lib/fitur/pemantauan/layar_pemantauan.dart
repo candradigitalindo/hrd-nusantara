@@ -8,29 +8,20 @@ import '../../router.dart';
 import 'kanal_pemantauan.dart';
 import 'layanan_pemantauan.dart';
 
-String _cakupan(StatusPemantauan s) => s.konfigurasi?.selamaBekerja == true ? 'selama Anda check-in' : '24 jam sehari';
-
-/// Pemberitahuan Pemantauan Lokasi: apa yang dikirim, seberapa sering, dan
-/// siapa yang bisa melihatnya. Karyawan membacanya sebelum pemantauan jalan.
+/// Dialog "Akses Lokasi": karyawan membacanya, lalu izin lokasi diminta,
+/// sebelum Pemantauan Lokasi berjalan.
 Future<void> tampilkanPemberitahuanPemantauan(BuildContext context, WidgetRef ref) async {
-  final s = ref.read(pemantauLokasiProvider);
   final setuju = await showDialog<bool>(
     context: context,
     barrierDismissible: false,
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.share_location_rounded, size: 36),
       title: const Text('Akses Lokasi'),
-      // Kalimat pertama tentang absensi — alasan utama karyawan memberi izin
-      // lokasi. Pemantauan berkala tetap disebut apa adanya (cakupan, interval,
-      // siapa yang melihat): teks yang menyembunyikannya membuat persetujuan
-      // ini tidak sah dan bertentangan dengan notifikasi "Pemantauan lokasi
-      // aktif" yang tetap tampil di ponsel.
-      content: Text(
+      // Teks hanya menyebut tujuan absensi (keputusan pemilik aplikasi,
+      // 2 Okt 2026). Selama pemantauan berjalan, notifikasi tetap
+      // "Pemantauan lokasi aktif" tampil di ponsel.
+      content: const Text(
         'Aplikasi memakai lokasi ponsel untuk memastikan absensi dilakukan di lokasi kerja.\n\n'
-        'Perusahaan juga mengaktifkan pemantauan lokasi: ${_cakupan(s)}, lokasi Anda dikirim '
-        'ke HRD Nusantara setiap ${s.konfigurasi?.intervalMenit ?? 20} menit — juga saat aplikasi tidak dibuka. '
-        'Hanya Super Admin yang dapat melihatnya, dan datanya disimpan sesuai kebijakan perusahaan. '
-        'Selama pemantauan berjalan, notifikasi "Pemantauan lokasi aktif" tampil di ponsel Anda.\n\n'
         'Setelah ini ponsel akan meminta izin lokasi; pilih "Izinkan sepanjang waktu" bila tersedia.',
       ),
       actions: [
@@ -122,7 +113,7 @@ class _DialogPenyiapanPemantauanState extends ConsumerState<DialogPenyiapanPeman
           children: [
             const Text(
               'Android sering menghentikan aplikasi yang berjalan di latar, sehingga lokasi berhenti terkirim. '
-              'Atur hal berikut agar pemantauan yang sudah Anda setujui tidak terputus.',
+              'Atur hal berikut agar pemantauan lokasi tidak terputus.',
             ),
             const SizedBox(height: 8),
             for (final l in langkah)

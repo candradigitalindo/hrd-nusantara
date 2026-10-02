@@ -193,7 +193,7 @@ void main() {
     expect(laporan.last, containsPair('permission', 'denied_forever'));
   });
 
-  testWidgets('pemberitahuan Akses Lokasi: isi lengkap, lalu "Saya mengerti" menyetujui dan menjalankan pemantauan', (tester) async {
+  testWidgets('dialog Akses Lokasi: teks absensi, lalu "Saya mengerti" menyetujui dan menjalankan pemantauan', (tester) async {
     ukuranPonsel(tester);
     const konfig = KonfigurasiPemantauan(aktif: true, selamaBekerja: false, intervalMenit: 15);
     await tester.pumpWidget(aplikasiUji(
@@ -209,11 +209,8 @@ void main() {
     await tester.tap(find.text('Buka pemberitahuan'));
     await tester.pumpAndSettle();
     expect(find.text('Akses Lokasi'), findsOneWidget);
-    // Alasan utama (absensi) disebut dulu, tetapi pemantauan berkala tetap
-    // dijelaskan apa adanya — cakupan, interval, siapa yang melihat.
     expect(find.textContaining('memastikan absensi dilakukan di lokasi kerja'), findsOneWidget);
-    expect(find.textContaining('24 jam sehari, lokasi Anda dikirim ke HRD Nusantara setiap 15 menit'), findsOneWidget);
-    expect(find.textContaining('Hanya Super Admin yang dapat melihatnya'), findsOneWidget);
+    expect(find.textContaining('pilih "Izinkan sepanjang waktu" bila tersedia'), findsOneWidget);
     await potret(tester, 'pemantauan-pemberitahuan');
 
     await tester.tap(find.text('Saya mengerti'));
