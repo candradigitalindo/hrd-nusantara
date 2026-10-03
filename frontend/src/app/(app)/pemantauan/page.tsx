@@ -4,8 +4,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { format } from "date-fns";
-import { History, MapPinOff, Radar, Save, ShieldAlert, X } from "lucide-react";
+import { History, MapPinOff, Radar, Save, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi } from "@/hooks/use-sesi";
@@ -18,8 +17,8 @@ import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
-import { formatRelatif, formatWaktu } from "@/lib/utils";
-import type { PengaturanPemantauan, PosisiKaryawan, TitikPantauan } from "@/lib/types";
+import { formatRelatif } from "@/lib/utils";
+import type { PengaturanPemantauan, PosisiKaryawan } from "@/lib/types";
 import type { TitikPeta } from "@/components/peta-pemantauan";
 
 // Leaflet butuh `window`: peta hanya dirender di peramban.
@@ -27,6 +26,8 @@ const Peta = dynamic(() => import("@/components/peta-pemantauan"), {
   ssr: false,
   loading: () => <div className="h-[420px] animate-pulse rounded-xl bg-surface-2" />,
 });
+// Dialog linimasa (beserta Leaflet-nya) baru dimuat saat Riwayat dibuka.
+const DialogRiwayat = dynamic(() => import("@/components/pemantauan/dialog-riwayat"), { ssr: false });
 
 type FormPengaturan = { enabled: boolean; mode: "always" | "while_working"; intervalMinutes: number; retentionDays: number };
 
@@ -47,19 +48,15 @@ export default function HalamanPemantauan() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const superAdmin = saya?.role === "SUPER_ADMIN";
-  const [dipilih, setDipilih] = React.useState<PosisiKaryawan | null>(null);
-  const [tanggal, setTanggal] = React.useState(format(new Date(), "yyyy-MM-dd"));
+  // Simpan id, bukan objek: dialog selalu menerima `last` terbaru dari polling 60 detik.
+  const [dipilihId, setDipilihId] = React.useState<string | null>(null);
+  const tutupRiwayat = React.useCallback(() => setDipilihId(null), []);
 
   const posisi = useQuery({
     queryKey: ["pemantauan", "terakhir"],
     queryFn: async () => (await api.get<{ settings: PengaturanPemantauan; data: PosisiKaryawan[] }>("/location-tracking/latest")).data,
     enabled: superAdmin,
     refetchInterval: 60_000,
-  });
-  const jejak = useQuery({
-    queryKey: ["pemantauan", "jejak", dipilih?.employee.id, tanggal],
-    queryFn: async () => (await api.get<{ data: TitikPantauan[] }>(`/location-tracking/employees/${dipilih!.employee.id}/trail?date=${tanggal}`)).data.data,
-    enabled: superAdmin && Boolean(dipilih),
   });
 
   const pengaturan = posisi.data?.settings;
@@ -72,7 +69,8 @@ export default function HalamanPemantauan() {
     mutationFn: async (v: FormPengaturan) =>
       api.put("/location-tracking/settings", { ...v, intervalMinutes: Number(v.intervalMinutes), retentionDays: Number(v.retentionDays) }),
     onSuccess: (_, v) => {
-      qc.invalidateQueries({ queryKey: ["pemantauan"] });
+      // Hanya posisi terakhir: jejak yang sudah ter-cache jangan diambil ulang (tiap ambil = entri audit).
+      qc.invalidateQueries({ queryKey: ["pemantauan", "terakhir"] });
       notifikasi.sukses(v.enabled ? "Pemantauan lokasi aktif" : "Pemantauan lokasi dimatikan", v.enabled ? `Ponsel karyawan mengirim lokasi tiap ${v.intervalMinutes} menit; riwayat disimpan ${v.retentionDays} hari.` : "Ponsel berhenti mengirim lokasi saat aplikasi berikutnya tersambung.");
     },
     onError: (e) => notifikasi.galat(e),
@@ -99,14 +97,7 @@ export default function HalamanPemantauan() {
         }]
       : [],
   );
-  const titikJejak: TitikPeta[] = (jejak.data ?? []).map((t, i, semua) => ({
-    id: `${t.recordedAt}`,
-    lat: t.latitude,
-    lng: t.longitude,
-    judul: formatWaktu(t.recordedAt),
-    keterangan: `±${Math.round(t.accuracyMeters ?? 0)} m${t.isMocked ? " · ditandai palsu" : ""}`,
-    nada: i === 0 ? ("awal" as const) : i === semua.length - 1 ? ("akhir" as const) : ("jalur" as const),
-  }));
+  const dipilih = dipilihId ? (daftar.find((p) => p.employee.id === dipilihId) ?? null) : null;
 
   const kolom: Kolom<PosisiKaryawan>[] = [
     {
@@ -140,7 +131,14 @@ export default function HalamanPemantauan() {
       key: "aksi",
       header: "",
       cell: (p) => (
-        <Button size="sm" variant="outline" onClick={() => setDipilih(p)}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setDipilihId(p.employee.id)}
+          disabled={!p.last}
+          title={p.last ? "Lihat linimasa perjalanan" : "Belum pernah mengirim lokasi"}
+          aria-haspopup="dialog"
+        >
           <History className="h-4 w-4" aria-hidden /> Riwayat
         </Button>
       ),
@@ -190,7 +188,7 @@ export default function HalamanPemantauan() {
       ) : (
         <>
           <Card className="p-3">
-            {titikTerakhir.length ? <Peta titik={titikTerakhir} /> : <EmptyState icon={MapPinOff} title="Belum ada lokasi masuk" description="Ponsel karyawan belum mengirim lokasi. Periksa kolom Keadaan di bawah." />}
+            {titikTerakhir.length ? <Peta titik={titikTerakhir} onRiwayat={setDipilihId} /> : <EmptyState icon={MapPinOff} title="Belum ada lokasi masuk" description="Ponsel karyawan belum mengirim lokasi. Periksa kolom Keadaan di bawah." />}
           </Card>
           <Card>
             <ResponsiveTable columns={kolom} rows={daftar} rowKey={(p) => p.employee.id} />
@@ -199,27 +197,7 @@ export default function HalamanPemantauan() {
       )}
 
       {dipilih && (
-        <Card>
-          <CardHeader className="flex-row items-start justify-between gap-3">
-            <div>
-              <CardTitle>Riwayat · {dipilih.employee.name}</CardTitle>
-              <CardDescription>{jejak.data ? `${jejak.data.length} titik` : "Memuat…"} · zona waktu operasional</CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Input type="date" value={tanggal} max={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setTanggal(e.target.value)} aria-label="Tanggal riwayat" className="w-auto" />
-              <Button variant="ghost" onClick={() => setDipilih(null)} aria-label="Tutup riwayat"><X className="h-4 w-4" aria-hidden /></Button>
-            </div>
-          </CardHeader>
-          <div className="px-3 pb-3">
-            {jejak.isLoading ? (
-              <div className="h-[420px] animate-pulse rounded-xl bg-surface-2" />
-            ) : titikJejak.length ? (
-              <Peta titik={titikJejak} jalur={titikJejak.map((t) => [t.lat, t.lng])} />
-            ) : (
-              <EmptyState icon={MapPinOff} title="Tidak ada lokasi pada tanggal ini" />
-            )}
-          </div>
-        </Card>
+        <DialogRiwayat key={dipilih.employee.id} karyawan={dipilih} keadaan={keadaan(dipilih, pengaturan)} pengaturan={pengaturan} onClose={tutupRiwayat} />
       )}
     </>
   );

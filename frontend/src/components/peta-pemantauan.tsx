@@ -4,6 +4,7 @@ import * as React from "react";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Popup, useMap } from "react-leaflet";
 import type { LatLngBoundsExpression, LatLngExpression } from "leaflet";
+import { History } from "lucide-react";
 
 export interface TitikPeta {
   id: string;
@@ -45,13 +46,25 @@ function Paskan({ titik }: { titik: TitikPeta[] }) {
  * Peta OpenStreetMap untuk Pemantauan Lokasi. Dimuat hanya di peramban
  * (next/dynamic ssr:false) karena Leaflet membutuhkan `window`.
  * Penanda berupa lingkaran, bukan ikon gambar, supaya tidak bergantung pada
- * aset marker Leaflet yang tidak ikut terbundel.
+ * aset marker Leaflet yang tidak ikut terbundel. Kelas `peta-tema` membuat
+ * ubin, popup, dan kontrolnya ikut tema gelap (lihat globals.css).
  */
-export default function PetaPemantauan({ titik, jalur, tinggi = 420 }: { titik: TitikPeta[]; jalur?: [number, number][]; tinggi?: number }) {
+export default function PetaPemantauan({
+  titik,
+  jalur,
+  tinggi = 420,
+  onRiwayat,
+}: {
+  titik: TitikPeta[];
+  jalur?: [number, number][];
+  tinggi?: number;
+  /** Bila diisi, popup penanda menampilkan tombol "Lihat riwayat" untuk id titik itu. */
+  onRiwayat?: (id: string) => void;
+}) {
   const pusat: LatLngExpression = titik[0] ? [titik[0].lat, titik[0].lng] : [-6.2, 106.816];
   return (
-    <MapContainer center={pusat} zoom={12} scrollWheelZoom style={{ height: tinggi, width: "100%" }} className="z-0 rounded-xl">
-      <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+    <MapContainer center={pusat} zoom={12} scrollWheelZoom style={{ height: tinggi, width: "100%" }} className="peta-tema z-0 rounded-xl">
+      <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>' url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
       {jalur && jalur.length > 1 && <Polyline positions={jalur} pathOptions={{ color: WARNA.jalur, weight: 3, opacity: 0.7 }} />}
       {titik.map((t) => (
         <CircleMarker
@@ -67,6 +80,15 @@ export default function PetaPemantauan({ titik, jalur, tinggi = 420 }: { titik: 
                 <br />
                 {t.keterangan}
               </>
+            )}
+            {onRiwayat && (
+              <button
+                type="button"
+                onClick={() => onRiwayat(t.id)}
+                className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-foreground hover:bg-surface-2"
+              >
+                <History className="h-3.5 w-3.5" aria-hidden /> Lihat riwayat
+              </button>
             )}
           </Popup>
         </CircleMarker>

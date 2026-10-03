@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Ponsel lanskap yang pendek: peta dan daftar berdampingan, karena bila
+   ditumpuk daftar hanya kebagian beberapa puluh piksel. */
+@custom-variant pendek (@media (orientation: landscape) and (max-height: 520px));
+
 /*
  * Token desain. Semua warna didefinisikan di sini dan dipakai lewat kelas
  * Tailwind (bg-primary, text-muted, ...), supaya pergantian tema tidak
@@ -62,6 +66,10 @@
   --jenis-green-soft: #dcfce7;
   --jenis-orange: #c2410c;
   --jenis-orange-soft: #ffedd5;
+
+  /* Garis rute di peta: biru, karena hijau brand tenggelam di atas taman
+     dan jalur hijau ubin OpenStreetMap. Hijau dipakai untuk lokasi kerja. */
+  --peta-jalur: #2563eb;
 }
 
 /* Tema gelap TIDAK mengikuti sistem: bawaan terang, gelap hanya bila pengguna
@@ -114,6 +122,8 @@
   --jenis-green-soft: #052e16;
   --jenis-orange: #fdba74;
   --jenis-orange-soft: #431407;
+
+  --peta-jalur: #60a5fa;
 }
 
 @theme inline {
@@ -156,6 +166,7 @@
   --color-jenis-green-soft: var(--jenis-green-soft);
   --color-jenis-orange: var(--jenis-orange);
   --color-jenis-orange-soft: var(--jenis-orange-soft);
+  --color-peta-jalur: var(--peta-jalur);
   --radius-card: var(--radius);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
@@ -245,4 +256,186 @@ body {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/*
+ * Peta Leaflet bertema. Warna garis dan penanda diambil dari token lewat
+ * kelas CSS (stylesheet mengalahkan atribut stroke/fill dari Leaflet), jadi
+ * ganti tema tidak perlu menggambar ulang lapisan. Selektor digandakan
+ * (.peta-tema.leaflet-container) karena leaflet.css dimuat belakangan.
+ */
+.peta-tema.leaflet-container { background: var(--surface-2); font-family: var(--font-sans); }
+.peta-tema .leaflet-tile-pane { filter: saturate(.75) contrast(.97); }
+/* Tanpa penyedia ubin kedua: hanya lapisan ubin yang dibalik, penanda tetap warna token. */
+:root[data-theme="dark"] .peta-tema .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) saturate(.35) brightness(.85) contrast(.9); }
+.peta-tema .leaflet-popup-content-wrapper,
+.peta-tema .leaflet-popup-tip { background: var(--surface); color: var(--foreground); }
+.peta-tema .leaflet-popup-content-wrapper { border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / .18); }
+.peta-tema .leaflet-popup-content { margin: 10px 14px; font-size: 13px; line-height: 1.45; }
+.peta-tema .leaflet-container a.leaflet-popup-close-button,
+.peta-tema a.leaflet-popup-close-button { color: var(--muted); }
+.peta-tema .leaflet-tooltip {
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgb(0 0 0 / .15);
+}
+.peta-tema .leaflet-tooltip-top::before { border-top-color: var(--surface); }
+.peta-tema .leaflet-tooltip-bottom::before { border-bottom-color: var(--surface); }
+.peta-tema .leaflet-tooltip-left::before { border-left-color: var(--surface); }
+.peta-tema .leaflet-tooltip-right::before { border-right-color: var(--surface); }
+/* Spesifisitas dinaikkan: `.leaflet-container .leaflet-control-attribution` di leaflet.css dimuat belakangan. */
+.peta-tema.leaflet-container .leaflet-control-attribution { background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--muted); font-size: 10px; }
+.peta-tema .leaflet-control-attribution a { color: var(--primary); }
+.peta-tema .leaflet-bar { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgb(0 0 0 / .12); }
+.peta-tema .leaflet-bar a { background: var(--surface); color: var(--foreground); border-bottom-color: var(--border); }
+.peta-tema .leaflet-bar a:hover { background: var(--surface-2); }
+
+/* Garis jejak. */
+.jejak { transition: opacity .2s; }
+.jejak-casing { stroke: var(--surface); }
+.jejak-utama { stroke: var(--peta-jalur); }
+.jejak-perkiraan { stroke: var(--muted); }
+.jejak-halo { stroke: var(--peta-jalur); }
+.jejak-alir { stroke: var(--surface); animation: alir 1.2s linear infinite; }
+.jejak-geofence { stroke: var(--primary); fill: var(--primary); }
+.jejak-sebaran-kerja { stroke: var(--primary); fill: var(--primary); }
+.jejak-sebaran-lain { stroke: var(--secondary); fill: var(--secondary); }
+.jejak-titik { stroke: var(--surface); fill: var(--foreground); }
+.jejak-akurasi { stroke: var(--info); fill: var(--info); }
+@keyframes alir { to { stroke-dashoffset: -15; } }
+
+/* Mode fokus: segmen terpilih digambar ulang di pane sorot, sisanya diredupkan. */
+.peta-linimasa[data-redup="true"] .leaflet-overlay-pane .jejak { opacity: .3; }
+.peta-linimasa[data-redup="true"] .leaflet-panah-pane { opacity: .3; }
+.peta-linimasa[data-redup="true"] .rl-penanda > :not([data-aktif="true"]):not([data-terkait="true"]) { opacity: .45; }
+
+/* Penanda divIcon: elemen luarnya 0×0 (iconSize [0,0]); isinya memusatkan diri. */
+.rl-penanda { background: none; border: 0; }
+.rl-penanda > * { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); transition: opacity .2s, transform .15s ease; }
+.rl-penanda svg { display: block; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.rl-penanda:focus-visible > * { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+.penanda-tempat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 9999px;
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .2), 0 3px 8px rgb(0 0 0 / .18);
+  font: 700 12px/1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.penanda-tempat svg { width: 13px; height: 13px; margin-left: -2px; }
+.penanda-tempat i { font-style: normal; font-weight: 500; opacity: .65; }
+.penanda-tempat--kerja { background: var(--primary); color: var(--on-primary); }
+.penanda-tempat--lain { background: var(--secondary); color: var(--on-secondary); }
+.penanda-tempat[data-aktif="true"] {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 0 3px var(--ring), 0 4px 12px rgb(0 0 0 / .3);
+}
+
+/* Sedang di tempat ini (hari ini): halo biru berdenyut lewat box-shadow, tanpa menutupi isi pil. */
+.penanda-tempat[data-langsung="true"] { animation: denyut-pil 2s ease-out infinite; }
+.penanda-tempat[data-langsung="true"][data-aktif="true"] { animation-name: denyut-pil-aktif; }
+@keyframes denyut-pil {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 60%, transparent), 0 1px 2px rgb(0 0 0 / .2), 0 3px 8px rgb(0 0 0 / .18); }
+  to { box-shadow: 0 0 0 14px color-mix(in srgb, var(--info) 0%, transparent), 0 1px 2px rgb(0 0 0 / .2), 0 3px 8px rgb(0 0 0 / .18); }
+}
+@keyframes denyut-pil-aktif {
+  from { box-shadow: 0 0 0 3px var(--ring), 0 0 0 3px color-mix(in srgb, var(--info) 60%, transparent), 0 4px 12px rgb(0 0 0 / .3); }
+  to { box-shadow: 0 0 0 3px var(--ring), 0 0 0 16px color-mix(in srgb, var(--info) 0%, transparent), 0 4px 12px rgb(0 0 0 / .3); }
+}
+.penanda-tempat-ringkas { width: 14px; height: 14px; border-radius: 9999px; border: 2px solid var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
+.penanda-tempat-ringkas--kerja { background: var(--primary); }
+.penanda-tempat-ringkas--lain { background: var(--secondary); }
+
+/* Lencana presensi yang menempel di sudut pil tempat (masuk/pulang di tempat itu). */
+.penanda-tempat .lencana-presensi {
+  position: absolute;
+  top: -12px;
+  right: -10px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: var(--jenis-violet);
+  color: var(--surface);
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / .3);
+}
+.penanda-tempat .lencana-presensi svg { width: 11px; height: 11px; margin: 0; stroke-width: 2.8; }
+.penanda-tempat .lencana-presensi[data-bahaya="true"] { box-shadow: 0 0 0 2px var(--danger), 0 1px 3px rgb(0 0 0 / .3); }
+
+/* Presensi lepas (jauh dari tempat mana pun): bendera kecil di atas koordinatnya. */
+.rl-penanda > .penanda-presensi { transform: none; width: 0; height: 0; }
+.penanda-presensi .tiang { position: absolute; left: -1px; bottom: 0; width: 2px; height: 17px; background: var(--jenis-violet); border-radius: 1px; }
+.penanda-presensi .kaki { position: absolute; left: -3.5px; top: -3.5px; width: 7px; height: 7px; border-radius: 9999px; background: var(--jenis-violet); box-shadow: 0 0 0 1.5px var(--surface); }
+.penanda-presensi .bendera {
+  position: absolute;
+  bottom: 14px;
+  left: -3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--jenis-violet);
+  color: var(--surface);
+  border: 2px solid var(--surface);
+  box-shadow: 0 2px 6px rgb(0 0 0 / .25);
+}
+.penanda-presensi[data-sisi="kiri"] .bendera { left: auto; right: -3px; }
+.penanda-presensi .bendera svg { width: 12px; height: 12px; stroke-width: 2.6; }
+.penanda-presensi[data-cocok="tidak_sesuai"] .bendera { box-shadow: 0 0 0 2px var(--danger), 0 2px 6px rgb(0 0 0 / .25); }
+.penanda-presensi[data-aktif="true"] .bendera { transform: scale(1.12); }
+
+.penanda-palsu {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--danger);
+  border: 2px solid var(--surface);
+  box-shadow: 0 1px 4px rgb(0 0 0 / .35);
+}
+.rl-penanda > .penanda-palsu { transform: translate(-50%, -50%) rotate(45deg); }
+.rl-penanda > .penanda-palsu[data-aktif="true"] { transform: translate(-50%, -50%) rotate(45deg) scale(1.3); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 35%, transparent); }
+.penanda-disaring { width: 16px; height: 16px; border-radius: 9999px; border: 2px dashed var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.penanda-disaring[data-alasan="akurasi"] { border-color: var(--muted); background: color-mix(in srgb, var(--muted) 18%, transparent); }
+.penanda-pasangan { width: 12px; height: 12px; border-radius: 9999px; background: var(--surface); border: 3px solid var(--foreground); box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
+.jejak-palsu { stroke: var(--danger); }
+.penanda-awal { width: 12px; height: 12px; border-radius: 9999px; background: var(--surface); border: 3px solid var(--peta-jalur); box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
+.penanda-akhir { width: 11px; height: 11px; border-radius: 9999px; background: var(--foreground); border: 2px solid var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
+.penanda-terlihat { width: 12px; height: 12px; border-radius: 9999px; background: var(--foreground); border: 2px solid var(--surface); box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
+.penanda-terlihat[data-aktif="true"] { transform: translate(-50%, -50%) scale(1.35); box-shadow: 0 0 0 3px var(--ring); }
+.penanda-panah { color: var(--surface); filter: drop-shadow(0 0 1px rgb(0 0 0 / .45)); }
+.penanda-panah svg { width: 12px; height: 12px; stroke-width: 3.2; }
+
+/* Posisi terkini hari ini: titik biru dengan halo berdenyut di belakangnya. */
+.rl-penanda > .penanda-langsung { width: 0; height: 0; transform: none; }
+.penanda-langsung .titik,
+.penanda-langsung .denyut { position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 9999px; }
+.penanda-langsung .titik { background: var(--info); border: 3px solid var(--surface); box-shadow: 0 1px 4px rgb(0 0 0 / .35); }
+.penanda-langsung .denyut { background: var(--info); animation: denyut 2s ease-out infinite; }
+@keyframes denyut { from { transform: scale(1); opacity: .5; } to { transform: scale(3.2); opacity: 0; } }
+
+/* Arsiran "tanpa data": dipakai di pita 24 jam dan kartu jeda di daftar. */
+/* Garis tipis & tipis warnanya supaya teks muted di atasnya tetap terbaca. */
+.arsir-jeda { background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 18%, transparent) 0 1.5px, transparent 1.5px 7px); }
+.arsir-dalam { background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--surface) 75%, transparent) 0 2px, transparent 2px 5px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .jejak-alir, .penanda-langsung .denyut, .penanda-tempat[data-langsung="true"] { animation: none; }
+  .penanda-tempat[data-langsung="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 50%, transparent), 0 3px 8px rgb(0 0 0 / .18); }
+  .penanda-langsung .denyut { opacity: .25; transform: scale(1.8); }
+  .rl-penanda > *, .jejak { transition: none; }
 }

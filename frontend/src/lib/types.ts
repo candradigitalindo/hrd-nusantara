@@ -203,6 +203,20 @@ export interface Presensi {
   isFlexible?: boolean;
 }
 
+/**
+ * Presensi beserta koordinat masuk/pulang (didekripsi backend) dan alamat
+ * lokasi kerjanya — bentuk lengkap dari /attendance yang dipakai linimasa
+ * Pemantauan Lokasi untuk mencocokkan presensi dengan jejak.
+ */
+export interface PresensiBerlokasi extends Omit<Presensi, "workLocation"> {
+  checkOutMethod: string | null;
+  checkInLatitude: number | null;
+  checkInLongitude: number | null;
+  checkOutLatitude: number | null;
+  checkOutLongitude: number | null;
+  workLocation: { id: string; name: string; address: string | null } | null;
+}
+
 export interface Cuti {
   id: string;
   employeeId: string;
