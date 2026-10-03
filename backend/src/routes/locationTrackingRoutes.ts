@@ -15,7 +15,7 @@ import { authenticateToken, requireRole, asyncHandler } from '../middleware/auth
 import { validate } from '../middleware/validate';
 import { env } from '../config/env';
 import { idParamSchema } from '../schemas/common';
-import { trackingSettingsSchema, locationPingsSchema, trackingStatusSchema, trailQuerySchema } from '../schemas/locationTrackingSchema';
+import { trackingSettingsSchema, locationPingsSchema, trackingStatusSchema, trailQuerySchema, latestQuerySchema } from '../schemas/locationTrackingSchema';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -44,7 +44,7 @@ router.put('/status', validate(trackingStatusSchema), asyncHandler(putTrackingSt
 const superAdmin = requireRole(Role.SUPER_ADMIN);
 router.get('/settings', superAdmin, asyncHandler(getTrackingSettings));
 router.put('/settings', superAdmin, validate(trackingSettingsSchema), asyncHandler(putTrackingSettings));
-router.get('/latest', superAdmin, asyncHandler(getLatestLocations));
+router.get('/latest', superAdmin, validate(latestQuerySchema, 'query'), asyncHandler(getLatestLocations));
 router.get('/employees/:id/trail', superAdmin, validate(idParamSchema, 'params'), validate(trailQuerySchema, 'query'), asyncHandler(getEmployeeTrail));
 
 export default router;

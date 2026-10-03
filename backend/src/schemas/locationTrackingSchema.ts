@@ -47,7 +47,11 @@ export const trackingStatusSchema = z
 
 export const trailQuerySchema = z.object({ date: dateOnlyField }).strict();
 
+/** Posisi semua karyawan; dengan `date` juga posisi terakhir pada tanggal itu (zona operasional). */
+export const latestQuerySchema = z.object({ date: dateOnlyField.optional() }).strict();
+
 export type TrackingSettingsInput = z.infer<typeof trackingSettingsSchema>;
 export type LocationPingsInput = z.infer<typeof locationPingsSchema>;
 export type TrackingStatusInput = z.infer<typeof trackingStatusSchema>;
 export type TrailQuery = z.infer<typeof trailQuerySchema>;
+export type LatestQuery = z.infer<typeof latestQuerySchema>;

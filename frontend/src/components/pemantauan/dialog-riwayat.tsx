@@ -4,7 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Info, Loader2, MapPinOff, RefreshCw, TriangleAlert, X, type LucideIcon } from "lucide-react";
+import { ChevronLeft, Info, Loader2, MapPinOff, RefreshCw, TriangleAlert, X, type LucideIcon } from "lucide-react";
 import { api, ambilGalat } from "@/lib/api";
 import { cn, inisial } from "@/lib/utils";
 import { Alert } from "@/components/ui/alert";
@@ -15,6 +15,7 @@ import { formatJam, formatJarak, geserTanggal, labelTanggal, susunLinimasa, tang
 import type { Halaman, LokasiKerja, PengaturanPemantauan, PosisiKaryawan, PresensiBerlokasi, TitikPantauan } from "@/lib/types";
 import PanelLinimasa, { KakiPanel, KerangkaPanel, susunTemuan, type TemuanTampil } from "./panel-linimasa";
 import type { FokusPeta } from "./peta-linimasa";
+import { NavigasiTanggal, tanpaTahun } from "./navigasi-tanggal";
 
 // Leaflet butuh `window`: peta hanya dirender di peramban.
 const PetaLinimasa = dynamic(() => import("./peta-linimasa"), {
@@ -27,6 +28,8 @@ export interface PropsDialogRiwayat {
   /** Label dan nada keadaan yang sama dengan kolom Keadaan di tabel. */
   keadaan: { label: string; nada: "success" | "warning" | "danger" | "neutral" };
   pengaturan: PengaturanPemantauan | undefined;
+  /** Tanggal yang dibuka pertama ("YYYY-MM-DD" WIB) — tanggal yang sedang dilihat di halaman; bawaan hari ini. */
+  tanggalAwal?: string;
   onClose: () => void;
 }
 
@@ -43,17 +46,6 @@ const useMedia = (kueri: string) =>
     () => window.matchMedia(kueri).matches,
     () => false,
   );
-
-/** "Sab 3 Okt". */
-const tanpaTahun = (tanggal: string) => labelTanggal(tanggal, "pendek");
-
-/** Label navigasi: "Hari ini, Sab 3 Okt" · "Kemarin, …" · panjang di layar lebar, tanpa tahun berjalan di ponsel. */
-const labelNavigasi = (tanggal: string, hariIni: string, bentuk: "panjang" | "ringkas") => {
-  if (tanggal === hariIni) return `Hari ini, ${tanpaTahun(tanggal)}`;
-  if (tanggal === geserTanggal(hariIni, -1)) return `Kemarin, ${tanpaTahun(tanggal)}`;
-  if (bentuk === "ringkas" && tanggal.slice(0, 4) === hariIni.slice(0, 4)) return labelTanggal(tanggal, "ringkas").replace(/\s+\d{4}$/, "");
-  return labelTanggal(tanggal, bentuk);
-};
 
 type NadaBanner = "info" | "peringatan";
 const Banner = ({ nada, ikon: Ikon, children, aksi, putar }: { nada: NadaBanner; ikon: LucideIcon; children: React.ReactNode; aksi?: React.ReactNode; putar?: boolean }) => (
@@ -81,7 +73,7 @@ const SELEKTOR_FOKUS = 'button:not([disabled]), [href], input:not([disabled]):no
  * prefetch hari lain, tanpa polling, tanggal di-debounce 400 ms, dan hasilnya
  * di-cache selama sesi. Hari ini hanya diperbarui lewat tombol Muat ulang.
  */
-export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onClose }: PropsDialogRiwayat) {
+export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, tanggalAwal, onClose }: PropsDialogRiwayat) {
   const id = karyawan.employee.id;
   const idJudul = React.useId();
   const idTanggal = React.useId();
@@ -89,7 +81,6 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
   const judulRef = React.useRef<HTMLHeadingElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const perluRef = React.useRef<HTMLElement>(null);
-  const inputTanggalRef = React.useRef<HTMLInputElement>(null);
   const barisRef = React.useRef(new Map<string, HTMLElement>());
 
   const kurangiGerak = useMedia("(prefers-reduced-motion: reduce)");
@@ -107,9 +98,9 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
   const minTanggal = geserTanggal(hariIni, -retensi);
   const batasi = React.useCallback((t: string) => (t < minTanggal ? minTanggal : t > hariIni ? hariIni : t), [minTanggal, hariIni]);
 
-  // Bawaan: tanggal data terakhir karyawan, supaya tampilan pertama tidak kosong (dan tidak mengaudit hari tanpa data).
+  // Bawaan: tanggal yang sedang dilihat di halaman (yang bawaannya hari ini).
   const [tanggal, setTanggal] = React.useState(() => {
-    const awal = karyawan.last ? tanggalWIB(Date.parse(karyawan.last.recordedAt)) : hariIni;
+    const awal = tanggalAwal ?? hariIni;
     return awal < minTanggal ? minTanggal : awal > hariIni ? hariIni : awal;
   });
   const [tanggalTertunda, setTanggalTertunda] = React.useState(tanggal);
@@ -125,7 +116,6 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
   const [petaBesar, setPetaBesar] = React.useState(false);
   /** Bertambah setiap pilihan dibatalkan dari daftar/pita/Esc: peta kembali memaskan seluruh hari. */
   const [paskanKunci, setPaskanKunci] = React.useState(0);
-  const [inputTerlihat, setInputTerlihat] = React.useState(false);
 
   const jejak = useQuery({
     queryKey: ["pemantauan", "jejak", id, tanggalTertunda],
@@ -218,7 +208,6 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
       setDipilihId(null);
       setSorotId(null);
       setFokus(null);
-      setInputTerlihat(false);
     },
     [batasi],
   );
@@ -253,21 +242,6 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
     void presensi.refetch();
   };
   const kePerluDiperiksa = () => perluRef.current?.scrollIntoView({ block: "start", behavior: kurangiGerak ? "auto" : "smooth" });
-
-  const bukaPemilih = () => {
-    const el = inputTanggalRef.current;
-    if (!el) return;
-    try {
-      if (typeof el.showPicker === "function") {
-        el.showPicker();
-        return;
-      }
-    } catch {
-      /* peramban menolak showPicker: tampilkan input biasa */
-    }
-    setInputTerlihat(true);
-    window.requestAnimationFrame(() => el.focus());
-  };
 
   // Baris terpilih (mis. dari klik penanda peta) digulir ke dalam pandangan. Hanya panel daftar yang
   // digeser (scrollIntoView ikut menggeser leluhur), dan baru setelah dua frame: guliran halus yang
@@ -361,8 +335,6 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
   const memuatUlang = !menunggu && (jejak.isFetching || (presensi.isFetching && !presensiData));
   const galatJejak = jejak.isError && !dataJejak;
   const kosong = linimasa != null && linimasa.ringkasan.titik.total === 0 && linimasa.presensi.length === 0;
-  const labelPanjang = labelNavigasi(tanggal, hariIni, "panjang");
-  const labelRingkas = labelNavigasi(tanggal, hariIni, "ringkas");
   const labelMemuat = memuatUlang ? "Memuat ulang…" : `Memuat ${tanpaTahun(tanggal)}…`;
 
   const pengumuman = menunggu
@@ -509,8 +481,6 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
     );
   }
 
-  const tombolNav = "grid h-8 w-8 shrink-0 place-items-center rounded-lg text-foreground transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-35";
-
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center" role="presentation">
       <div className="absolute inset-0 hidden bg-black/50 backdrop-blur-[2px] md:block pendek:hidden" onClick={onClose} aria-hidden />
@@ -548,57 +518,16 @@ export default function DialogRiwayatLokasi({ karyawan, keadaan, pengaturan, onC
             </div>
           </div>
 
-          <div className="order-3 flex w-full min-w-0 items-center gap-2 md:order-none md:w-auto pendek:order-none pendek:w-auto">
-            <div className="relative flex min-w-0 flex-1 items-center gap-0.5 rounded-xl border border-border bg-surface p-1 md:flex-none">
-              <button
-                type="button"
-                className={tombolNav}
-                onClick={() => geser(-1)}
-                disabled={tanggal <= minTanggal}
-                aria-label="Hari sebelumnya"
-                title={tanggal <= minTanggal ? `Riwayat sebelum ${labelTanggal(minTanggal, "ringkas")} sudah terhapus (masa simpan ${retensi} hari)` : "Hari sebelumnya (←)"}
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden />
-              </button>
-              <button
-                type="button"
-                onClick={bukaPemilih}
-                className="flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold transition-colors hover:bg-surface-2 md:w-[272px] md:flex-none"
-                aria-label={`${labelPanjang} — pilih tanggal`}
-              >
-                <CalendarDays className="hidden h-4 w-4 shrink-0 text-muted sm:block" aria-hidden />
-                <span id={idTanggal} className="truncate">
-                  <span className="md:hidden">{labelRingkas}</span>
-                  <span className="hidden md:inline">{labelPanjang}</span>
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
-              </button>
-              <button type="button" className={tombolNav} onClick={() => geser(1)} disabled={tanggal >= hariIni} aria-label="Hari berikutnya" title="Hari berikutnya (→)">
-                <ChevronRight className="h-4 w-4" aria-hidden />
-              </button>
-              <input
-                ref={inputTanggalRef}
-                type="date"
-                value={tanggal}
-                min={minTanggal}
-                max={hariIni}
-                onChange={(e) => e.target.value && gantiTanggal(e.target.value)}
-                onBlur={() => setInputTerlihat(false)}
-                tabIndex={inputTerlihat ? 0 : -1}
-                aria-label="Tanggal riwayat"
-                className={cn(
-                  inputTerlihat
-                    ? "absolute top-full left-0 z-30 mt-1 h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm shadow-lg"
-                    : "pointer-events-none absolute bottom-0 left-1/2 h-px w-px opacity-0",
-                )}
-              />
-            </div>
-            {tanggal !== hariIni && (
-              <Button variant="outline" size="sm" className="h-10 shrink-0 rounded-xl" onClick={() => gantiTanggal(hariIni)}>
-                Hari ini
-              </Button>
-            )}
-          </div>
+          <NavigasiTanggal
+            tanggal={tanggal}
+            hariIni={hariIni}
+            min={minTanggal}
+            onGanti={gantiTanggal}
+            labelInput="Tanggal riwayat"
+            judulMin={`Riwayat sebelum ${labelTanggal(minTanggal, "ringkas")} sudah terhapus (masa simpan ${retensi} hari)`}
+            idLabel={idTanggal}
+            className="order-3 w-full md:order-none md:w-auto pendek:order-none pendek:w-auto"
+          />
           <div className="order-2 flex shrink-0 items-center gap-1 md:order-none pendek:order-none">
             {tanggal === hariIni && tanggalTertunda === hariIni && hariIniData && (
               <Button

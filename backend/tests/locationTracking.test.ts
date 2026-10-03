@@ -88,6 +88,44 @@ describe('Pemantauan Lokasi', () => {
     expect(await tungguJejakAudit({ action: 'lokasi.pantau.lihat' })).not.toBeNull();
   });
 
+  it('posisi pada tanggal tertentu: titik terakhir & jumlahnya hari itu, sedangkan `last` tetap yang terbaru', async () => {
+    await aktifkan();
+    const zona = DateTime.now().setZone(TEST_TIMEZONE);
+    const lusa = zona.minus({ days: 2 });
+    const pada = (jam: number, lat: number) => ({
+      latitude: lat,
+      longitude: 106.8456,
+      accuracyMeters: 12,
+      recordedAt: lusa.set({ hour: jam, minute: 0, second: 0, millisecond: 0 }).toUTC().toISO(),
+    });
+    await request(app).post('/api/location-tracking/pings').set(auth(tokenBudi)).send({ pings: [pada(10, -6.31), pada(15, -6.32), titik(3, -6.2)] });
+    const ambil = (q: string) => request(app).get(`/api/location-tracking/latest${q}`).set(auth(pemilik));
+    const cari = (res: request.Response, nama: string) => res.body.data.find((d: { employee: { name: string } }) => d.employee.name === nama);
+
+    const tgl = lusa.toISODate();
+    const res = await ambil(`?date=${tgl}`);
+    expect(res.status).toBe(200);
+    expect(res.body.date).toBe(tgl);
+    expect(cari(res, 'Budi').lastOnDate.latitude).toBe(-6.32);
+    expect(cari(res, 'Budi').countOnDate).toBe(2);
+    expect(cari(res, 'Budi').last.latitude).toBe(-6.2);
+    expect(cari(res, 'Siti')).toMatchObject({ last: null, lastOnDate: null, countOnDate: 0 });
+
+    // Tanggal tanpa titik sama sekali.
+    const kosong = await ambil(`?date=${zona.minus({ days: 3 }).toISODate()}`);
+    expect(cari(kosong, 'Budi')).toMatchObject({ lastOnDate: null, countOnDate: 0 });
+    expect(cari(kosong, 'Budi').last.latitude).toBe(-6.2);
+
+    // Tanpa tanggal: bentuk lama, tanpa field per tanggal.
+    const lama = await ambil('');
+    expect(lama.body.date).toBeNull();
+    expect(cari(lama, 'Budi')).not.toHaveProperty('lastOnDate');
+
+    expect((await ambil('?date=2026-02-31')).status).toBe(400);
+    expect((await ambil('?date=kemarin')).status).toBe(400);
+    expect(await tungguJejakAudit({ action: 'lokasi.pantau.lihat', summary: { contains: `tanggal ${tgl}` } })).not.toBeNull();
+  });
+
   it('riwayat satu hari menurut zona operasional, dan pembukaannya tercatat di audit', async () => {
     await aktifkan();
     await request(app).post('/api/location-tracking/pings').set(auth(tokenBudi)).send({ pings: [titik(20), titik(10), titik(1)] });

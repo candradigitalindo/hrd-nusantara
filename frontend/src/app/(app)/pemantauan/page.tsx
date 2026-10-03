@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { History, MapPinOff, Radar, Save, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api";
@@ -18,8 +18,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { formatRelatif } from "@/lib/utils";
+import { formatJam, geserTanggal, labelTanggal, tanggalWIB } from "@/lib/linimasa";
 import type { PengaturanPemantauan, PosisiKaryawan } from "@/lib/types";
 import type { TitikPeta } from "@/components/peta-pemantauan";
+import { NavigasiTanggal, tanpaTahun } from "@/components/pemantauan/navigasi-tanggal";
 
 // Leaflet butuh `window`: peta hanya dirender di peramban.
 const Peta = dynamic(() => import("@/components/peta-pemantauan"), {
@@ -52,11 +54,23 @@ export default function HalamanPemantauan() {
   const [dipilihId, setDipilihId] = React.useState<string | null>(null);
   const tutupRiwayat = React.useCallback(() => setDipilihId(null), []);
 
+  // Posisi ditampilkan per tanggal (WIB), bawaan hari ini. "Hari ini" ikut berganti saat tengah malam.
+  const [hariIni, setHariIni] = React.useState(() => tanggalWIB(Date.now()));
+  React.useEffect(() => {
+    const t = window.setInterval(() => setHariIni(tanggalWIB(Date.now())), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const [tanggal, setTanggal] = React.useState(hariIni);
+  const lihatHariIni = tanggal === hariIni;
+
   const posisi = useQuery({
-    queryKey: ["pemantauan", "terakhir"],
-    queryFn: async () => (await api.get<{ settings: PengaturanPemantauan; data: PosisiKaryawan[] }>("/location-tracking/latest")).data,
+    queryKey: ["pemantauan", "terakhir", tanggal],
+    queryFn: async () =>
+      (await api.get<{ settings: PengaturanPemantauan; date: string | null; data: PosisiKaryawan[] }>(`/location-tracking/latest?date=${tanggal}`)).data,
     enabled: superAdmin,
-    refetchInterval: 60_000,
+    // Hanya hari ini yang masih bergerak; tanggal lampau tidak perlu (dan tiap ambil = entri audit).
+    refetchInterval: lihatHariIni ? 60_000 : false,
+    placeholderData: keepPreviousData,
   });
 
   const pengaturan = posisi.data?.settings;
@@ -85,18 +99,27 @@ export default function HalamanPemantauan() {
   }
 
   const daftar = posisi.data?.data ?? [];
-  const titikTerakhir: TitikPeta[] = daftar.flatMap((p) =>
-    p.last
+  // Teks mengikuti tanggal DATA yang tampil: selama tanggal baru dimuat, data lama masih ditampilkan.
+  const tanggalData = posisi.data?.date ?? tanggal;
+  const dataHariIni = tanggalData === hariIni;
+  const minTanggal = geserTanggal(hariIni, -(pengaturan?.retentionDays ?? 30));
+  /** Jam (WIB) dan, untuk hari ini, berapa lama lalu. */
+  const kapan = (iso: string) => (dataHariIni ? `${formatRelatif(iso)} (${formatJam(Date.parse(iso))})` : `Terakhir ${formatJam(Date.parse(iso))}`);
+  const titikTerakhir: TitikPeta[] = daftar.flatMap((p) => {
+    const t = p.lastOnDate;
+    return t
       ? [{
           id: p.employee.id,
-          lat: p.last.latitude,
-          lng: p.last.longitude,
+          lat: t.latitude,
+          lng: t.longitude,
           judul: p.employee.name,
-          keterangan: `${formatRelatif(p.last.recordedAt)} · ±${Math.round(p.last.accuracyMeters ?? 0)} m${p.last.isMocked ? " · ditandai palsu" : ""}`,
-          nada: keadaan(p, pengaturan).label === "Aktif" ? ("segar" as const) : ("lama" as const),
+          keterangan: `${kapan(t.recordedAt)} · ±${Math.round(t.accuracyMeters ?? 0)} m · ${p.countOnDate ?? 0} titik${t.isMocked ? " · ditandai palsu" : ""}`,
+          // Tanggal lampau: semua penanda adalah posisi terakhir hari itu, bukan tanda masalah.
+          nada: !dataHariIni || keadaan(p, pengaturan).label === "Aktif" ? ("segar" as const) : ("lama" as const),
         }]
-      : [],
-  );
+      : [];
+  });
+  const pernahMengirim = daftar.some((p) => p.last);
   const dipilih = dipilihId ? (daftar.find((p) => p.employee.id === dipilihId) ?? null) : null;
 
   const kolom: Kolom<PosisiKaryawan>[] = [
@@ -114,17 +137,23 @@ export default function HalamanPemantauan() {
     { key: "keadaan", header: "Keadaan", cell: (p) => { const k = keadaan(p, pengaturan); return <Badge tone={k.nada} dot>{k.label}</Badge>; } },
     {
       key: "terakhir",
-      header: "Lokasi terakhir",
+      header: dataHariIni ? "Lokasi terakhir hari ini" : `Lokasi terakhir ${tanpaTahun(tanggalData)}`,
       cell: (p) =>
-        p.last ? (
+        p.lastOnDate ? (
           <span className="inline-flex flex-col">
-            <span>{formatRelatif(p.last.recordedAt)}</span>
-            <a className="text-xs font-medium text-primary hover:underline" href={`https://www.google.com/maps?q=${p.last.latitude},${p.last.longitude}`} target="_blank" rel="noreferrer">
-              {p.last.latitude.toFixed(5)}, {p.last.longitude.toFixed(5)}
+            <span>
+              {kapan(p.lastOnDate.recordedAt)} <span className="text-xs text-muted">· {p.countOnDate ?? 0} titik</span>
+            </span>
+            <a className="text-xs font-medium text-primary hover:underline" href={`https://www.google.com/maps?q=${p.lastOnDate.latitude},${p.lastOnDate.longitude}`} target="_blank" rel="noreferrer">
+              {p.lastOnDate.latitude.toFixed(5)}, {p.lastOnDate.longitude.toFixed(5)}
             </a>
           </span>
         ) : (
-          <span className="text-muted">—</span>
+          <span className="inline-flex flex-col">
+            <span className="text-muted">Tidak ada lokasi</span>
+            {/* Supaya jelas: ponselnya sudah lama tidak mengirim, atau hanya tanggal ini yang kosong. */}
+            <span className="text-xs text-muted">{p.last ? `Terakhir mengirim ${formatRelatif(p.last.recordedAt)}` : "Belum pernah mengirim"}</span>
+          </span>
         ),
     },
     {
@@ -183,12 +212,38 @@ export default function HalamanPemantauan() {
 
       {posisi.isLoading ? (
         <SkeletonBaris />
-      ) : !pengaturan?.enabled && titikTerakhir.length === 0 ? (
+      ) : !pengaturan?.enabled && !pernahMengirim ? (
         <Card><EmptyState icon={Radar} title="Pemantauan lokasi belum aktif" description="Centang Aktif, atur intervalnya, lalu Simpan. Ponsel karyawan mulai mengirim setelah mereka membaca pemberitahuannya." /></Card>
       ) : (
         <>
-          <Card className="p-3">
-            {titikTerakhir.length ? <Peta titik={titikTerakhir} onRiwayat={setDipilihId} /> : <EmptyState icon={MapPinOff} title="Belum ada lokasi masuk" description="Ponsel karyawan belum mengirim lokasi. Periksa kolom Keadaan di bawah." />}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold">Posisi karyawan</h2>
+              <p className="text-sm text-muted" aria-live="polite">
+                {titikTerakhir.length} dari {daftar.length} karyawan mengirim lokasi {dataHariIni ? "hari ini" : `pada ${labelTanggal(tanggalData, "panjang")}`}
+                {posisi.isFetching && posisi.isPlaceholderData ? " · memuat…" : ""}
+              </p>
+            </div>
+            <NavigasiTanggal
+              tanggal={tanggal}
+              hariIni={hariIni}
+              min={minTanggal}
+              onGanti={setTanggal}
+              labelInput="Tanggal posisi"
+              judulMin={`Riwayat sebelum ${labelTanggal(minTanggal, "ringkas")} sudah terhapus (masa simpan ${pengaturan?.retentionDays ?? 30} hari)`}
+              className="w-full sm:w-auto"
+            />
+          </div>
+          <Card className={posisi.isPlaceholderData ? "p-3 opacity-60 transition-opacity" : "p-3 transition-opacity"}>
+            {titikTerakhir.length ? (
+              <Peta titik={titikTerakhir} onRiwayat={setDipilihId} />
+            ) : (
+              <EmptyState
+                icon={MapPinOff}
+                title={dataHariIni ? "Belum ada lokasi masuk hari ini" : `Tidak ada lokasi pada ${labelTanggal(tanggalData, "panjang")}`}
+                description={dataHariIni ? "Ponsel karyawan belum mengirim lokasi hari ini. Periksa kolom Keadaan di bawah." : "Tidak ada ponsel karyawan yang mengirim lokasi pada tanggal ini."}
+              />
+            )}
           </Card>
           <Card>
             <ResponsiveTable columns={kolom} rows={daftar} rowKey={(p) => p.employee.id} />
@@ -197,7 +252,7 @@ export default function HalamanPemantauan() {
       )}
 
       {dipilih && (
-        <DialogRiwayat key={dipilih.employee.id} karyawan={dipilih} keadaan={keadaan(dipilih, pengaturan)} pengaturan={pengaturan} onClose={tutupRiwayat} />
+        <DialogRiwayat key={dipilih.employee.id} karyawan={dipilih} keadaan={keadaan(dipilih, pengaturan)} pengaturan={pengaturan} tanggalAwal={tanggal} onClose={tutupRiwayat} />
       )}
     </>
   );

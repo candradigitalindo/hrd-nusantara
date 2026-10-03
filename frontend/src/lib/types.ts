@@ -160,7 +160,11 @@ export interface TitikPantauan {
 
 export interface PosisiKaryawan {
   employee: { id: string; nik: string; name: string; department: string | null };
+  /** Titik paling baru sepanjang masa — dasar keadaan "Aktif/Tidak melapor". */
   last: TitikPantauan | null;
+  /** Hanya bila diminta dengan ?date=: titik terakhir dan jumlah titik pada tanggal itu (WIB). */
+  lastOnDate?: TitikPantauan | null;
+  countOnDate?: number;
   status: { consentAt: string | null; permission: string | null; platform: string | null; appVersion: string | null; updatedAt: string } | null;
 }
 

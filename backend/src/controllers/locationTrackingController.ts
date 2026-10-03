@@ -11,9 +11,16 @@ import { encryptJson, decryptJson } from '../utils/fieldCrypto';
 import { generateULID } from '../utils/generateULID';
 import { businessDayRange } from '../utils/shiftTime';
 import { ACTIVE_STATUSES } from '../middleware/auth';
-import type { LocationPingsInput, TrackingSettingsInput, TrackingStatusInput, TrailQuery } from '../schemas/locationTrackingSchema';
+import type { LatestQuery, LocationPingsInput, TrackingSettingsInput, TrackingStatusInput, TrailQuery } from '../schemas/locationTrackingSchema';
 
 type Koordinat = { lat: number; lng: number };
+type BarisTitik = { employeeId: string; location: string; accuracyMeters: number | null; isMocked: boolean; recordedAt: Date; receivedAt: Date };
+
+/** Baris LocationPing → bentuk API; null bila koordinatnya tidak bisa didekripsi. */
+const bentukTitik = (t: BarisTitik | undefined) => {
+  const k = t ? decryptJson<Koordinat>(t.location) : null;
+  return t && k ? { latitude: k.lat, longitude: k.lng, accuracyMeters: t.accuracyMeters, isMocked: t.isMocked, recordedAt: t.recordedAt, receivedAt: t.receivedAt } : null;
+};
 
 const BAWAAN = { id: 'utama', enabled: false, mode: 'always', intervalMinutes: 20, retentionDays: 30 } as const;
 
@@ -106,40 +113,58 @@ export const putTrackingSettings = async (req: Request, res: Response) => {
   res.json(hasil);
 };
 
-/** Posisi terakhir tiap karyawan aktif, beserta keadaan pemantauan di ponselnya. */
-export const getLatestLocations = async (_req: Request, res: Response) => {
-  const [karyawan, terakhir, status, p] = await Promise.all([
+/**
+ * Posisi terakhir tiap karyawan aktif, beserta keadaan pemantauan di ponselnya.
+ * Dengan ?date=, juga posisi terakhir dan jumlah titik pada tanggal itu (zona
+ * operasional). `last` tetap titik paling baru sepanjang masa: keadaan "tidak
+ * melapor" di halaman diukur dari sana, bukan dari tanggal yang sedang dilihat.
+ */
+export const getLatestLocations = async (req: Request, res: Response) => {
+  const { date } = req.query as unknown as LatestQuery;
+  const rentang = date ? businessDayRange(date, date, env.APP_TIMEZONE) : null;
+  const tanggal = date ? date.toISOString().slice(0, 10) : null;
+  const [karyawan, terakhir, status, p, padaTanggal, jumlahPadaTanggal] = await Promise.all([
     prisma.employee.findMany({
       where: { status: { in: [...ACTIVE_STATUSES] } },
       select: { id: true, nik: true, name: true, department: { select: { name: true } } },
       orderBy: { name: 'asc' },
     }),
-    prisma.$queryRaw<{ employeeId: string; location: string; accuracyMeters: number | null; isMocked: boolean; recordedAt: Date; receivedAt: Date }[]>`
+    prisma.$queryRaw<BarisTitik[]>`
       SELECT DISTINCT ON ("employeeId") "employeeId", "location", "accuracyMeters", "isMocked", "recordedAt", "receivedAt"
       FROM "LocationPing"
       ORDER BY "employeeId", "recordedAt" DESC`,
     prisma.locationTrackingStatus.findMany(),
     bacaPengaturan(),
+    rentang
+      ? prisma.$queryRaw<BarisTitik[]>`
+          SELECT DISTINCT ON ("employeeId") "employeeId", "location", "accuracyMeters", "isMocked", "recordedAt", "receivedAt"
+          FROM "LocationPing"
+          WHERE "recordedAt" >= ${rentang.gte} AND "recordedAt" < ${rentang.lt}
+          ORDER BY "employeeId", "recordedAt" DESC`
+      : Promise.resolve([] as BarisTitik[]),
+    rentang
+      ? prisma.locationPing.groupBy({ by: ['employeeId'], where: { recordedAt: { gte: rentang.gte, lt: rentang.lt } }, _count: { _all: true } })
+      : Promise.resolve([]),
   ]);
   const titikPer = new Map(terakhir.map((t) => [t.employeeId, t]));
   const statusPer = new Map(status.map((s) => [s.employeeId, s]));
+  const titikTanggalPer = new Map(padaTanggal.map((t) => [t.employeeId, t]));
+  const jumlahPer = new Map(jumlahPadaTanggal.map((j) => [j.employeeId, j._count._all]));
 
   res.locals.audit = {
     action: 'lokasi.pantau.lihat',
     entity: 'LocationPing',
-    summary: 'Melihat posisi terakhir semua karyawan',
+    summary: tanggal ? `Melihat posisi semua karyawan tanggal ${tanggal}` : 'Melihat posisi terakhir semua karyawan',
   };
   res.json({
     settings: p,
+    date: tanggal,
     data: karyawan.map((k) => {
-      const t = titikPer.get(k.id);
       const s = statusPer.get(k.id);
-      const koordinat = t ? decryptJson<Koordinat>(t.location) : null;
       return {
         employee: { id: k.id, nik: k.nik, name: k.name, department: k.department?.name ?? null },
-        last: t && koordinat
-          ? { latitude: koordinat.lat, longitude: koordinat.lng, accuracyMeters: t.accuracyMeters, isMocked: t.isMocked, recordedAt: t.recordedAt, receivedAt: t.receivedAt }
-          : null,
+        last: bentukTitik(titikPer.get(k.id)),
+        ...(tanggal ? { lastOnDate: bentukTitik(titikTanggalPer.get(k.id)), countOnDate: jumlahPer.get(k.id) ?? 0 } : {}),
         status: s ? { consentAt: s.consentAt, permission: s.permission, platform: s.platform, appVersion: s.appVersion, updatedAt: s.updatedAt } : null,
       };
     }),
@@ -168,8 +193,8 @@ export const getEmployeeTrail = async (req: Request, res: Response) => {
   res.json({
     employee: karyawan,
     data: titik.flatMap((t) => {
-      const k = decryptJson<Koordinat>(t.location);
-      return k ? [{ latitude: k.lat, longitude: k.lng, accuracyMeters: t.accuracyMeters, isMocked: t.isMocked, recordedAt: t.recordedAt, receivedAt: t.receivedAt }] : [];
+      const b = bentukTitik({ ...t, employeeId: karyawan.id });
+      return b ? [b] : [];
     }),
   });
 };
