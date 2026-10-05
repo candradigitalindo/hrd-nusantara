@@ -88,7 +88,7 @@ export const KELOMPOK: KelompokMenu[] = [
       { href: "/shift", label: "Jadwal Shift", icon: CalendarRange, izin: ["shift.lihat", "shift.buat", "shift.ubah", "shift.hapus"] },
       { href: "/lokasi", label: "Lokasi Kerja", icon: MapPin, izin: ["lokasi.lihat", "lokasi.buat", "lokasi.ubah"] },
       { href: "/pemantauan", label: "Pemantauan Lokasi", icon: Radar, izin: [], hanyaSuperAdmin: true },
-      { href: "/cuti", label: "Cuti & Izin", icon: CalendarOff, izin: ["cuti.lihat", "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat", "pengaturan_cuti.buat", "pengaturan_cuti.ubah"], utama: true },
+      { href: "/cuti", label: "Cuti & Izin", icon: CalendarOff, izin: ["cuti.lihat", "cuti_tim.lihat", "cuti_tim.ubah", "pengaturan_cuti.lihat", "pengaturan_cuti.buat", "pengaturan_cuti.ubah", "pengaturan_cuti.hapus"], utama: true },
     ],
   },
   {

@@ -19,6 +19,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/alert";
 import { DaftarSaldoCuti } from "@/components/cuti/daftar-saldo";
+import { TabJenisCuti } from "@/components/cuti/tab-jenis-cuti";
+import { TabHariLibur } from "@/components/cuti/tab-hari-libur";
+import { TabPolaKerja } from "@/components/cuti/tab-pola-kerja";
 import { formatTanggal, labelStatus, formatRelatif } from "@/lib/utils";
 import type { Halaman, Cuti, SaldoCuti, TipeCuti } from "@/lib/types";
 
@@ -57,8 +60,13 @@ export default function HalamanCuti() {
   const kelola = punyaIzin(saya, "pengaturan_cuti.lihat") || bolehKelola(saya, "pengaturan_cuti");
   const tahun = new Date().getFullYear();
 
-  const [tab, setTab] = React.useState<"saya" | "persetujuan" | "saldo">("saya");
+  const [tab, setTab] = React.useState<"saya" | "persetujuan" | "saldo" | "jenis" | "libur" | "pola">("saya");
   const kelolaSaldo = tab === "saldo" && kelola;
+  const kelolaJenis = tab === "jenis" && kelola;
+  const kelolaLibur = tab === "libur" && kelola;
+  const kelolaPola = tab === "pola" && kelola;
+  // Tab pengaturan HR: saldo pribadi, saringan status, dan daftar pengajuan disembunyikan.
+  const pengaturan = kelolaSaldo || kelolaJenis || kelolaLibur || kelolaPola;
   const [status, setStatus] = React.useState<(typeof TAB_STATUS)[number]>("pending");
   const [page, setPage] = React.useState(1);
   const [ajukanBuka, setAjukanBuka] = React.useState(false);
@@ -74,7 +82,7 @@ export default function HalamanCuti() {
     queryKey: ["cuti", antrean ? "semua" : "saya", params.toString()],
     queryFn: async () => (await api.get<Halaman<Cuti>>(`${antrean ? "/leaves" : "/leaves/me"}?${params}`)).data,
     placeholderData: (prev) => prev,
-    enabled: !kelolaSaldo,
+    enabled: !pengaturan,
   });
 
   const saldo = useQuery({
@@ -173,13 +181,13 @@ export default function HalamanCuti() {
     <>
       <PageHeader
         title="Cuti & Izin"
-        description={kelolaSaldo ? "Jatah cuti tiap karyawan per tahun; tanpa saldo, cuti yang memotong jatah tidak bisa diajukan" : antrean ? "Pengajuan cuti yang perlu diputuskan" : `Saldo dan pengajuan cuti Anda tahun ${tahun}`}
-        actions={!kelolaSaldo && <Button onClick={() => setAjukanBuka(true)}><CalendarPlus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>}
+        description={kelolaLibur ? "Kalender libur nasional dan cuti bersama; menentukan hari kerja dan potongan cuti bersama" : kelolaPola ? "Hari kerja tiap departemen dan karyawan, dasar perhitungan hari cuti" : kelolaJenis ? "Jenis cuti yang bisa dipilih karyawan saat mengajukan, beserta kuota dan aturannya" : kelolaSaldo ? "Jatah cuti tiap karyawan per tahun; tanpa saldo, cuti yang memotong jatah tidak bisa diajukan" : antrean ? "Pengajuan cuti yang perlu diputuskan" : `Saldo dan pengajuan cuti Anda tahun ${tahun}`}
+        actions={!pengaturan && <Button onClick={() => setAjukanBuka(true)}><CalendarPlus className="h-4 w-4" aria-hidden /> Ajukan Cuti</Button>}
       />
 
       {(manajemen || kelola) && (
         <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
-          {([["saya", "Cuti Saya", true], ["persetujuan", "Persetujuan", manajemen], ["saldo", "Saldo Karyawan", kelola]] as const).filter(([, , tampil]) => tampil).map(([t, label]) => (
+          {([["saya", "Cuti Saya", true], ["persetujuan", "Persetujuan", manajemen], ["saldo", "Saldo Karyawan", kelola], ["jenis", "Jenis Cuti", kelola], ["libur", "Hari Libur", kelola], ["pola", "Pola Kerja", kelola]] as const).filter(([, , tampil]) => tampil).map(([t, label]) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setStatus("pending"); setPage(1); }}
               className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}>
               {label}
@@ -189,8 +197,11 @@ export default function HalamanCuti() {
       )}
 
       {kelolaSaldo && <DaftarSaldoCuti />}
+      {kelolaJenis && <TabJenisCuti />}
+      {kelolaLibur && <TabHariLibur />}
+      {kelolaPola && <TabPolaKerja />}
 
-      {!kelolaSaldo && !antrean && (
+      {!pengaturan && !antrean && (
         saldo.isLoading ? <Skeleton className="h-28" /> : saldo.data?.length ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
             {saldo.data.map((s) => <KartuSaldo key={s.id} saldo={s} />)}
@@ -200,7 +211,7 @@ export default function HalamanCuti() {
         )
       )}
 
-      {!kelolaSaldo && (
+      {!pengaturan && (
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TAB_STATUS.map((t) => (
           <button key={t || "semua"} role="tab" aria-selected={status === t} onClick={() => { setStatus(t); setPage(1); }}
@@ -211,7 +222,7 @@ export default function HalamanCuti() {
       </div>
       )}
 
-      {!kelolaSaldo && (
+      {!pengaturan && (
       <Card>
         {daftar.isLoading ? <SkeletonBaris /> : !daftar.data?.data.length ? (
           <EmptyState icon={CalendarOff}

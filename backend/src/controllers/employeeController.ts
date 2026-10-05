@@ -40,10 +40,14 @@ const employeeSelect = {
   exitType: true,
   departmentId: true,
   positionId: true,
+  // Pola hari kerja milik karyawan sendiri (null = ikut departemen/bawaan),
+  // supaya HR melihat dan mengubahnya dari halaman detail.
+  workPatternId: true,
   createdAt: true,
   updatedAt: true,
   department: { select: { id: true, name: true } },
   position: { select: { id: true, name: true } },
+  workPattern: { select: { id: true, name: true, type: true } },
 } satisfies Prisma.EmployeeSelect;
 
 export const INACTIVE_STATUSES = ['resign', 'terminated', 'inactive'];

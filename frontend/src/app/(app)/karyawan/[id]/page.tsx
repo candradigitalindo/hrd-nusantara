@@ -19,6 +19,7 @@ import { PanelGaji } from "@/components/karyawan/panel-gaji";
 import { PanelWajah } from "@/components/karyawan/panel-wajah";
 import { PanelJamKerja } from "@/components/karyawan/panel-jam-kerja";
 import { PanelSaldoCuti } from "@/components/cuti/panel-saldo";
+import { PanelPolaKerja } from "@/components/karyawan/panel-pola-kerja";
 import { formatTanggal, labelStatus, LABEL_ROLE, inisial } from "@/lib/utils";
 import type { Karyawan } from "@/lib/types";
 
@@ -103,6 +104,7 @@ export default function HalamanDetailKaryawan() {
             <div className="min-w-0 space-y-4 lg:col-span-2">
               {gaji && <PanelGaji employeeId={k.id} />}
               {lihatSaldo && <PanelSaldoCuti employeeId={k.id} employeeName={k.name} bolehKelola={kelolaSaldo} />}
+              {lihatSaldo && <PanelPolaKerja karyawan={k} bolehUbah={punyaIzin(saya, "pengaturan_cuti.ubah")} />}
               <PanelJamKerja karyawan={k} />
               {lihatWajah && (
                 <PanelWajah

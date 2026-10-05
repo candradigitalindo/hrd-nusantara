@@ -283,3 +283,7 @@ export const jedaTerkirim = (waktu: string | null | undefined, tersinkron: strin
   if (jam > 0) return `terkirim ${jam} jam${menit % 60 ? ` ${menit % 60} mnt` : ""} kemudian`;
   return `terkirim ${menit} mnt kemudian`;
 };
+
+/** Saran kode dari nama: "Cuti Tahunan" → "cuti_tahunan". Pengguna boleh menimpanya. */
+export const kodeDariNama = (nama: string) =>
+  nama.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);

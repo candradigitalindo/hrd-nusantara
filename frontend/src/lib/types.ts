@@ -108,6 +108,12 @@ export interface Karyawan {
    * Manajer. Opsional karena backend lama belum mengirimnya.
    */
   flexibleHours?: boolean;
+  /**
+   * Pola hari kerja milik karyawan sendiri; null berarti ikut departemen atau
+   * bawaan perusahaan. Opsional karena backend lama belum mengirimnya.
+   */
+  workPatternId?: string | null;
+  workPattern?: { id: string; name: string; type: string } | null;
 }
 
 export interface Departemen {
@@ -514,6 +520,34 @@ export interface TipeCuti {
   requiresAttachment: boolean;
   maxConsecutiveDays: number | null;
   genderRestriction: string | null;
+  /// Akhir pekan dan libur ikut dihitung (cuti melahirkan 3 bulan kalender).
+  countsCalendarDays: boolean;
+  /// Kuota jenis ini dipotong cuti bersama; lazimnya hanya cuti tahunan.
+  absorbsCollectiveLeave: boolean;
+  isActive: boolean;
+}
+
+/** Satu tanggal di kalender libur; `date` ISO tengah malam UTC. */
+export interface HariLibur {
+  id: string;
+  date: string;
+  name: string;
+  /// Cuti bersama memotong kuota cuti tahunan; hari libur biasa tidak.
+  isCollectiveLeave: boolean;
+}
+
+/** Pola hari kerja, dipakai menghitung hari cuti yang memotong saldo. */
+export interface PolaKerja {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  /// 'fixed' = hari tetap tiap pekan (kantor); 'shift' = ikut roster (outlet, hotel).
+  type: "fixed" | "shift";
+  /// 0 = Minggu … 6 = Sabtu.
+  workingWeekdays: number[];
+  observesPublicHolidays: boolean;
+  isDefault: boolean;
   isActive: boolean;
 }
 
