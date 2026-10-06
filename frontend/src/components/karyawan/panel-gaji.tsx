@@ -109,7 +109,7 @@ export const PanelGaji = ({ employeeId }: { employeeId: string }) => {
             {bolehTambah && <Button size="sm" variant="outline" onClick={() => setKomponenBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Tambah</Button>}
           </div>
           {komponenAktif.length === 0 ? (
-            <p className="text-sm text-muted">Belum ada tunjangan atau potongan khusus. Komponen wajib (BPJS) tetap dihitung otomatis.</p>
+            <p className="text-sm text-muted">Belum ada tunjangan atau potongan. Komponen — termasuk BPJS — hanya dihitung bila dipasang di sini; daftarnya dikelola di Payroll › Komponen Gaji.</p>
           ) : (
             <ul className="divide-y divide-border rounded-xl border border-border">
               {komponenAktif.map((k) => (

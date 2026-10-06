@@ -19,6 +19,7 @@ import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { DetailSlip } from "@/components/gaji/detail-slip";
+import { TabKomponenGaji } from "@/components/gaji/tab-komponen-gaji";
 import { formatRupiah, formatTanggal, labelStatus, namaPeriode } from "@/lib/utils";
 import type { Halaman, BatchGaji, HasilHitung, SlipGaji } from "@/lib/types";
 
@@ -37,6 +38,8 @@ export default function HalamanPayroll() {
   const { data: saya } = useSesi();
   const bolehBuat = punyaIzin(saya, "payroll.buat");
   const bolehUbah = punyaIzin(saya, "payroll.ubah");
+  // Komponen gaji (tunjangan/potongan) dikelola di tab terpisah; batch tetap tampilan utama.
+  const [tab, setTab] = React.useState<"batch" | "komponen">("batch");
   const [status, setStatus] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [buatBuka, setBuatBuka] = React.useState(false);
@@ -102,10 +105,21 @@ export default function HalamanPayroll() {
 
   return (
     <>
-      <PageHeader title="Payroll" description="Batch penggajian: buat, hitung dari presensi, periksa, lalu setujui"
-        actions={bolehBuat && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Batch Baru</Button>} />
+      <PageHeader title="Payroll" description={tab === "komponen" ? "Tunjangan dan potongan yang bisa dipasang ke karyawan, beserta nilai bawaannya" : "Batch penggajian: buat, hitung dari presensi, periksa, lalu setujui"}
+        actions={tab === "batch" && bolehBuat && <Button onClick={() => setBuatBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Batch Baru</Button>} />
 
-      {hasilHitung && (
+      <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
+        {([["batch", "Batch Penggajian"], ["komponen", "Komponen Gaji"]] as const).map(([t, label]) => (
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)}
+            className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "komponen" && <TabKomponenGaji />}
+
+      {tab === "batch" && hasilHitung && (
         <Alert tone={hasilHitung.skipped.length ? "warning" : "success"} title={`${hasilHitung.payrollRun.name}: ${hasilHitung.calculated} slip dihitung${hasilHitung.skipped.length ? `, ${hasilHitung.skipped.length} dilewati` : ""}`}
           action={<Button size="sm" variant="outline" onClick={() => setHasilHitung(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button>}>
           {hasilHitung.skipped.length > 0 && (
@@ -116,6 +130,7 @@ export default function HalamanPayroll() {
         </Alert>
       )}
 
+      {tab === "batch" && (
       <Card>
         <div className="border-b border-border p-3">
           <Select className="sm:w-56" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Status batch">
@@ -159,6 +174,7 @@ export default function HalamanPayroll() {
           </>
         )}
       </Card>
+      )}
 
       <Modal open={buatBuka} onClose={() => setBuatBuka(false)} title="Batch Penggajian Baru" description="Satu batch untuk satu periode. Perhitungan dilakukan terpisah setelah batch dibuat."
         footer={<><Button variant="outline" onClick={() => setBuatBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-batch" type="submit" loading={buat.isPending}>{!buat.isPending && <Plus className="h-4 w-4" aria-hidden />} Buat</Button></>}>
