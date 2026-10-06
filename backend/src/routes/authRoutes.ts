@@ -9,10 +9,17 @@ import { loginSchema, changePasswordSchema, refreshTokenSchema } from '../schema
 
 const router = express.Router();
 
-/** Membatasi percobaan login supaya password tidak bisa ditebak brute force. */
+/**
+ * Membatasi percobaan login supaya password tidak bisa ditebak brute force.
+ * Hanya KEGAGALAN yang dihitung: satu kantor atau outlet berbagi satu IP,
+ * dan dua puluh orang yang login dengan benar di pagi yang sama bukan
+ * serangan. 30 sandi salah per 15 menit per IP tetap jauh di bawah laju
+ * yang berguna untuk menebak sandi ber-bcrypt.
+ */
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 30,
+  skipSuccessfulRequests: true,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   // Dimatikan saat test: banyak skenario perlu login berkali-kali, dan

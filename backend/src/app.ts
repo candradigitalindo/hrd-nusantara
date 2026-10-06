@@ -41,6 +41,8 @@ import roleRoutes from './routes/roleRoutes';
 
 /** Permintaan per 15 menit. Satu tab halaman WhatsApp ±250; dua perangkat ±500. */
 const BATAS_BERSESI = 1500;
+/** Akun pelamar portal karier: pengerjaan CBT dari portal paling berat ±255/15 menit. */
+const BATAS_PELAMAR = 600;
 /** Tanpa sesi hanya login/refresh/jalur publik; angka lama dipertahankan. */
 const BATAS_TANPA_SESI = 300;
 
@@ -92,7 +94,10 @@ export const createApp = () => {
     '/api',
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      limit: (req) => (kunciPembatas(req).berSesi ? BATAS_BERSESI : BATAS_TANPA_SESI),
+      limit: (req) => {
+        const { jenis } = kunciPembatas(req);
+        return jenis === 'karyawan' ? BATAS_BERSESI : jenis === 'pelamar' ? BATAS_PELAMAR : BATAS_TANPA_SESI;
+      },
       keyGenerator: (req) => kunciPembatas(req).kunci,
       standardHeaders: 'draft-8',
       legacyHeaders: false,
