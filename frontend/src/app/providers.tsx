@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import axios from "axios";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 
@@ -13,7 +14,11 @@ export const Providers = ({ children }: { children: React.ReactNode }) => {
             // Data HR jarang berubah tiap detik; 30 detik cukup segar tanpa
             // membanjiri backend saat orang berpindah-pindah tab.
             staleTime: 30_000,
-            retry: 1,
+            // Satu kali ulang untuk gangguan sesaat; tidak untuk jawaban yang
+            // pasti sama bila diulang (401/403/404) maupun 429 — mengulang
+            // saat jatah habis hanya menambah permintaan yang ditolak.
+            retry: (gagalKe, error) =>
+              gagalKe < 1 && !(axios.isAxiosError(error) && error.response && [401, 403, 404, 429].includes(error.response.status)),
             refetchOnWindowFocus: false,
           },
         },

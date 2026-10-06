@@ -16,7 +16,7 @@ export const tautanWhatsAppQuery = {
  * Pemindaian QR hanya lewat halaman WhatsApp Saya di web ini.
  */
 export const PeringatanTautanWhatsApp = () => {
-  const tautan = useQuery({ ...tautanWhatsAppQuery, refetchInterval: 30_000 });
+  const tautan = useQuery({ ...tautanWhatsAppQuery, refetchInterval: 60_000 });
   const t = tautan.data;
   if (!t || !t.driverAktif || t.status === "connected" || t.status === "inactive") return null;
   const belum = t.status === "never_linked";

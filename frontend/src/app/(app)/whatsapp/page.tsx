@@ -80,17 +80,19 @@ export default function HalamanWhatsApp() {
   const akun = useQuery({
     queryKey: ["wa", "akun"],
     queryFn: async () => (await api.get<Halaman<AkunWhatsApp>>("/whatsapp/accounts?limit=100")).data.data,
-    refetchInterval: 15_000,
+    // 30 detik, bukan 15: dialog QR punya polling 3 detiknya sendiri, dan
+    // halaman ini bersama percakapan sudah memanggil lima endpoint berkala.
+    refetchInterval: 30_000,
   });
   const kepatuhan = useQuery({
     queryKey: ["wa", "kepatuhan"],
     queryFn: async () => (await api.get<KepatuhanWa>("/whatsapp/compliance")).data,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
   const ringkasan = useQuery({
     queryKey: ["wa", "ringkasan"],
     queryFn: async () => (await api.get<RingkasanWa>("/whatsapp/ringkasan")).data,
-    refetchInterval: 15_000,
+    refetchInterval: 30_000,
   });
   const departemen = useQuery({
     queryKey: ["departemen", "semua"],

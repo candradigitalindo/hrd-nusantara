@@ -8,6 +8,7 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { auditTrail } from './middleware/auditTrail';
+import { kunciPembatas } from './middleware/rateLimitKey';
 import { prisma } from './lib/prisma';
 import authRoutes from './routes/authRoutes';
 import employeeRoutes from './routes/employeeRoutes';
@@ -37,6 +38,11 @@ import cbtRoutes from './routes/cbtRoutes';
 import cbtPublicRoutes from './routes/cbtPublicRoutes';
 import karierRoutes from './routes/karierRoutes';
 import roleRoutes from './routes/roleRoutes';
+
+/** Permintaan per 15 menit. Satu tab halaman WhatsApp ±250; dua perangkat ±500. */
+const BATAS_BERSESI = 1500;
+/** Tanpa sesi hanya login/refresh/jalur publik; angka lama dipertahankan. */
+const BATAS_TANPA_SESI = 300;
 
 export const createApp = () => {
   const app = express();
@@ -75,20 +81,27 @@ export const createApp = () => {
   );
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+  // Jatah per pengguna untuk permintaan bertoken sah, per IP untuk sisanya
+  // (lihat middleware/rateLimitKey). Dulu semuanya per IP 300/15 menit: satu
+  // HR dengan dua perangkat di halaman WhatsApp sudah melampauinya, dan satu
+  // kantor ber-NAT atau wifi outlet berbagi jatah yang sama. Jatah per
+  // pengguna dibuat longgar karena SPA ini mem-polling beberapa endpoint;
+  // jatah per IP tetap ketat karena yang tanpa sesi hanya login, refresh,
+  // dan jalur publik (yang punya pembatasnya sendiri).
   app.use(
     '/api',
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      limit: 300,
+      limit: (req) => (kunciPembatas(req).berSesi ? BATAS_BERSESI : BATAS_TANPA_SESI),
+      keyGenerator: (req) => kunciPembatas(req).kunci,
       standardHeaders: 'draft-8',
       legacyHeaders: false,
       // Test menembak banyak request berturut-turut; rate limit akan
       // membuatnya gagal karena alasan yang tidak sedang diuji.
       // Pengerjaan CBT dikecualikan: batasnya dihitung per peserta di
       // cbtRoutes, karena satu ruangan ujian tampak sebagai satu IP.
-      // Kiriman lokasi berkala juga: seluruh karyawan di satu wifi outlet
-      // tampak sebagai satu IP, dan kirimannya akan memenuhi batas ini
-      // sampai permintaan lain ikut ditolak.
+      // Kiriman lokasi berkala juga: batasnya per pengguna di
+      // locationTrackingRoutes, dan jumlahnya besar.
       skip: (req) =>
         env.NODE_ENV === 'test' ||
         req.path.startsWith('/cbt/saya/') ||
