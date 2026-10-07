@@ -41,6 +41,7 @@ export default function HalamanPelatihan() {
   const [peserta, setPeserta] = React.useState<SesiPelatihan | null>(null);
   const [hadir, setHadir] = React.useState<Record<string, boolean>>({});
   const [evaluasi, setEvaluasi] = React.useState<PendaftaranPelatihan | null>(null);
+  const [batalSesi, setBatalSesi] = React.useState<SesiPelatihan | null>(null);
   const [deptKepatuhan, setDeptKepatuhan] = React.useState("");
   const [pageDaftar, setPageDaftar] = React.useState(1);
 
@@ -54,6 +55,8 @@ export default function HalamanPelatihan() {
   const kepatuhan = useQuery({ queryKey: ["kepatuhan-pelatihan", deptKepatuhan], queryFn: async () => (await api.get<KepatuhanPelatihan>(`/training/compliance?warningDays=30${deptKepatuhan ? `&departmentId=${deptKepatuhan}` : ""}`)).data, enabled: hr && tab === "kepatuhan" });
 
   const segarkan = () => { qc.invalidateQueries({ queryKey: ["sesi-pelatihan"] }); qc.invalidateQueries({ queryKey: ["pendaftaran-pelatihan"] }); qc.invalidateQueries({ queryKey: ["kepatuhan-pelatihan"] }); };
+  /** Kehadiran masih bisa diubah: belum dievaluasi dan tidak dibatalkan. */
+  const bisaDicatat = (p: PendaftaranPelatihan) => p.status === "registered" || p.status === "waitlisted" || p.status === "attended" || p.status === "no_show";
   const pendaftaranUntuk = (sesiId: string) => (pendaftaranSaya.data ?? []).find((p) => p.trainingSessionId === sesiId && p.status !== "cancelled");
 
   const daftar = useMutation({
@@ -74,8 +77,11 @@ export default function HalamanPelatihan() {
     onError: (e) => notifikasi.galat(e),
   });
   const simpanKehadiran = useMutation({
-    mutationFn: async () => (await api.post(`/training/sessions/${peserta!.id}/attendance`, { entries: (pesertaSesi.data ?? []).filter((p) => p.status !== "cancelled").map((p) => ({ registrationId: p.id, attended: hadir[p.id] ?? (p.status === "attended" || p.status === "completed") })) })).data,
-    onSuccess: () => { segarkan(); qc.invalidateQueries({ queryKey: ["pendaftaran-pelatihan", "sesi", peserta?.id] }); notifikasi.sukses("Kehadiran tersimpan", "Yang hadir kini bisa dievaluasi."); },
+    // Yang sudah dievaluasi (lulus/tidak lulus) tidak dikirim: dulu ikut terkirim
+    // dan server menimpanya kembali menjadi hadir/tidak hadir. Daftar tunggu
+    // hanya dikirim bila dicentang (berarti datang dan diterima).
+    mutationFn: async () => (await api.post<{ updated: number; skipped: unknown[] }>(`/training/sessions/${peserta!.id}/attendance`, { entries: (pesertaSesi.data ?? []).filter((p) => bisaDicatat(p)).filter((p) => p.status !== "waitlisted" || hadir[p.id] === true).map((p) => ({ registrationId: p.id, attended: hadir[p.id] ?? p.status === "attended" })) })).data,
+    onSuccess: (r) => { segarkan(); qc.invalidateQueries({ queryKey: ["pendaftaran-pelatihan", "sesi", peserta?.id] }); notifikasi.sukses("Kehadiran tersimpan", `${r.updated} peserta diperbarui; yang hadir kini bisa dievaluasi.`); },
     onError: (e) => notifikasi.galat(e, "Kehadiran gagal disimpan"),
   });
   const fe = useForm<FormEvaluasi>({ defaultValues: { score: "", certificateUrl: "", note: "" } });
@@ -115,7 +121,8 @@ export default function HalamanPelatihan() {
                 {sesi.data.data.map((s) => {
                   const p = pendaftaranUntuk(s.id);
                   const penuh = s.maxParticipants !== null && s.registrationCount >= s.maxParticipants;
-                  const lewatBatas = s.registrationDeadline ? new Date(s.registrationDeadline) < new Date() : false;
+                  // Tanpa batas pendaftaran, server memakai jam mulai sesi sebagai batas.
+                  const lewatBatas = new Date(s.registrationDeadline ?? s.startDateTime) < new Date();
                   return (
                     <Card key={s.id} className="flex flex-col animate-fade-up">
                       <CardHeader>
@@ -135,7 +142,7 @@ export default function HalamanPelatihan() {
                             <Button size="sm" variant="outline" onClick={() => { setPeserta(s); setHadir({}); }}><Users className="h-4 w-4" aria-hidden /> Peserta</Button>
                             {s.status === "scheduled" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "ongoing" })}><Play className="h-4 w-4" aria-hidden /> Mulai</Button>}
                             {s.status === "ongoing" && <Button size="sm" variant="ghost" onClick={() => ubahStatusSesi.mutate({ s, status: "completed" })}><Check className="h-4 w-4" aria-hidden /> Selesai</Button>}
-                            {s.status !== "completed" && s.status !== "cancelled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => ubahStatusSesi.mutate({ s, status: "cancelled" })}><Ban className="h-4 w-4" aria-hidden /> Batalkan</Button>}
+                            {s.status !== "completed" && s.status !== "cancelled" && <Button size="sm" variant="ghost" className="text-danger" onClick={() => setBatalSesi(s)}><Ban className="h-4 w-4" aria-hidden /> Batalkan</Button>}
                           </>
                         )}
                       </CardContent>
@@ -235,23 +242,27 @@ export default function HalamanPelatihan() {
         </>
       )}
 
+      <ConfirmDialog open={Boolean(batalSesi)} onClose={() => setBatalSesi(null)} onConfirm={() => { if (batalSesi) { ubahStatusSesi.mutate({ s: batalSesi, status: "cancelled" }); setBatalSesi(null); } }} loading={ubahStatusSesi.isPending} danger
+        title="Batalkan sesi pelatihan?" description={batalSesi ? `${batalSesi.title} (${formatTanggal(batalSesi.startDateTime, "d MMM yyyy HH:mm")}) dibatalkan beserta ${batalSesi.registrationCount} pendaftarannya. Tidak bisa dibuka kembali; jadwalkan sesi baru bila perlu.` : ""} confirmLabel="Batalkan Sesi" confirmIcon={Ban} />
+
       <FormProgram open={formProgram.open} onClose={() => setFormProgram({ open: false, item: null })} program={formProgram.item} />
       <FormSesi open={formSesi} onClose={() => setFormSesi(false)} programs={(program.data ?? []).filter((p) => p.isActive)} />
 
       <Modal open={Boolean(peserta)} onClose={() => setPeserta(null)} size="lg" title={`Peserta: ${peserta?.title ?? ""}`} description={peserta ? `${formatTanggal(peserta.startDateTime, "EEE, d MMM yyyy HH:mm")} · ${labelStatus(peserta.status)}` : undefined}
-        footer={peserta && peserta.status !== "cancelled" && <><Button variant="outline" onClick={() => setPeserta(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button><Button onClick={() => simpanKehadiran.mutate()} loading={simpanKehadiran.isPending} disabled={!pesertaSesi.data?.length}>{!simpanKehadiran.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan Kehadiran</Button></>}>
+        footer={peserta && peserta.status !== "cancelled" && <><Button variant="outline" onClick={() => setPeserta(null)}><X className="h-4 w-4" aria-hidden /> Tutup</Button><Button onClick={() => simpanKehadiran.mutate()} loading={simpanKehadiran.isPending} disabled={!(pesertaSesi.data ?? []).some((p) => bisaDicatat(p))}>{!simpanKehadiran.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan Kehadiran</Button></>}>
         {pesertaSesi.isLoading ? <SkeletonBaris /> : !pesertaSesi.data?.length ? <p className="text-sm text-muted">Belum ada yang mendaftar.</p> : (
           <div className="space-y-3">
-            {peserta?.status === "scheduled" && <Alert tone="info" title="Kehadiran bisa dicatat setelah sesi dimulai atau selesai" />}
+            {peserta?.status === "scheduled" && <Alert tone="info" title="Sesi belum dimulai">Kehadiran sudah bisa dicatat, tetapi lazimnya setelah sesi berlangsung. Peserta yang sudah dievaluasi tidak ikut berubah.</Alert>}
             <ul className="divide-y divide-border rounded-xl border border-border">
               {pesertaSesi.data.filter((p) => p.status !== "cancelled").map((p) => {
                 const sudahHadir = p.status === "attended" || p.status === "completed" || p.status === "failed";
+                const terkunci = !bisaDicatat(p);
                 return (
                   <li key={p.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 text-sm">
-                    <label className="flex flex-1 items-center gap-3 min-w-0"><input type="checkbox" className="h-4 w-4 accent-[var(--primary)]" checked={hadir[p.id] ?? sudahHadir} onChange={(e) => setHadir((h) => ({ ...h, [p.id]: e.target.checked }))} /><span className="min-w-0"><span className="font-medium">{p.employee.name}</span> <span className="text-xs text-muted">{p.employee.nik}</span></span></label>
+                    <label className="flex flex-1 items-center gap-3 min-w-0" title={terkunci ? "Sudah dievaluasi; kehadirannya terkunci" : p.status === "waitlisted" ? "Daftar tunggu: centang bila datang dan diterima" : undefined}><input type="checkbox" className="h-4 w-4 accent-[var(--primary)]" checked={hadir[p.id] ?? sudahHadir} disabled={terkunci} onChange={(e) => setHadir((h) => ({ ...h, [p.id]: e.target.checked }))} /><span className="min-w-0"><span className="font-medium">{p.employee.name}</span> <span className="text-xs text-muted">{p.employee.nik}</span></span></label>
                     <Badge tone={nadaStatus(p.status)} dot>{labelStatus(p.status)}</Badge>
                     {p.evaluationScore !== null && <span className="tabular-nums text-xs">{p.evaluationScore}</span>}
-                    {sudahHadir && <Button size="sm" variant="outline" onClick={() => { setEvaluasi(p); fe.reset({ score: p.evaluationScore?.toString() ?? "", certificateUrl: p.certificateUrl ?? "", note: "" }); }}><ClipboardCheck className="h-4 w-4" aria-hidden /> Nilai</Button>}
+                    {p.status === "attended" && <Button size="sm" variant="outline" onClick={() => { setEvaluasi(p); fe.reset({ score: p.evaluationScore?.toString() ?? "", certificateUrl: p.certificateUrl ?? "", note: "" }); }}><ClipboardCheck className="h-4 w-4" aria-hidden /> Nilai</Button>}
                   </li>
                 );
               })}

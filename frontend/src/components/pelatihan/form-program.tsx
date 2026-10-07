@@ -32,7 +32,9 @@ export const FormProgram = ({ open, onClose, program }: { open: boolean; onClose
       const body = {
         name: v.name, isMandatory: v.isMandatory,
         ...(sunting ? { isActive: v.isActive } : { code: v.code.toUpperCase() }),
-        ...(v.description ? { descriptionHtml: v.description } : {}), ...(v.category ? { category: v.category } : {}),
+        // Saat menyunting, kolom yang dikosongkan dikirim null supaya benar-benar terhapus; dulu diam-diam diabaikan.
+        ...(v.description ? { descriptionHtml: v.description } : sunting ? { descriptionHtml: null, description: null } : {}),
+        ...(v.category ? { category: v.category } : sunting ? { category: null } : {}),
         targetPositionId: v.targetPositionId || null, targetDepartmentId: v.targetDepartmentId || null,
         passingScore: v.passingScore ? Number(v.passingScore) : null, validityMonths: v.validityMonths ? Number(v.validityMonths) : null, durationHours: v.durationHours ? Number(v.durationHours) : null,
       };

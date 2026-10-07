@@ -3,6 +3,7 @@ import { Role } from '@prisma/client';
 import { prisma, resetDatabase, makeEmployee, makeDepartment, makePosition } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
+import { generateULID } from '../src/utils/generateULID';
 
 const app = bikinApp();
 
@@ -473,5 +474,85 @@ describe('Laporan kepatuhan pelatihan wajib', () => {
   it('karyawan biasa tidak boleh melihat laporan kepatuhan', async () => {
     const res = await request(app).get('/api/training/compliance').set(auth(budiToken));
     expect(res.status).toBe(403);
+  });
+});
+
+describe('Perbaikan audit Pengembangan (pelatihan)', () => {
+  it('karyawan yang membatalkan bisa mendaftar lagi; pendaftaran lamanya dihidupkan, bukan ditolak 409', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id, { maxParticipants: 1 });
+    const pertama = await daftar(sesi.body.id, budiToken);
+    expectStatus(pertama, 201);
+    expectStatus(await request(app).patch(`/api/training/registrations/${pertama.body.id}/cancel`).set(auth(budiToken)), 200);
+
+    const lagi = await daftar(sesi.body.id, budiToken);
+    expectStatus(lagi, 201);
+    expect(lagi.body.id).toBe(pertama.body.id);
+    expect(lagi.body.status).toBe('registered');
+    // Masih satu baris per karyawan per sesi.
+    expect(await prisma.trainingRegistration.count({ where: { trainingSessionId: sesi.body.id, employeeId: budi.id } })).toBe(1);
+  });
+
+  it('kuota sesi hanya menghitung pemegang kursi: yang batal dan daftar tunggu tidak ikut', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id, { maxParticipants: 1 });
+    const a = await daftar(sesi.body.id, budiToken);
+    const b = await daftar(sesi.body.id, sitiToken);
+    expect(b.body.status).toBe('waitlisted');
+    let daftarSesi = await request(app).get('/api/training/sessions').set(auth(hrToken));
+    expect(daftarSesi.body.data.find((s: { id: string }) => s.id === sesi.body.id).registrationCount).toBe(1);
+
+    expectStatus(await request(app).patch(`/api/training/registrations/${a.body.id}/cancel`).set(auth(budiToken)), 200);
+    daftarSesi = await request(app).get('/api/training/sessions').set(auth(hrToken));
+    // Siti dipromosikan dari daftar tunggu; Budi yang batal tidak dihitung.
+    expect(daftarSesi.body.data.find((s: { id: string }) => s.id === sesi.body.id).registrationCount).toBe(1);
+  });
+
+  it('menyimpan kehadiran tidak menimpa hasil evaluasi dan tidak menandai daftar tunggu sebagai tidak hadir', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id, { maxParticipants: 1 });
+    const budiDaftar = await daftar(sesi.body.id, budiToken);
+    const sitiDaftar = await daftar(sesi.body.id, sitiToken);
+    expect(sitiDaftar.body.status).toBe('waitlisted');
+
+    const kehadiran = `/api/training/sessions/${sesi.body.id}/attendance`;
+    expectStatus(await request(app).post(kehadiran).set(auth(hrToken)).send({ entries: [{ registrationId: budiDaftar.body.id, attended: true }] }), 200);
+    expectStatus(await request(app).post(`/api/training/registrations/${budiDaftar.body.id}/evaluate`).set(auth(hrToken)).send({ score: 90 }), 200);
+
+    // HR membuka modal peserta lagi dan menyimpan: Budi (sudah lulus) tidak
+    // dicentang-ulang, Siti (daftar tunggu) tidak dicentang.
+    const ulang = await request(app).post(kehadiran).set(auth(hrToken)).send({
+      entries: [
+        { registrationId: budiDaftar.body.id, attended: false },
+        { registrationId: sitiDaftar.body.id, attended: false },
+      ],
+    });
+    expectStatus(ulang, 200);
+    expect(ulang.body.updated).toBe(0);
+    expect(ulang.body.skipped).toHaveLength(2);
+    const budiBaris = await prisma.trainingRegistration.findUniqueOrThrow({ where: { id: budiDaftar.body.id } });
+    const sitiBaris = await prisma.trainingRegistration.findUniqueOrThrow({ where: { id: sitiDaftar.body.id } });
+    expect(budiBaris.status).toBe('completed');
+    expect(budiBaris.passed).toBe(true);
+    expect(sitiBaris.status).toBe('waitlisted');
+
+    // Daftar tunggu yang dicentang berarti datang: diterima sebagai hadir.
+    expectStatus(await request(app).post(kehadiran).set(auth(hrToken)).send({ entries: [{ registrationId: sitiDaftar.body.id, attended: true }] }), 200);
+    expect((await prisma.trainingRegistration.findUniqueOrThrow({ where: { id: sitiDaftar.body.id } })).status).toBe('attended');
+  });
+
+  it('pendaftaran tidak bisa dibatalkan karyawan saat sesi berlangsung, dan tidak oleh siapa pun setelah selesai', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id);
+    const pendaftaran = await daftar(sesi.body.id, budiToken);
+    expectStatus(await request(app).patch(`/api/training/sessions/${sesi.body.id}/status`).set(auth(hrToken)).send({ status: 'ongoing' }), 200);
+    expectStatus(await request(app).patch(`/api/training/registrations/${pendaftaran.body.id}/cancel`).set(auth(budiToken)), 409);
+    // HR masih boleh membereskan pendaftaran yang keliru selama sesi berjalan.
+    const sitiDaftar = await prisma.trainingRegistration.create({
+      data: { id: generateULID(), trainingSessionId: sesi.body.id, employeeId: siti.id, status: 'registered' },
+    });
+    expectStatus(await request(app).patch(`/api/training/registrations/${sitiDaftar.id}/cancel`).set(auth(hrToken)), 200);
+    expectStatus(await request(app).patch(`/api/training/sessions/${sesi.body.id}/status`).set(auth(hrToken)).send({ status: 'completed' }), 200);
+    expectStatus(await request(app).patch(`/api/training/registrations/${pendaftaran.body.id}/cancel`).set(auth(hrToken)), 409);
   });
 });

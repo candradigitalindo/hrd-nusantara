@@ -157,7 +157,10 @@ const sessionSelect = {
   program: {
     select: { id: true, code: true, name: true, isMandatory: true, passingScore: true },
   },
-  _count: { select: { registrations: true } },
+  // Hanya pemegang kursi yang dihitung: pendaftaran yang dibatalkan dan
+  // daftar tunggu dulu ikut terhitung, sehingga kuota tampak penuh dan
+  // tombol "Daftar Tunggu" muncul padahal kursinya kosong.
+  _count: { select: { registrations: { where: { status: { in: [...SEAT_HOLDING_STATUSES] } } } } },
 } satisfies Prisma.TrainingSessionSelect;
 
 type SessionRow = Prisma.TrainingSessionGetPayload<{ select: typeof sessionSelect }>;
@@ -362,6 +365,35 @@ export const register = async (req: Request, res: Response) => {
     occupiedSeats: terisi,
   });
 
+  // Satu baris per karyawan per sesi (unik di basis data). Pendaftaran yang
+  // pernah dibatalkan dihidupkan lagi, bukan dibuat baru — dulu tertabrak
+  // constraint unik dan dijawab "sudah terdaftar" padahal statusnya batal.
+  const sebelumnya = await prisma.trainingRegistration.findUnique({
+    where: { trainingSessionId_employeeId: { trainingSessionId: sesi.id, employeeId } },
+    select: { id: true, status: true },
+  });
+  if (sebelumnya && sebelumnya.status !== 'cancelled') {
+    return res.status(409).json({ error: 'Karyawan ini sudah terdaftar di sesi tersebut' });
+  }
+  if (sebelumnya) {
+    const dihidupkan = await prisma.trainingRegistration.update({
+      where: { id: sebelumnya.id },
+      data: {
+        status,
+        registrationDate: new Date(),
+        note: input.note ?? null,
+        attendanceStatus: null,
+        evaluationScore: null,
+        passed: null,
+        completedAt: null,
+        expiresAt: null,
+        certificateUrl: null,
+      },
+      select: registrationSelect,
+    });
+    return res.status(201).json(registrationDTO(dihidupkan));
+  }
+
   try {
     const pendaftaran = await prisma.trainingRegistration.create({
       data: {
@@ -400,7 +432,7 @@ export const cancelRegistration = async (req: Request, res: Response) => {
       employeeId: true,
       status: true,
       trainingSessionId: true,
-      trainingSession: { select: { maxParticipants: true } },
+      trainingSession: { select: { maxParticipants: true, status: true } },
     },
   });
   if (!pendaftaran) return res.status(404).json({ error: 'Pendaftaran tidak ditemukan' });
@@ -413,6 +445,17 @@ export const cancelRegistration = async (req: Request, res: Response) => {
     return res.status(409).json({
       error: `Pendaftaran berstatus "${pendaftaran.status}" tidak bisa dibatalkan`,
     });
+  }
+
+  // Sesi yang sudah berjalan: karyawan tidak bisa mundur sendiri (kehadirannya
+  // yang menentukan); HR masih boleh membereskan pendaftaran yang keliru.
+  // Sesi selesai atau batal tidak bisa disentuh siapa pun.
+  const statusSesi = pendaftaran.trainingSession.status;
+  if (statusSesi === 'completed' || statusSesi === 'cancelled') {
+    return res.status(409).json({ error: `Sesi sudah ${statusSesi === 'completed' ? 'selesai' : 'dibatalkan'}; pendaftaran tidak bisa dibatalkan` });
+  }
+  if (statusSesi === 'ongoing' && !isHr(actor.role)) {
+    return res.status(409).json({ error: 'Sesi sedang berlangsung; hubungi HR bila tidak bisa hadir' });
   }
 
   const dipromosikan = await prisma.$transaction(async (tx) => {
@@ -471,10 +514,10 @@ export const recordAttendance = async (req: Request, res: Response) => {
   const ids = entries.map((e) => e.registrationId);
   const terdaftar = await prisma.trainingRegistration.findMany({
     where: { id: { in: ids }, trainingSessionId: sesi.id },
-    select: { id: true },
+    select: { id: true, status: true },
   });
 
-  const dikenal = new Set(terdaftar.map((r) => r.id));
+  const dikenal = new Map(terdaftar.map((r) => [r.id, r.status]));
   const asing = ids.filter((id) => !dikenal.has(id));
 
   if (asing.length > 0) {
@@ -484,8 +527,27 @@ export const recordAttendance = async (req: Request, res: Response) => {
     });
   }
 
+  // Yang sudah dievaluasi (completed/failed) tidak disentuh: menyimpan ulang
+  // kehadiran dulu menimpanya kembali menjadi "attended"/"no_show" dan
+  // menghapus hasil evaluasinya dari riwayat. Daftar tunggu yang tidak
+  // dicentang juga dibiarkan: mereka tidak pernah punya kursi, jadi bukan
+  // "tidak hadir"; yang dicentang berarti datang dan diterima.
+  const dilewati: { registrationId: string; status: string }[] = [];
+  const diubah = entries.filter((e) => {
+    const status = dikenal.get(e.registrationId)!;
+    if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      dilewati.push({ registrationId: e.registrationId, status });
+      return false;
+    }
+    if (status === 'waitlisted' && !e.attended) {
+      dilewati.push({ registrationId: e.registrationId, status });
+      return false;
+    }
+    return true;
+  });
+
   await prisma.$transaction(
-    entries.map((e) =>
+    diubah.map((e) =>
       prisma.trainingRegistration.update({
         where: { id: e.registrationId },
         data: {
@@ -496,7 +558,7 @@ export const recordAttendance = async (req: Request, res: Response) => {
     )
   );
 
-  res.json({ message: 'Kehadiran dicatat', updated: entries.length });
+  res.json({ message: 'Kehadiran dicatat', updated: diubah.length, skipped: dilewati });
 };
 
 /**
@@ -609,8 +671,11 @@ export const getAllRegistrations = async (req: Request, res: Response) => {
     ...(query.status ? { status: query.status } : {}),
   };
 
-  // Yang bukan HR hanya melihat riwayat pelatihannya sendiri.
-  where.employeeId = isHr(actor.role) ? (query.employeeId ?? undefined) : actor.id;
+  // Yang bukan HR dan tidak mengelola pelatihan hanya melihat riwayatnya
+  // sendiri. Pemegang pelatihan.buat/ubah (mis. peran kustom manajer) perlu
+  // melihat peserta sesi yang ia catat kehadirannya.
+  const kelola = isHr(actor.role) || actor.permissions.includes('pelatihan.buat') || actor.permissions.includes('pelatihan.ubah');
+  where.employeeId = kelola ? (query.employeeId ?? undefined) : actor.id;
 
   const [total, rows] = await Promise.all([
     prisma.trainingRegistration.count({ where }),
