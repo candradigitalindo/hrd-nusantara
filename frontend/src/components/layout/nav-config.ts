@@ -46,6 +46,8 @@ export interface MenuNav {
    * tidak boleh dibagikan lewat matriks hak akses (mis. Pemantauan Lokasi).
    */
   hanyaSuperAdmin?: boolean;
+  /** Halaman publik di luar kerangka aplikasi; dibuka di tab baru supaya navigasi tidak hilang. */
+  tabBaru?: boolean;
 }
 
 /** Kategori di sidebar; kategori beranggota satu ditampilkan sebagai tautan biasa. */
@@ -63,7 +65,7 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Komunikasi",
     icon: MessagesSquare,
     item: [
-      { href: "/pengumuman", label: "Pengumuman", icon: Megaphone, izin: "pengumuman.lihat" },
+      { href: "/pengumuman", label: "Pengumuman", icon: Megaphone, izin: ["pengumuman.lihat", "pengumuman.buat", "pengumuman.ubah", "survei.buat", "survei.ubah"] },
       { href: "/chat", label: "Chat Tim", icon: MessagesSquare, izin: "chat.lihat" },
       { href: "/whatsapp-saya", label: "WhatsApp Saya", icon: Smartphone, izin: "whatsapp_saya.lihat" },
       { href: "/whatsapp", label: "Pemantauan WA", icon: MessageCircle, izin: ["whatsapp.lihat", "whatsapp.buat", "whatsapp.ubah", "whatsapp.hapus"] },
@@ -96,7 +98,9 @@ export const KELOMPOK: KelompokMenu[] = [
     label: "Penggajian",
     icon: Wallet,
     item: [
-      { href: "/gaji", label: "Slip Gaji", icon: Wallet, izin: "gaji.lihat" },
+      // utama: bagi karyawan, slip gaji adalah tujuan keempat di bar bawah ponsel (HR/manajer sudah
+      // mengisi empat slot dengan Karyawan); urutan MENU membuat ini tidak menggeser mereka.
+      { href: "/gaji", label: "Slip Gaji", icon: Wallet, izin: "gaji.lihat", utama: true },
       { href: "/payroll", label: "Payroll", icon: Banknote, izin: ["payroll.lihat", "payroll.buat", "payroll.ubah", "payroll.hapus"] },
     ],
   },
@@ -127,7 +131,7 @@ export const KELOMPOK: KelompokMenu[] = [
     icon: TabletSmartphone,
     item: [
       { href: "/aplikasi", label: "Rilis APK", icon: TabletSmartphone, izin: ["aplikasi.lihat", "aplikasi.buat", "aplikasi.ubah"] },
-      { href: "/unduh", label: "Unduh Aplikasi", icon: Download, izin: "unduh.lihat" },
+      { href: "/unduh", label: "Unduh Aplikasi", icon: Download, izin: "unduh.lihat", tabBaru: true },
     ],
   },
   {

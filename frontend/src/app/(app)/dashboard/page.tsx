@@ -37,10 +37,11 @@ const TautanKartu = ({ href, children }: { href: string; children: React.ReactNo
 /** Dashboard karyawan: apa yang perlu diketahui dan dikerjakan hari ini. */
 function DashboardKaryawan({ nama, hariIni, izin }: { nama: string; hariIni: string; izin: (kunci: string) => boolean }) {
   // Kartu hanya dimuat bila menunya termasuk peran; API-nya pun ditutup server.
-  const bolehPresensi = izin("halaman.presensi");
-  const bolehCuti = izin("halaman.cuti");
-  const bolehPengumuman = izin("halaman.pengumuman");
-  const bolehGaji = izin("halaman.gaji");
+  // Kunci terkini, bukan alias "halaman.*" yang hanya disisipkan untuk APK lama.
+  const bolehPresensi = izin("presensi.lihat");
+  const bolehCuti = izin("cuti.lihat");
+  const bolehPengumuman = izin("pengumuman.lihat");
+  const bolehGaji = izin("gaji.lihat");
   const presensiHariIni = useQuery({ queryKey: ["presensi", "saya", "hari-ini"], queryFn: async () => (await api.get<Halaman<Presensi>>(`/attendance/me?startDate=${hariIni}&endDate=${hariIni}&limit=5`)).data.data[0] ?? null, enabled: bolehPresensi });
   const presensiSaya = useQuery({ queryKey: ["presensi", "saya", "7-hari"], queryFn: async () => (await api.get<Halaman<Presensi>>("/attendance/me?limit=7")).data.data, enabled: bolehPresensi });
   const saldo = useQuery({ queryKey: ["cuti", "saldo-saya"], queryFn: async () => (await api.get<{ data: SaldoCuti[] }>(`/leave-balances/me?year=${new Date().getFullYear()}`)).data.data, enabled: bolehCuti });

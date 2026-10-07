@@ -176,6 +176,14 @@ export const MATRIKS_IZIN: readonly DefinisiHalaman[] = [
     },
   },
   {
+    halaman: 'kinerja', label: 'Kinerja', kelompok: 'Pengembangan',
+    aksi: {
+      lihat: 'Isi penilaian yang ditugaskan, baca hasil sendiri, beri umpan balik',
+      buat: 'Buat siklus, form KPI, dan tugaskan penilai',
+      ubah: 'Buka / tutup siklus dan lihat ringkasan 360° semua karyawan',
+    },
+  },
+  {
     halaman: 'cbt', label: 'Tes CBT', kelompok: 'Pengembangan',
     aksi: {
       lihat: 'Lihat dan mengerjakan tes yang ditugaskan kepada saya',
@@ -191,14 +199,6 @@ export const MATRIKS_IZIN: readonly DefinisiHalaman[] = [
   {
     halaman: 'cbt_hasil', label: 'Hasil & penilaian tes', kelompok: 'Pengembangan', induk: 'cbt',
     aksi: { lihat: 'Lihat hasil semua peserta, jawabannya, dan bukti pengawasan', ubah: 'Menilai jawaban esai' },
-  },
-  {
-    halaman: 'kinerja', label: 'Kinerja', kelompok: 'Pengembangan',
-    aksi: {
-      lihat: 'Isi penilaian yang ditugaskan, baca hasil sendiri, beri umpan balik',
-      buat: 'Buat siklus, form KPI, dan tugaskan penilai',
-      ubah: 'Buka / tutup siklus dan lihat ringkasan 360° semua karyawan',
-    },
   },
   {
     halaman: 'kompetensi', label: 'Kompetensi', kelompok: 'Pengembangan',

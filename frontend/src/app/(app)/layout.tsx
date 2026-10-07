@@ -45,7 +45,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const item = menuUntukJalur(pathname);
-  const ditolak = pengguna !== undefined && item !== undefined && !bolehBukaMenu(item, pengguna);
+  // Detail dirinya sendiri ("Profil saya") boleh dibuka siapa pun walau menu
+  // Karyawan bukan haknya; backend memang membuka GET /employees/:id untuk pemiliknya.
+  const profilSendiri = pengguna !== undefined && pathname === `/karyawan/${pengguna.id}`;
+  const ditolak = pengguna !== undefined && item !== undefined && !profilSendiri && !bolehBukaMenu(item, pengguna);
   // Sandi yang diatur HR bersifat sementara: sebelum diganti, hanya halaman
   // ganti sandi yang boleh dibuka.
   const wajibGantiSandi = pengguna?.mustChangePassword === true && pathname !== "/ganti-sandi";

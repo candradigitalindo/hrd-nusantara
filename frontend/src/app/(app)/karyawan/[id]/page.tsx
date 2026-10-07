@@ -50,8 +50,9 @@ export default function HalamanDetailKaryawan() {
 
   return (
     <>
-      <Link href="/karyawan" className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground">
-        <ArrowLeft className="h-4 w-4" aria-hidden /> Kembali ke daftar
+      {/* Karyawan yang membuka profilnya sendiri tidak punya menu Karyawan; arahkan ke dashboard. */}
+      <Link href={punyaIzin(saya, "karyawan.lihat") ? "/karyawan" : "/dashboard"} className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground">
+        <ArrowLeft className="h-4 w-4" aria-hidden /> {punyaIzin(saya, "karyawan.lihat") ? "Kembali ke daftar" : "Kembali ke dashboard"}
       </Link>
 
       {isError && <Alert tone="danger" title="Karyawan tidak bisa dimuat">{(error as Error).message}</Alert>}

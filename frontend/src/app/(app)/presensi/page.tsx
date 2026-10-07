@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { CalendarCheck, Clock, CloudOff, ShieldCheck, ShieldOff, Check, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
@@ -16,6 +16,7 @@ import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { Pagination } from "@/components/ui/pagination";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { JadwalSaya } from "@/components/presensi/jadwal-saya";
 import { formatTanggal, formatWaktu, labelStatus, jedaTerkirim, LABEL_INTEGRITAS, BLOKIR_INTEGRITAS } from "@/lib/utils";
 import type { Halaman, Presensi } from "@/lib/types";
 
@@ -43,7 +44,11 @@ export default function HalamanPresensi() {
   const bolehLembur = punyaIzin(saya, "lembur.ubah");
   const hariIni = format(new Date(), "yyyy-MM-dd");
 
-  const [mulai, setMulai] = React.useState(hariIni);
+  // Karyawan membuka menu ini untuk riwayat: bawaannya sepekan terakhir, bukan
+  // hanya hari ini yang hampir selalu kosong. Manajer memantau harian, tetap
+  // hari ini. Pilihan pengguna (bila ada) selalu menang.
+  const [mulaiPilihan, setMulai] = React.useState<string | null>(null);
+  const mulai = mulaiPilihan ?? (manajemen ? hariIni : format(subDays(new Date(), 6), "yyyy-MM-dd"));
   const [sampai, setSampai] = React.useState(hariIni);
   const [status, setStatus] = React.useState("");
   const [lemburSaja, setLemburSaja] = React.useState(false);
@@ -61,6 +66,8 @@ export default function HalamanPresensi() {
     queryKey: ["presensi", manajemen ? "semua" : "saya", params.toString()],
     queryFn: async () => (await api.get<Halaman<Presensi>>(`${manajemen ? "/attendance" : "/attendance/me"}?${params}`)).data,
     placeholderData: (prev) => prev,
+    // Rentang bawaan bergantung peran; tunggu sesi supaya tidak memuat dua kali.
+    enabled: saya !== undefined,
   });
 
   const setujuiLembur = useMutation({
@@ -171,7 +178,9 @@ export default function HalamanPresensi() {
 
   return (
     <>
-      <PageHeader title="Presensi" description={manajemen ? "Kehadiran seluruh karyawan" : "Riwayat kehadiran Anda"} />
+      <PageHeader title="Presensi" description={manajemen ? (saya?.role === "MANAGER" ? "Kehadiran tim departemen Anda" : "Kehadiran seluruh karyawan") : "Riwayat kehadiran Anda"} />
+
+      {!manajemen && <JadwalSaya />}
 
       {manajemen && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">

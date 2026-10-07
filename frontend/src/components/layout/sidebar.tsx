@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { cn, inisial, LABEL_ROLE } from "@/lib/utils";
 import { Logo } from "@/components/ui/logo";
 import { kelompokUntuk, aktifDi, type MenuNav, type KelompokMenu } from "./nav-config";
@@ -12,19 +12,28 @@ import type { PenggunaSesi } from "@/lib/types";
 
 const Tautan = ({ item, aktif, sub, onNavigate }: { item: MenuNav; aktif: boolean; sub?: boolean; onNavigate?: () => void }) => {
   const Icon = item.icon;
-  return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      aria-current={aktif ? "page" : undefined}
-      className={cn(
-        "flex items-center gap-3 rounded-lg border-l-[3px] text-sm font-medium transition-colors",
-        sub ? "py-2 pl-3 pr-3" : "px-3 py-2.5",
-        aktif ? "border-secondary bg-primary-soft text-primary" : "border-transparent text-muted hover:bg-surface-2 hover:text-foreground"
-      )}
-    >
+  const kelas = cn(
+    "flex items-center gap-3 rounded-lg border-l-[3px] text-sm font-medium transition-colors",
+    sub ? "py-2 pl-3 pr-3" : "px-3 py-2.5",
+    aktif ? "border-secondary bg-primary-soft text-primary" : "border-transparent text-muted hover:bg-surface-2 hover:text-foreground"
+  );
+  const isi = (
+    <>
       <Icon className={cn("shrink-0", sub ? "h-4 w-4" : "h-5 w-5")} aria-hidden />
       <span className="truncate">{item.label}</span>
+      {item.tabBaru && <ExternalLink className="ml-auto h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />}
+    </>
+  );
+  if (item.tabBaru) {
+    return (
+      <a href={item.href} target="_blank" rel="noopener" onClick={onNavigate} title={`${item.label} (tab baru)`} className={kelas}>
+        {isi}
+      </a>
+    );
+  }
+  return (
+    <Link href={item.href} onClick={onNavigate} aria-current={aktif ? "page" : undefined} className={kelas}>
+      {isi}
     </Link>
   );
 };
@@ -100,14 +109,22 @@ export const Sidebar = ({
       </ul>
 
       {pengguna && (
-        <div className="border-t border-border p-4">
-          <div className="flex items-center gap-3">
+        <div className="border-t border-border p-3">
+          {/* Profil saya: detail dirinya sendiri — backend membuka GET /employees/:id untuk pemiliknya. */}
+          <Link
+            href={`/karyawan/${pengguna.id}`}
+            onClick={onNavigate}
+            title="Profil saya"
+            aria-label="Profil saya"
+            className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-2"
+          >
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-surface-2 text-sm font-semibold">{inisial(pengguna.name)}</span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{pengguna.name}</p>
               <p className="truncate text-xs text-muted">{pengguna.customRole?.name ?? LABEL_ROLE[pengguna.role]}</p>
             </div>
-          </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted" aria-hidden />
+          </Link>
         </div>
       )}
     </nav>

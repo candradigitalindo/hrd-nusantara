@@ -30,7 +30,7 @@ export default function HalamanCbt() {
     <>
       <PageHeader
         title="Tes CBT"
-        description="Ujian daring untuk menguji kemampuan karyawan dan menyeleksi pelamar: bank soal dipakai bersama, soal objektif dinilai otomatis, esai dinilai penguji."
+        description={tersedia.length > 1 ? "Ujian daring untuk menguji kemampuan karyawan dan menyeleksi pelamar: bank soal dipakai bersama, soal objektif dinilai otomatis, esai dinilai penguji." : "Tes yang ditugaskan kepada Anda beserta batas waktunya; hasil tampil setelah dinilai."}
       />
 
       {tersedia.length > 1 && (
