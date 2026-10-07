@@ -398,3 +398,111 @@ describe('Hak akses', () => {
     expect(sesudah.permissions).toContain('cbt.lihat');
   });
 });
+
+describe('Inventori kepribadian (paket standar Big Five)', () => {
+  const buatStandar = () => request(app).post('/api/cbt/tes/standar/kepribadian-big5').set(auth(hr));
+
+  it('dibuat sekali: 50 butir skala dalam lima dimensi, paket langsung tayang; panggilan kedua mengembalikan yang sama', async () => {
+    const pertama = await buatStandar();
+    expectStatus(pertama, 201);
+    expect(pertama.body).toMatchObject({ code: 'KEPRIBADIAN-BIG5', status: 'published', passingScore: null, shuffleOptions: false, kind: 'kepribadian', dibuat: true });
+    expect(pertama.body._count.questions).toBe(50);
+
+    const kedua = await buatStandar();
+    expectStatus(kedua, 200);
+    expect(kedua.body.id).toBe(pertama.body.id);
+    expect(kedua.body.dibuat).toBe(false);
+
+    const kategori = await request(app).get('/api/cbt/soal/kategori').set(auth(hr));
+    expect(kategori.body.data).toEqual(
+      expect.arrayContaining([
+        { category: 'Ekstraversi', jumlah: 10 },
+        { category: 'Keramahan', jumlah: 10 },
+        { category: 'Kesungguhan', jumlah: 10 },
+        { category: 'Kestabilan Emosi', jumlah: 10 },
+        { category: 'Keterbukaan', jumlah: 10 },
+      ])
+    );
+    const daftar = await request(app).get('/api/cbt/tes').set(auth(hr));
+    expect(daftar.body.data.find((p: { id: string }) => p.id === pertama.body.id).kind).toBe('kepribadian');
+  });
+
+  it('peserta menerima skala berurutan tanpa nilai; hasilnya profil per dimensi, tanpa kelulusan', async () => {
+    const paket = await buatStandar();
+    expectStatus(await tugaskan(paket.body.id, { employeeIds: [budiId] }), 201);
+    const budi = await login(app, 'budi@resto.id');
+    const saya = await request(app).get('/api/cbt/saya').set(auth(budi));
+    expect(saya.body.data[0].test.kind).toBe('kepribadian');
+    const assignmentId = saya.body.data[0].id;
+
+    const ruang = await request(app).post(`/api/cbt/saya/${assignmentId}/mulai`).set(auth(budi));
+    expectStatus(ruang, 200);
+    expect(ruang.body.test.jenis).toBe('kepribadian');
+    expect(ruang.body.questions).toHaveLength(50);
+    for (const q of ruang.body.questions) {
+      expect(q.type).toBe('skala');
+      expect(q.options.map((o: { kode: string }) => o.kode)).toEqual(['1', '2', '3', '4', '5']);
+      expect(q.options.every((o: Record<string, unknown>) => !('nilai' in o))).toBe(true);
+    }
+
+    // Semua "Netral": tiap dimensi tepat di tengah rentang 10–50 → 50% ternormalisasi.
+    const jawaban = ruang.body.questions.map((q: { id: string }) => ({ questionId: q.id, chosen: ['3'] }));
+    expectStatus(await request(app).put(`/api/cbt/saya/${assignmentId}/jawaban`).set(auth(budi)).send({ jawaban }), 200);
+    const kirim = await request(app).post(`/api/cbt/saya/${assignmentId}/kirim`).set(auth(budi));
+    expectStatus(kirim, 200);
+    expect(kirim.body).toMatchObject({ status: 'graded', jenis: 'kepribadian', menungguPenilaian: false, nilai: null });
+
+    const hasil = await request(app).get('/api/cbt/hasil').set(auth(hr));
+    const baris = hasil.body.data.find((a: { id: string }) => a.id === assignmentId);
+    expect(baris.test.kind).toBe('kepribadian');
+    expect(baris.attempt.passed).toBeNull();
+
+    const rinci = await request(app).get(`/api/cbt/hasil/${baris.attempt.id}`).set(auth(hr));
+    expectStatus(rinci, 200);
+    expect(rinci.body.jenis).toBe('kepribadian');
+    expect(rinci.body.perKategori).toHaveLength(5);
+    for (const k of rinci.body.perKategori) {
+      expect(k).toMatchObject({ maksimal: 50, minimal: 10, diperoleh: 30, persenSkala: 50 });
+    }
+    expect(rinci.body.profil).toHaveLength(5);
+    expect(rinci.body.profil.every((d: { tingkat: string; keterangan: string | null }) => d.tingkat === 'sedang' && typeof d.keterangan === 'string')).toBe(true);
+    expect(rinci.body.butir.every((b: { isCorrect: boolean | null; points: number }) => b.isCorrect === null && b.points === 3)).toBe(true);
+  });
+
+  it('butir terbalik dihitung terbalik: "sangat sesuai" pada butir Ekstraversi terbalik menurunkan dimensi itu', async () => {
+    const paket = await buatStandar();
+    expectStatus(await tugaskan(paket.body.id, { employeeIds: [budiId] }), 201);
+    const budi = await login(app, 'budi@resto.id');
+    const assignmentId = (await request(app).get('/api/cbt/saya').set(auth(budi))).body.data[0].id;
+    const ruang = await request(app).post(`/api/cbt/saya/${assignmentId}/mulai`).set(auth(budi));
+    // Semua butir Ekstraversi dijawab "sangat sesuai": 5 butir lurus = 25, 5 butir terbalik = 5 → 30 dari 50.
+    const ekstra = ruang.body.questions.filter((q: { category: string }) => q.category === 'Ekstraversi');
+    expect(ekstra).toHaveLength(10);
+    const jawaban = ekstra.map((q: { id: string }) => ({ questionId: q.id, chosen: ['5'] }));
+    expectStatus(await request(app).put(`/api/cbt/saya/${assignmentId}/jawaban`).set(auth(budi)).send({ jawaban }), 200);
+    const kirim = await request(app).post(`/api/cbt/saya/${assignmentId}/kirim`).set(auth(budi));
+    expectStatus(kirim, 200);
+    const hasil = await request(app).get(`/api/cbt/hasil?testId=${paket.body.id}`).set(auth(hr));
+    const rinci = await request(app).get(`/api/cbt/hasil/${hasil.body.data[0].attempt.id}`).set(auth(hr));
+    const ekstraversi = rinci.body.perKategori.find((k: { kategori: string }) => k.kategori === 'Ekstraversi');
+    expect(ekstraversi).toMatchObject({ diperoleh: 30, persenSkala: 50 });
+    // Dimensi lain tidak dijawab sama sekali → 0 dari rentang.
+    const keramahan = rinci.body.perKategori.find((k: { kategori: string }) => k.kategori === 'Keramahan');
+    expect(keramahan).toMatchObject({ diperoleh: 0, persenSkala: 0 });
+    expect(rinci.body.profil.find((d: { kategori: string }) => d.kategori === 'Keramahan').tingkat).toBe('rendah');
+  });
+
+  it('bank soal: butir skala wajib bernilai per pilihan dan tanpa kunci; bobotnya mengikuti nilai tertinggi', async () => {
+    const skala = [
+      { kode: '1', teks: 'Sangat tidak sesuai', nilai: 1 },
+      { kode: '2', teks: 'Tidak sesuai', nilai: 2 },
+      { kode: '3', teks: 'Sesuai', nilai: 3 },
+    ];
+    expectStatus(await buatSoal({ type: 'skala', category: 'Ketelitian', text: 'Saya memeriksa ulang pekerjaan saya.', options: skala.map(({ kode, teks }) => ({ kode, teks })), answerKey: [] }), 400);
+    expectStatus(await buatSoal({ type: 'skala', category: 'Ketelitian', text: 'Saya memeriksa ulang pekerjaan saya.', options: skala, answerKey: ['3'] }), 400);
+    const sah = await buatSoal({ type: 'skala', category: 'Ketelitian', text: 'Saya memeriksa ulang pekerjaan saya.', options: skala, answerKey: [], points: 1 });
+    expectStatus(sah, 201);
+    expect(sah.body.points).toBe(3);
+    expect(sah.body.options).toEqual(skala);
+  });
+});

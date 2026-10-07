@@ -15,12 +15,14 @@ import {
   GalatCbt,
   PenugasanLengkap,
   hashToken,
+  jenisPaketDari,
   kirimJawaban,
   mulaiAtauLanjutkan,
   penugasanLengkap,
   pengerjaanBerjalan,
   simpanJawaban,
 } from '../services/cbt/attempt';
+import { jenisPaket, type JenisPaket } from '../utils/cbt';
 import type { ProctorEventInput, SaveAnswersInput } from '../schemas/cbtSchema';
 
 const galat = (e: unknown, res: Response) => {
@@ -71,6 +73,7 @@ export const getMyAssignments = async (req: Request, res: Response) => {
           showResultToTaker: true,
           proctorPhotos: true,
           _count: { select: { questions: true } },
+          questions: { select: { question: { select: { type: true } } } },
         },
       },
       attempt: {
@@ -78,7 +81,12 @@ export const getMyAssignments = async (req: Request, res: Response) => {
       },
     },
   });
-  res.json({ data });
+  res.json({
+    data: data.map(({ test, ...sisa }) => {
+      const { questions, ...tes } = test;
+      return { ...sisa, test: { ...tes, kind: jenisPaket(questions.map((q) => q.question.type)) } };
+    }),
+  });
 };
 
 export const startMyAttempt = async (req: Request, res: Response) => {
@@ -169,6 +177,7 @@ export const publicInfo = async (req: Request, res: Response) => {
         durationMinutes: penugasan.test.durationMinutes,
         jumlahSoal: penugasan.test.questions.length,
         proctorPhotos: penugasan.test.proctorPhotos,
+        kind: jenisPaketDari(penugasan),
       },
       availableFrom: penugasan.availableFrom,
       availableUntil: penugasan.availableUntil,
@@ -246,12 +255,14 @@ export const publicQuestionImage = async (req: Request, res: Response) => {
  * ambang kelulusan perusahaan.
  */
 const ringkasUntukPeserta = (
-  hasil: { status: string; nilai: { total: number; maksimal: number; persen: number; lulus: boolean | null; menungguPenilaian: boolean } },
+  hasil: { status: string; jenis: JenisPaket; nilai: { total: number; maksimal: number; persen: number; lulus: boolean | null; menungguPenilaian: boolean } },
   boleh: boolean
 ) => ({
   status: hasil.status,
+  jenis: hasil.jenis,
   menungguPenilaian: hasil.nilai.menungguPenilaian,
-  nilai: boleh && !hasil.nilai.menungguPenilaian ? hasil.nilai : null,
+  // Inventori kepribadian tidak punya "nilai"; profilnya dibaca HR.
+  nilai: boleh && !hasil.nilai.menungguPenilaian && hasil.jenis !== 'kepribadian' ? hasil.nilai : null,
 });
 
 const catatKejadian = async (penugasan: PenugasanLengkap, isi: ProctorEventInput) => {

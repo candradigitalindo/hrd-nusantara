@@ -1,4 +1,4 @@
-import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, nilaiButir, sisaDetik } from '../src/utils/cbt';
+import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, jenisPaket, nilaiButir, petaNilaiSkala, pilihanTanpaNilai, rentangSkala, sisaDetik } from '../src/utils/cbt';
 
 describe('Penilaian butir soal', () => {
   const pg = { tipe: 'pilihan_ganda', kunci: ['b'], poin: 2 };
@@ -88,5 +88,44 @@ describe('Bantuan lain', () => {
     const sekarang = new Date('2026-09-23T10:00:00Z');
     expect(sisaDetik(new Date('2026-09-23T10:01:30Z'), sekarang)).toBe(90);
     expect(sisaDetik(new Date('2026-09-23T09:59:00Z'), sekarang)).toBe(0);
+  });
+});
+
+describe('Butir skala (inventori kepribadian)', () => {
+  const skala = { tipe: 'skala', kunci: [], poin: 5, nilaiPilihan: { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5 } };
+
+  it('nilainya adalah nilai pilihan yang diambil, tanpa benar/salah', () => {
+    expect(nilaiButir(skala, { dipilih: ['4'] })).toEqual({ benar: null, poin: 4 });
+    expect(nilaiButir(skala, { dipilih: ['1'] })).toEqual({ benar: null, poin: 1 });
+  });
+
+  it('butir terbalik memberi nilai tinggi untuk "sangat tidak sesuai"', () => {
+    const terbalik = { ...skala, nilaiPilihan: { '1': 5, '2': 4, '3': 3, '4': 2, '5': 1 } };
+    expect(nilaiButir(terbalik, { dipilih: ['1'] })).toEqual({ benar: null, poin: 5 });
+    expect(nilaiButir(terbalik, { dipilih: ['5'] })).toEqual({ benar: null, poin: 1 });
+  });
+
+  it('dilewati atau kode asing bernilai nol, bukan menunggu penilaian', () => {
+    expect(nilaiButir(skala, null)).toEqual({ benar: null, poin: 0 });
+    expect(nilaiButir(skala, { dipilih: [] })).toEqual({ benar: null, poin: 0 });
+    expect(nilaiButir(skala, { dipilih: ['9'] })).toEqual({ benar: null, poin: 0 });
+    const hasil = hitungNilai([{ tipe: 'skala', poin: 5, poinDiperoleh: 0 }, { tipe: 'skala', poin: 5, poinDiperoleh: 4 }], null);
+    expect(hasil.menungguPenilaian).toBe(false);
+    expect(hasil.lulus).toBeNull();
+    expect(hasil.total).toBe(4);
+  });
+
+  it('bacaPilihan mempertahankan nilai, dan pilihanTanpaNilai membuangnya', () => {
+    const pilihan = bacaPilihan([{ kode: '1', teks: 'Sangat tidak sesuai', nilai: 5 }, { kode: '2', teks: 'Tidak sesuai', nilai: '4' }]);
+    expect(pilihan).toEqual([{ kode: '1', teks: 'Sangat tidak sesuai', nilai: 5 }, { kode: '2', teks: 'Tidak sesuai' }]);
+    expect(pilihanTanpaNilai(pilihan)).toEqual([{ kode: '1', teks: 'Sangat tidak sesuai' }, { kode: '2', teks: 'Tidak sesuai' }]);
+    expect(rentangSkala(pilihan)).toEqual({ min: 5, max: 5 });
+    expect(petaNilaiSkala(pilihan)).toEqual({ '1': 5 });
+  });
+
+  it('paket yang seluruh butirnya skala adalah inventori kepribadian', () => {
+    expect(jenisPaket(['skala', 'skala'])).toBe('kepribadian');
+    expect(jenisPaket(['skala', 'pilihan_ganda'])).toBe('pengetahuan');
+    expect(jenisPaket([])).toBe('pengetahuan');
   });
 });

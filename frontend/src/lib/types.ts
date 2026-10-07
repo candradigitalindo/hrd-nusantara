@@ -1368,7 +1368,9 @@ export interface RilisMobile {
 
 // ===================== CBT =====================
 
-export type TipeSoalCbt = "pilihan_ganda" | "banyak_jawaban" | "benar_salah" | "isian" | "esai";
+export type TipeSoalCbt = "pilihan_ganda" | "banyak_jawaban" | "benar_salah" | "isian" | "esai" | "skala";
+/** "kepribadian" bila seluruh butir paket bertipe skala: tanpa benar/salah, hasilnya profil per dimensi. */
+export type JenisPaketCbt = "pengetahuan" | "kepribadian";
 export type TingkatSoalCbt = "mudah" | "sedang" | "sulit";
 export type AudiensCbt = "karyawan" | "pelamar" | "keduanya";
 export type StatusPaketCbt = "draft" | "published" | "archived";
@@ -1377,6 +1379,8 @@ export type StatusPenugasanCbt = "assigned" | "in_progress" | "submitted" | "gra
 export interface PilihanSoal {
   kode: string;
   teks: string;
+  /** Nilai pilihan pada butir skala; tidak dikirim ke peserta. */
+  nilai?: number;
 }
 
 export interface SoalCbt {
@@ -1417,6 +1421,7 @@ export interface PaketCbt {
   createdAt: string;
   createdBy: Ref;
   _count: { questions: number; assignments: number };
+  kind: JenisPaketCbt;
 }
 
 export interface PaketCbtRinci extends PaketCbt {
@@ -1432,7 +1437,7 @@ export interface PenugasanCbt {
   availableFrom: string | null;
   availableUntil: string | null;
   createdAt: string;
-  test: { id: string; code: string; title: string; durationMinutes: number; passingScore: number | null };
+  test: { id: string; code: string; title: string; durationMinutes: number; passingScore: number | null; kind?: JenisPaketCbt };
   employee: { id: string; name: string; nik: string } | null;
   candidate: { id: string; name: string; email: string } | null;
   assignedBy: Ref;
@@ -1467,6 +1472,7 @@ export interface TesSaya {
     showResultToTaker: boolean;
     proctorPhotos: boolean;
     _count: { questions: number };
+    kind?: JenisPaketCbt;
   };
   attempt: {
     id: string;
@@ -1491,6 +1497,7 @@ export interface RuangUjian {
     recordProctorEvents: boolean;
     proctorPhotos: boolean;
     proctorPhotoIntervalSec: number;
+    jenis?: JenisPaketCbt;
   };
   peserta: { nama: string; jenis: "karyawan" | "pelamar" };
   deadlineAt: string;
@@ -1521,8 +1528,19 @@ export interface NilaiCbt {
 
 export interface HasilKirimCbt {
   status: StatusPenugasanCbt;
+  jenis?: JenisPaketCbt;
   menungguPenilaian: boolean;
   nilai: NilaiCbt | null;
+}
+
+/** Satu dimensi profil kepribadian, dari /cbt/hasil/:id untuk paket kepribadian. */
+export interface DimensiProfilCbt {
+  kategori: string;
+  persen: number;
+  tingkat: "rendah" | "sedang" | "tinggi";
+  labelTingkat: string;
+  singkat: string | null;
+  keterangan: string | null;
 }
 
 export interface ButirHasilCbt {
@@ -1565,14 +1583,16 @@ export interface HasilCbtRinci {
     gradedBy: Ref | null;
   };
   butir: ButirHasilCbt[];
-  perKategori: { kategori: string; maksimal: number; diperoleh: number; persen: number }[];
+  perKategori: { kategori: string; maksimal: number; minimal?: number; diperoleh: number; persen: number; persenSkala?: number }[];
+  jenis?: JenisPaketCbt;
+  profil?: DimensiProfilCbt[];
 }
 
 /** Informasi tes untuk pelamar sebelum mulai, dari tautan bertoken. */
 export interface InfoTesPublik {
   peserta: string;
   status: StatusPenugasanCbt;
-  test: { title: string; description: string | null; descriptionHtml: string | null; durationMinutes: number; jumlahSoal: number; proctorPhotos: boolean };
+  test: { title: string; description: string | null; descriptionHtml: string | null; durationMinutes: number; jumlahSoal: number; proctorPhotos: boolean; kind?: JenisPaketCbt };
   availableFrom: string | null;
   availableUntil: string | null;
   sudahDikirim: boolean;

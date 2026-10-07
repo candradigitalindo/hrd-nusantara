@@ -5,6 +5,7 @@ import { env } from '../config/env';
 import {
   createAssignments,
   createQuestion,
+  createStandardPersonalityTest,
   createTest,
   deleteAssignment,
   deleteQuestion,
@@ -120,6 +121,8 @@ router.get('/cbt/soal/:id/gambar', requirePermission('cbt.lihat', 'cbt_soal.liha
 router.get('/cbt/tes', requirePermission('cbt.lihat', 'cbt.buat', 'cbt.ubah'), asyncHandler(getTests));
 router.get('/cbt/tes/:id', requirePermission('cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getTestById));
 router.post('/cbt/tes', requirePermission('cbt.buat'), validate(createTestSchema), asyncHandler(createTest));
+// Paket standar inventori kepribadian Big Five (IPIP-50): dibuat sekali, siap ditugaskan.
+router.post('/cbt/tes/standar/kepribadian-big5', requirePermission('cbt.buat'), asyncHandler(createStandardPersonalityTest));
 router.put('/cbt/tes/:id', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(updateTestSchema), asyncHandler(updateTest));
 router.put('/cbt/tes/:id/soal', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(setTestQuestionsSchema), asyncHandler(setTestQuestions));
 router.delete('/cbt/tes/:id', requirePermission('cbt.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteTest));

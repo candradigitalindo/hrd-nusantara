@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, Controller } from "react-hook-form";
-import { Archive, Camera, Clock, Eye, ListChecks, Megaphone, MonitorCheck, Pencil, Plus, Save, Send, Trash2, Users, X } from "lucide-react";
+import { Archive, Brain, Camera, Clock, Eye, ListChecks, Megaphone, MonitorCheck, Pencil, Plus, Save, Send, Trash2, Users, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button, TombolAksi } from "@/components/ui/button";
@@ -215,6 +215,18 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
     onError: (e) => notifikasi.galat(e, "Gagal mengubah status"),
   });
 
+  // Paket standar inventori kepribadian Big Five (IPIP-50, domain publik):
+  // 50 butir skala dibuat sekali di bank soal, paketnya langsung tayang.
+  const buatStandar = useMutation({
+    mutationFn: async () => (await api.post<PaketCbt & { dibuat: boolean }>("/cbt/tes/standar/kepribadian-big5")).data,
+    onSuccess: (p) => {
+      segarkan();
+      if (p.dibuat) notifikasi.sukses("Paket kepribadian dibuat", `${p.title} · 50 butir skala dalam 5 dimensi, siap ditugaskan.`);
+      else notifikasi.info("Paket kepribadian sudah ada", `${p.title} sudah tersedia di daftar.`);
+    },
+    onError: (e) => notifikasi.galat(e, "Paket kepribadian belum dibuat"),
+  });
+
   const buang = useMutation({
     mutationFn: async (p: PaketCbt) => api.delete(`/cbt/tes/${p.id}`),
     onSuccess: () => { segarkan(); notifikasi.sukses("Paket dihapus"); setHapus(null); },
@@ -224,7 +236,10 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   return (
     <>
       {bolehBuat && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={() => buatStandar.mutate()} loading={buatStandar.isPending} title="Inventori Big Five berbasis IPIP-50 (domain publik): 50 pernyataan skala 1–5, hasilnya profil per dimensi">
+            {!buatStandar.isPending && <Brain className="h-4 w-4" aria-hidden />} Paket Kepribadian Big Five
+          </Button>
           <Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Paket Tes</Button>
         </div>
       )}
@@ -242,6 +257,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                   <CardTitle className="flex flex-wrap items-center gap-2">
                     <span className="truncate">{p.title}</span>
                     <Badge tone={p.status === "published" ? "success" : p.status === "draft" ? "neutral" : "warning"}>{LABEL_STATUS[p.status]}</Badge>
+                    {p.kind === "kepribadian" && <Badge tone="info">Kepribadian</Badge>}
                   </CardTitle>
                   <CardDescription className="line-clamp-2">{p.description ?? `Kode ${p.code}`}</CardDescription>
                 </div>
@@ -258,7 +274,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                 </p>
                 <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span>{LABEL_AUDIENS[p.audience]}</span>
-                  <span>{p.passingScore === null ? "Tanpa ambang lulus" : `Lulus ≥ ${p.passingScore}%`}</span>
+                  <span>{p.kind === "kepribadian" ? "Profil per dimensi, tanpa kelulusan" : p.passingScore === null ? "Tanpa ambang lulus" : `Lulus ≥ ${p.passingScore}%`}</span>
                   {p.proctorPhotos && <span className="inline-flex items-center gap-1 text-warning"><Camera className="h-3.5 w-3.5" aria-hidden /> Foto pengawasan</span>}
                   {p.showResultToTaker && <span className="inline-flex items-center gap-1"><Eye className="h-3.5 w-3.5" aria-hidden /> Nilai dibuka</span>}
                 </p>

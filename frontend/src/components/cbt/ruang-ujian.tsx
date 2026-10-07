@@ -56,6 +56,14 @@ export const RuangUjianCbt = ({
   const kotor = React.useRef<Set<string>>(new Set());
   const sudahKirim = React.useRef(false);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  // Jawaban terbaru dibaca lewat ref supaya simpanKotor tidak berganti
+  // identitas tiap ketukan: dulu ia bergantung pada state `jawaban`, sehingga
+  // interval autosave dibuat ulang setiap jawaban berubah dan tidak pernah
+  // sempat berjalan selama peserta menjawab tanpa jeda 4 detik.
+  const jawabanRef = React.useRef(jawaban);
+  React.useEffect(() => {
+    jawabanRef.current = jawaban;
+  }, [jawaban]);
 
   const soal = ruang.questions[indeks];
   const jumlahTerisi = ruang.questions.filter((q) => terisi(jawaban[q.id])).length;
@@ -64,12 +72,15 @@ export const RuangUjianCbt = ({
   // Jawaban dikumpulkan lalu dikirim sekaligus tiap beberapa detik: satu
   // permintaan per ketukan akan menabrak batas laju saat satu ruangan ujian
   // menyimpan berbarengan.
-  const simpanKotor = React.useCallback(async () => {
-    if (kotor.current.size === 0 || sudahKirim.current) return;
+  /** Mengirim jawaban yang belum tersimpan. Mengembalikan false bila gagal, supaya pengiriman akhir tidak berjalan tanpa jawabannya. */
+  const simpanKotor = React.useCallback(async (): Promise<boolean> => {
+    if (sudahKirim.current) return true;
+    if (kotor.current.size === 0) return true;
+    const terkini = jawabanRef.current;
     const daftar = [...kotor.current].map((id) => ({
       questionId: id,
-      chosen: jawaban[id]?.chosen ?? [],
-      text: jawaban[id]?.text ?? null,
+      chosen: terkini[id]?.chosen ?? [],
+      text: terkini[id]?.text ?? null,
     }));
     kotor.current.clear();
     try {
@@ -80,12 +91,14 @@ export const RuangUjianCbt = ({
         notifikasi.peringatan("Waktu habis", "Jawaban yang sudah tersimpan dikirim otomatis.");
         onSelesai({ status: "submitted", menungguPenilaian: true, nilai: null });
       }
+      return true;
     } catch (e) {
       // Jawaban tetap ditandai kotor supaya dicoba lagi pada siklus berikutnya.
       daftar.forEach((j) => kotor.current.add(j.questionId));
       notifikasi.galat(e, "Jawaban belum tersimpan");
+      return false;
     }
-  }, [api, jawaban, onSelesai]);
+  }, [api, onSelesai]);
 
   React.useEffect(() => {
     const t = setInterval(simpanKotor, 4000);
@@ -101,10 +114,18 @@ export const RuangUjianCbt = ({
   const kirim = React.useCallback(
     async (otomatis = false) => {
       if (sudahKirim.current) return;
-      sudahKirim.current = true;
       setMengirim(true);
       try {
-        await simpanKotor();
+        // Jawaban yang masih kotor dikirim DULU, selagi sudahKirim masih
+        // false — dulu urutannya terbalik sehingga simpanKotor langsung
+        // berhenti dan jawaban terakhir sebelum tombol Kirim hilang.
+        const tersimpan = await simpanKotor();
+        if (!tersimpan && !otomatis) {
+          notifikasi.peringatan("Jawaban belum tersimpan", "Periksa koneksi, lalu tekan Kirim lagi.");
+          return;
+        }
+        if (sudahKirim.current) return; // sudah dikirim otomatis oleh server saat menyimpan
+        sudahKirim.current = true;
         const hasil = await api.kirim();
         if (otomatis) notifikasi.peringatan("Waktu habis", "Jawaban Anda dikirim otomatis.");
         onSelesai(hasil);
@@ -260,13 +281,19 @@ export const RuangUjianCbt = ({
         </Alert>
       )}
 
+      {ruang.test.jenis === "kepribadian" && indeks === 0 && (
+        <Alert tone="info" title="Tidak ada jawaban benar atau salah">
+          Pilih seberapa sesuai tiap pernyataan dengan diri Anda. Jawaban yang jujur dan spontan paling berguna; tidak perlu lama berpikir.
+        </Alert>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[1fr_16rem]">
         <Card className="p-5">
           <div className="flex items-baseline justify-between gap-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted">
               Soal {indeks + 1} dari {ruang.questions.length} · {soal.category}
             </p>
-            <p className="text-xs text-muted">{soal.points} poin</p>
+            {soal.type !== "skala" && <p className="text-xs text-muted">{soal.points} poin</p>}
           </div>
           <TeksKaya html={soal.textHtml} teks={soal.text} className="mt-3 text-[15px] leading-relaxed" />
 
@@ -336,6 +363,29 @@ export const RuangUjianCbt = ({
                 placeholder="Tulis jawaban Anda"
                 aria-label="Jawaban esai"
               />
+            )}
+
+            {soal.type === "skala" && (
+              <div role="radiogroup" aria-label="Seberapa sesuai dengan diri Anda" className="grid gap-2 sm:grid-cols-5">
+                {soal.options.map((o) => (
+                  <label
+                    key={o.kode}
+                    className={cn(
+                      "flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border p-3 text-center text-sm transition-colors",
+                      isi.chosen.includes(o.kode) ? "border-primary bg-primary-soft font-medium text-primary" : "border-border hover:bg-surface-2"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name={`soal-${soal.id}`}
+                      className="h-4 w-4 accent-[var(--primary)]"
+                      checked={isi.chosen.includes(o.kode)}
+                      onChange={() => pilihSatu(o.kode)}
+                    />
+                    <span>{o.teks}</span>
+                  </label>
+                ))}
+              </div>
             )}
           </div>
 
@@ -410,7 +460,11 @@ export const SelesaiUjian = ({ hasil, kembali }: { hasil: HasilKirimCbt; kembali
         <Check className="h-7 w-7" aria-hidden />
       </span>
       <h1 className="mt-4 text-xl font-semibold">Jawaban terkirim</h1>
-      {hasil.menungguPenilaian ? (
+      {hasil.jenis === "kepribadian" ? (
+        <p className="mt-2 text-sm text-muted">
+          Terima kasih. Inventori ini tidak punya jawaban benar atau salah; profilnya dibaca HR sebagai bahan wawancara dan penempatan.
+        </p>
+      ) : hasil.menungguPenilaian ? (
         <p className="mt-2 text-sm text-muted">
           Sebagian soal dinilai penguji, jadi nilainya belum keluar. HR akan memberi tahu hasilnya.
         </p>

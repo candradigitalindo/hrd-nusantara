@@ -24,7 +24,11 @@ export const LABEL_TIPE_SOAL: Record<TipeSoalCbt, string> = {
   benar_salah: "Benar / salah",
   isian: "Isian singkat",
   esai: "Esai",
+  skala: "Skala sikap (1–5)",
 };
+
+/** Lima jenjang kesesuaian untuk butir skala; nilainya 1–5 (atau dibalik bila butirnya terbalik). */
+export const SKALA_BAWAAN = ["Sangat tidak sesuai", "Tidak sesuai", "Netral", "Sesuai", "Sangat sesuai"];
 
 const LABEL_TINGKAT: Record<TingkatSoalCbt, string> = { mudah: "Mudah", sedang: "Sedang", sulit: "Sulit" };
 
@@ -49,6 +53,10 @@ type FormSoal = {
   kunci: string[] | string;
   /** Jawaban yang diterima untuk isian, dipisah baris baru. */
   kunciIsian: string;
+  /** Label lima jenjang butir skala. */
+  skalaLabel: string[];
+  /** Butir skala berbunyi negatif: "sangat tidak sesuai" bernilai tertinggi. */
+  terbalik: boolean;
 };
 
 const kosong: FormSoal = {
@@ -62,6 +70,8 @@ const kosong: FormSoal = {
   pilihan: ["", "", "", ""],
   kunci: [],
   kunciIsian: "",
+  skalaLabel: [...SKALA_BAWAAN],
+  terbalik: false,
 };
 
 /** Bank soal: sumber butir untuk semua paket tes. */
@@ -90,7 +100,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   });
 
   const f = useForm<FormSoal>({ defaultValues: kosong });
-  const tipeDipilih = useWatch({ control: f.control, name: "type" });
+  const [tipeDipilih, terbalik] = useWatch({ control: f.control, name: ["type", "terbalik"] });
   const berpilihan = tipeDipilih === "pilihan_ganda" || tipeDipilih === "banyak_jawaban" || tipeDipilih === "benar_salah";
 
   React.useEffect(() => {
@@ -107,8 +117,10 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
             rubric: s.rubric ?? "",
             explanation: s.explanation ?? "",
             pilihan: KODE.map((k) => s.options?.find((o) => o.kode === k)?.teks ?? ""),
-            kunci: s.type === "isian" || s.type === "esai" ? [] : s.type === "banyak_jawaban" ? s.answerKey : (s.answerKey[0] ?? ""),
+            kunci: s.type === "isian" || s.type === "esai" || s.type === "skala" ? [] : s.type === "banyak_jawaban" ? s.answerKey : (s.answerKey[0] ?? ""),
             kunciIsian: s.type === "isian" ? s.answerKey.join("\n") : "",
+            skalaLabel: s.type === "skala" && s.options?.length ? s.options.map((o) => o.teks) : [...SKALA_BAWAAN],
+            terbalik: s.type === "skala" && (s.options?.length ?? 0) > 1 ? (s.options![0].nilai ?? 0) > (s.options![s.options!.length - 1].nilai ?? 0) : false,
           }
         : kosong
     );
@@ -141,7 +153,13 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
           ? { answerKey: v.kunciIsian.split("\n").map((t) => t.trim()).filter(Boolean) }
           : v.type === "esai"
             ? { answerKey: [] }
-            : { options: pilihan, answerKey: daftarKunci(v.kunci).filter((k) => pilihan.some((o) => o.kode === k)) }),
+            : v.type === "skala"
+              ? {
+                  // Nilai 1..n berurutan, dibalik untuk butir negatif; bobotnya ditentukan server dari nilai tertinggi.
+                  options: v.skalaLabel.map((teks, i) => ({ kode: String(i + 1), teks: teks.trim() || SKALA_BAWAAN[i], nilai: v.terbalik ? v.skalaLabel.length - i : i + 1 })),
+                  answerKey: [],
+                }
+              : { options: pilihan, answerKey: daftarKunci(v.kunci).filter((k) => pilihan.some((o) => o.kode === k)) }),
       };
       return form.item ? api.put(`/cbt/soal/${form.item.id}`, body) : api.post("/cbt/soal", body);
     },
@@ -223,7 +241,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
       >
         <form id="form-soal" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label="Kategori" hint="Mis. Numerik, Higiene" error={f.formState.errors.category?.message}>
+            <Field label="Kategori" hint={tipeDipilih === "skala" ? "Nama dimensi yang diukur, mis. Ekstraversi" : "Mis. Numerik, Higiene"} error={f.formState.errors.category?.message}>
               <Input list="kategori-cbt" {...f.register("category", { required: "Wajib diisi" })} placeholder="Higiene Dapur" />
               <datalist id="kategori-cbt">
                 {(kategoriTersedia.data ?? []).map((k) => <option key={k.category} value={k.category} />)}
@@ -291,9 +309,28 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
             </Field>
           )}
 
+          {tipeDipilih === "skala" && (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">Skala jawaban</legend>
+              <p className="text-xs text-muted">
+                Peserta memilih seberapa sesuai pernyataan dengan dirinya. Nilai tiap jenjang dijumlahkan per kategori menjadi profil; tidak ada jawaban benar atau salah, dan urutan jenjang tidak pernah diacak.
+              </p>
+              {SKALA_BAWAAN.map((bawaan, i) => (
+                <div key={bawaan} className="flex items-center gap-2">
+                  <span className="w-6 text-right text-sm font-medium tabular-nums text-muted" aria-label={`Nilai jenjang ${i + 1}`}>{terbalik ? SKALA_BAWAAN.length - i : i + 1}</span>
+                  <Input {...f.register(`skalaLabel.${i}` as const)} placeholder={bawaan} aria-label={`Label jenjang ${i + 1}`} />
+                </div>
+              ))}
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[var(--primary)]" {...f.register("terbalik")} />
+                <span>Butir terbalik — pernyataan negatif (mis. “Saya mudah stres” untuk dimensi Kestabilan Emosi), sehingga “sangat tidak sesuai” bernilai tertinggi.</span>
+              </label>
+            </fieldset>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Bobot nilai">
-              <Input type="number" step="0.5" min="0.5" {...f.register("points", { valueAsNumber: true })} disabled={Boolean(form.item && form.item._count.answers > 0)} />
+            <Field label="Bobot nilai" hint={tipeDipilih === "skala" ? "Butir skala: otomatis nilai jenjang tertinggi" : undefined}>
+              <Input type="number" step="0.5" min="0.5" {...f.register("points", { valueAsNumber: true })} disabled={Boolean(form.item && form.item._count.answers > 0) || tipeDipilih === "skala"} />
             </Field>
             <Field label="Pembahasan (opsional)" hint="Hanya tampil bila paket membuka hasil untuk peserta.">
               <Input {...f.register("explanation")} />

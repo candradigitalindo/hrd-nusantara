@@ -7,7 +7,16 @@ const teksPendek = z.string().trim().min(1).max(200);
 const persen = z.coerce.number().min(0).max(100);
 
 const pilihan = z
-  .array(z.object({ kode: z.string().trim().min(1).max(8), teks: z.string().trim().min(1).max(500) }).strict())
+  .array(
+    z
+      .object({
+        kode: z.string().trim().min(1).max(8),
+        teks: z.string().trim().min(1).max(500),
+        /// Hanya untuk butir skala: nilai yang disumbangkan pilihan ini.
+        nilai: z.coerce.number().min(0).max(100).optional(),
+      })
+      .strict()
+  )
   .max(10);
 
 // --- Bank soal ---
@@ -39,10 +48,32 @@ const soalDasar = {
  */
 const periksaBentukSoal = (d: {
   type: string;
-  options?: { kode: string; teks: string }[];
+  options?: { kode: string; teks: string; nilai?: number }[];
   answerKey: string[];
 }, ctx: z.RefinementCtx) => {
   const objektifBerpilihan = d.type === 'pilihan_ganda' || d.type === 'banyak_jawaban' || d.type === 'benar_salah';
+
+  if (d.type === 'skala') {
+    const opsi = d.options ?? [];
+    if (opsi.length < 2) {
+      ctx.addIssue({ code: 'custom', path: ['options'], message: 'Butir skala butuh minimal 2 pilihan' });
+      return;
+    }
+    const kode = opsi.map((o) => o.kode);
+    if (new Set(kode).size !== kode.length) {
+      ctx.addIssue({ code: 'custom', path: ['options'], message: 'Kode pilihan tidak boleh kembar' });
+    }
+    const nilai = opsi.map((o) => o.nilai);
+    if (nilai.some((n) => n === undefined)) {
+      ctx.addIssue({ code: 'custom', path: ['options'], message: 'Setiap pilihan butir skala harus punya nilai' });
+    } else if (new Set(nilai).size < 2) {
+      ctx.addIssue({ code: 'custom', path: ['options'], message: 'Nilai pilihan butir skala harus berbeda-beda' });
+    }
+    if (d.answerKey.length > 0) {
+      ctx.addIssue({ code: 'custom', path: ['answerKey'], message: 'Butir skala tidak punya kunci jawaban' });
+    }
+    return;
+  }
 
   if (objektifBerpilihan) {
     const opsi = d.options ?? [];

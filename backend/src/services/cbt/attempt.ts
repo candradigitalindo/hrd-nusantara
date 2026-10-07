@@ -7,7 +7,7 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 import { generateULID } from '../../utils/generateULID';
-import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, nilaiButir, sisaDetik } from '../../utils/cbt';
+import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, jenisPaket, nilaiButir, petaNilaiSkala, pilihanTanpaNilai, sisaDetik, type JenisPaket } from '../../utils/cbt';
 
 /** Penugasan beserta paket dan soalnya — bentuk yang dibutuhkan seluruh alur. */
 export const penugasanLengkap = {
@@ -66,7 +66,11 @@ const soalUntukPeserta = (
   attemptId: string,
   acakPilihan: boolean
 ) => {
-  const pilihan = bacaPilihan(butir.question.options);
+  // Nilai tiap pilihan butir skala tidak ikut: arah butir terbalik tidak
+  // perlu terbaca peserta. Skala juga tidak pernah diacak — urutan
+  // "sangat tidak sesuai … sangat sesuai" adalah makna jawabannya.
+  const pilihan = pilihanTanpaNilai(bacaPilihan(butir.question.options));
+  const skala = butir.question.type === 'skala';
   return {
     id: butir.questionId,
     type: butir.question.type,
@@ -75,9 +79,12 @@ const soalUntukPeserta = (
     textHtml: butir.question.textHtml,
     imagePath: butir.question.imagePath,
     points: bobot(butir),
-    options: acakPilihan ? acak(pilihan, rngTerbenih(attemptId + butir.questionId)) : pilihan,
+    options: acakPilihan && !skala ? acak(pilihan, rngTerbenih(attemptId + butir.questionId)) : pilihan,
   };
 };
+
+/** Jenis paket dari butir-butirnya: seluruhnya skala berarti inventori kepribadian. */
+export const jenisPaketDari = (penugasan: PenugasanLengkap): JenisPaket => jenisPaket(penugasan.test.questions.map((q) => q.question.type));
 
 export interface PaketPengerjaan {
   assignmentId: string;
@@ -90,6 +97,8 @@ export interface PaketPengerjaan {
     recordProctorEvents: boolean;
     proctorPhotos: boolean;
     proctorPhotoIntervalSec: number;
+    /** 'kepribadian' bila seluruh butirnya skala: tidak ada jawaban benar/salah. */
+    jenis: JenisPaket;
   };
   peserta: { nama: string; jenis: 'karyawan' | 'pelamar' };
   deadlineAt: string;
@@ -162,6 +171,7 @@ export const mulaiAtauLanjutkan = async (penugasan: PenugasanLengkap): Promise<P
       recordProctorEvents: penugasan.test.recordProctorEvents,
       proctorPhotos: penugasan.test.proctorPhotos,
       proctorPhotoIntervalSec: penugasan.test.proctorPhotoIntervalSec,
+      jenis: jenisPaketDari(penugasan),
     },
     peserta: {
       nama: penugasan.employee?.name ?? penugasan.candidate?.name ?? 'Peserta',
@@ -230,7 +240,7 @@ export const simpanJawaban = async (
 export const kirimJawaban = async (
   penugasan: PenugasanLengkap,
   opsi: { otomatis?: boolean } = {}
-): Promise<{ status: string; nilai: ReturnType<typeof hitungNilai> }> => {
+): Promise<{ status: string; jenis: JenisPaket; nilai: ReturnType<typeof hitungNilai> }> => {
   const attempt = pengerjaanBerjalan(penugasan);
   const jawaban = new Map(attempt.answers.map((j) => [j.questionId, j]));
 
@@ -238,7 +248,12 @@ export const kirimJawaban = async (
     const poin = butir.points ?? butir.question.points;
     const j = jawaban.get(butir.questionId) ?? null;
     const hasil = nilaiButir(
-      { tipe: butir.question.type, kunci: butir.question.answerKey, poin },
+      {
+        tipe: butir.question.type,
+        kunci: butir.question.answerKey,
+        poin,
+        ...(butir.question.type === 'skala' ? { nilaiPilihan: petaNilaiSkala(bacaPilihan(butir.question.options)) } : {}),
+      },
       j ? { dipilih: j.chosen, teks: j.text } : null
     );
     return { butir, poin, jawabanId: j?.id ?? null, hasil };
@@ -290,7 +305,7 @@ export const kirimJawaban = async (
     await tx.cbtAssignment.update({ where: { id: penugasan.id }, data: { status: statusBaru } });
   });
 
-  return { status: statusBaru, nilai: ringkasan };
+  return { status: statusBaru, jenis: jenisPaketDari(penugasan), nilai: ringkasan };
 };
 
 /** Menghitung ulang nilai setelah penguji menilai esai. */

@@ -96,6 +96,11 @@ export default function HalamanTesPublik() {
                 {info.data.availableUntil && <li>Batas akhir pengerjaan {formatTanggal(info.data.availableUntil, "d MMM yyyy HH:mm")}</li>}
               </ul>
 
+              {info.data.test.kind === "kepribadian" && (
+                <Alert tone="info" title="Tidak ada jawaban benar atau salah">
+                  Ini inventori kepribadian: pilih seberapa sesuai tiap pernyataan dengan diri Anda. Jawaban yang jujur dan spontan paling berguna; tidak perlu lama berpikir.
+                </Alert>
+              )}
               <Alert tone="warning" title="Sekali mulai, waktu berjalan terus">
                 Menutup tab tidak menghentikan hitung mundur. Pastikan koneksi dan perangkat Anda siap.
               </Alert>

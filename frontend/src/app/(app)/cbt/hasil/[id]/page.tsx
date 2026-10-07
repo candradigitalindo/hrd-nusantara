@@ -74,9 +74,12 @@ export default function HalamanHasilCbt() {
   if (!hasil.data) return <Alert tone="danger" title="Hasil tidak ditemukan">Periksa kembali tautannya.</Alert>;
 
   const { attempt, butir, perKategori } = hasil.data;
+  const kepribadian = hasil.data.jenis === "kepribadian";
+  const profil = hasil.data.profil ?? [];
   const peserta = attempt.assignment.employee?.name ?? attempt.assignment.candidate?.name ?? "Peserta";
   const esai = butir.filter((b) => !b.otomatis);
   const belumDinilai = esai.filter((b) => b.points === null).length;
+  const NADA_TINGKAT = { rendah: "neutral", sedang: "info", tinggi: "primary" } as const;
 
   return (
     <>
@@ -88,7 +91,9 @@ export default function HalamanHasilCbt() {
         title={`${attempt.assignment.test.title} — ${peserta}`}
         description={`Dikirim ${formatTanggal(attempt.submittedAt, "d MMM yyyy HH:mm")}${attempt.autoSubmitted ? " (otomatis karena waktu habis)" : ""}`}
         actions={
-          attempt.percent !== null ? (
+          kepribadian ? (
+            <Badge tone="info">Profil kepribadian</Badge>
+          ) : attempt.percent !== null ? (
             <div className="text-right">
               <p className="text-2xl font-bold tabular-nums">{attempt.percent}%</p>
               <p className="text-xs text-muted">{attempt.scoreTotal} dari {attempt.maxScore} poin</p>
@@ -99,7 +104,13 @@ export default function HalamanHasilCbt() {
         }
       />
 
-      {attempt.passed !== null && (
+      {kepribadian && (
+        <Alert tone="info" title="Cara membaca profil">
+          Skor tiap dimensi adalah posisi jawaban peserta pada rentang skala (0–100), bukan nilai benar-salah; tidak ada yang lulus atau gagal. Inventori laporan diri menggambarkan kecenderungan, bukan diagnosis — gunakan bersama wawancara dan referensi kerja.
+        </Alert>
+      )}
+
+      {!kepribadian && attempt.passed !== null && (
         <Alert tone={attempt.passed ? "success" : "danger"} title={attempt.passed ? "Lulus" : "Belum lulus"}>
           Ambang lulus paket ini {attempt.assignment.test.passingScore}%.
           {attempt.gradedBy && ` Dinilai ${attempt.gradedBy.name}.`}
@@ -108,8 +119,24 @@ export default function HalamanHasilCbt() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="p-4 lg:col-span-2">
-          <p className="text-sm font-medium">Nilai per kategori</p>
-          <ul className="mt-3 space-y-2">
+          <p className="text-sm font-medium">{kepribadian ? "Profil per dimensi" : "Nilai per kategori"}</p>
+          {kepribadian && profil.length > 0 && (
+            <ul className="mt-3 space-y-4">
+              {profil.map((d) => (
+                <li key={d.kategori}>
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                    <span className="font-medium">{d.kategori}{d.singkat && <span className="font-normal text-muted"> · {d.singkat}</span>}</span>
+                    <span className="flex items-center gap-2 tabular-nums text-muted">{d.persen}<Badge tone={NADA_TINGKAT[d.tingkat]}>{d.labelTingkat}</Badge></span>
+                  </div>
+                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2" role="meter" aria-valuenow={d.persen} aria-valuemin={0} aria-valuemax={100} aria-label={`${d.kategori} ${d.persen}`}>
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, d.persen)}%` }} />
+                  </div>
+                  {d.keterangan && <p className="mt-1.5 text-xs text-muted">{d.keterangan}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <ul className={cn("mt-3 space-y-2", kepribadian && "hidden")}>
             {perKategori.map((k) => (
               <li key={k.kategori}>
                 <div className="flex items-baseline justify-between text-sm">
@@ -212,7 +239,9 @@ export default function HalamanHasilCbt() {
             <li key={b.questionId} className="rounded-xl border border-border p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-xs text-muted">{i + 1}. {b.category} · {LABEL_TIPE_SOAL[b.type]} · maks {b.maxPoints} poin</p>
-                {b.points !== null ? (
+                {b.type === "skala" ? (
+                  <Badge tone="neutral">{b.chosen.length ? (b.options.find((o) => o.kode === b.chosen[0])?.teks ?? b.chosen[0]) : "Tidak dijawab"}{b.points !== null ? ` · nilai ${b.points}` : ""}</Badge>
+                ) : b.points !== null ? (
                   <Badge tone={b.otomatis ? (b.isCorrect ? "success" : "danger") : "neutral"}>
                     {b.otomatis ? (b.isCorrect ? "Benar" : "Salah") : "Dinilai"} · {b.points} poin
                   </Badge>
@@ -232,8 +261,8 @@ export default function HalamanHasilCbt() {
                         key={o.kode}
                         className={cn(
                           "flex items-center gap-2 rounded-lg px-2 py-1 text-sm",
-                          kunci && "bg-success-soft text-success",
-                          dipilih && !kunci && "bg-danger-soft text-danger"
+                          b.type === "skala" ? dipilih && "bg-primary-soft text-primary" : kunci && "bg-success-soft text-success",
+                          b.type !== "skala" && dipilih && !kunci && "bg-danger-soft text-danger"
                         )}
                       >
                         {dipilih ? <Check className="h-3.5 w-3.5" aria-hidden /> : <span className="w-3.5" />}

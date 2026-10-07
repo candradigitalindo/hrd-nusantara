@@ -12,8 +12,9 @@ import { pasanganTeks } from '../utils/richText';
 import { decodeBase64Image, InvalidImageError, saveImage } from '../utils/imageUpload';
 import { resolveDocumentPath } from '../utils/documentUpload';
 import { decryptBytes } from '../utils/fieldCrypto';
-import { bacaPilihan, dinilaiOtomatis } from '../utils/cbt';
+import { bacaPilihan, dinilaiOtomatis, jenisPaket, rentangSkala, type JenisPaket } from '../utils/cbt';
 import { GalatCbt, hashToken, hitungUlangNilai } from '../services/cbt/attempt';
+import { buatPaketKepribadianBig5, interpretasiDimensi } from '../services/cbt/kepribadian';
 import type {
   CreateAssignmentInput,
   CreateQuestionInput,
@@ -47,6 +48,26 @@ const soalSelect = {
   createdBy: { select: { id: true, name: true } },
   _count: { select: { tests: true, answers: true } },
 } satisfies Prisma.CbtQuestionSelect;
+
+/**
+ * Bobot butir skala selalu nilai tertinggi pilihannya: itu "nilai maksimal"
+ * yang dipakai menormalkan profil, dan HR tidak perlu mengisinya sendiri.
+ */
+const bobotSkala = (options: unknown): number => rentangSkala(bacaPilihan(options)).max;
+
+/** Jenis tiap paket dari tipe butir-butirnya, sekali query untuk banyak paket. */
+const jenisPaketBanyak = async (testIds: readonly string[]): Promise<Map<string, JenisPaket>> => {
+  const peta = new Map<string, JenisPaket>(testIds.map((id) => [id, 'pengetahuan' as JenisPaket]));
+  if (testIds.length === 0) return peta;
+  const butir = await prisma.cbtTestQuestion.findMany({
+    where: { testId: { in: [...testIds] } },
+    select: { testId: true, question: { select: { type: true } } },
+  });
+  const perPaket = new Map<string, string[]>();
+  for (const b of butir) perPaket.set(b.testId, [...(perPaket.get(b.testId) ?? []), b.question.type]);
+  for (const [id, tipe] of perPaket) peta.set(id, jenisPaket(tipe));
+  return peta;
+};
 
 const simpanGambar = async (image: string | null | undefined): Promise<string | null | undefined> => {
   if (image === undefined) return undefined;
@@ -118,7 +139,7 @@ export const createQuestion = async (req: Request, res: Response) => {
       options: input.options ? (input.options as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
       answerKey: input.answerKey,
       rubric: input.rubric ?? null,
-      points: input.points,
+      points: input.type === 'skala' ? bobotSkala(input.options) : input.points,
       explanation: input.explanation ?? null,
       isActive: input.isActive,
       createdById: aktor.id,
@@ -175,6 +196,10 @@ export const updateQuestion = async (req: Request, res: Response) => {
   if (input.answerKey !== undefined) data.answerKey = input.answerKey;
   if (input.rubric !== undefined) data.rubric = input.rubric;
   if (input.points !== undefined) data.points = input.points;
+  // Butir skala: bobotnya mengikuti nilai tertinggi pilihan, apa pun yang dikirim.
+  const tipeAkhir = input.type ?? lama.type;
+  const opsiAkhir = input.options !== undefined ? input.options : lama.options;
+  if (tipeAkhir === 'skala') data.points = bobotSkala(opsiAkhir);
   if (input.explanation !== undefined) data.explanation = input.explanation;
   if (input.isActive !== undefined) data.isActive = input.isActive;
 
@@ -265,12 +290,27 @@ const paketSelect = {
 
 export const getTests = async (req: Request, res: Response) => {
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
-  const data = await prisma.cbtTest.findMany({
+  const daftar = await prisma.cbtTest.findMany({
     where: status ? { status } : {},
     select: paketSelect,
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
   });
-  res.json({ data });
+  const jenis = await jenisPaketBanyak(daftar.map((p) => p.id));
+  res.json({ data: daftar.map((p) => ({ ...p, kind: jenis.get(p.id) ?? 'pengetahuan' })) });
+};
+
+/**
+ * Paket standar inventori kepribadian Big Five (IPIP-50, domain publik):
+ * 50 butir skala + paket siap tugas, dibuat sekali. HR tinggal menugaskannya
+ * ke pelamar atau karyawan; hasilnya profil per dimensi, bukan kelulusan.
+ */
+export const createStandardPersonalityTest = async (req: Request, res: Response) => {
+  const { id, dibuat } = await buatPaketKepribadianBig5(req.user!.id);
+  const paket = await prisma.cbtTest.findUniqueOrThrow({ where: { id }, select: paketSelect });
+  if (dibuat) {
+    res.locals.audit = { action: 'cbt.tes.buat', entity: 'CbtTest', entityId: id, summary: `Membuat paket standar ${paket.title}` };
+  }
+  res.status(dibuat ? 201 : 200).json({ ...paket, kind: 'kepribadian' as JenisPaket, dibuat });
 };
 
 export const getTestById = async (req: Request, res: Response) => {
@@ -291,7 +331,7 @@ export const getTestById = async (req: Request, res: Response) => {
   if (!paket) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
 
   const totalPoin = paket.questions.reduce((n, q) => n + (q.points ?? q.question.points), 0);
-  res.json({ ...paket, totalPoin });
+  res.json({ ...paket, totalPoin, kind: jenisPaket(paket.questions.map((q) => q.question.type)) });
 };
 
 export const createTest = async (req: Request, res: Response) => {
@@ -657,7 +697,13 @@ export const getResults = async (req: Request, res: Response) => {
     }),
   ]);
 
-  res.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 } });
+  // Jenis paket ikut dikirim: daftar hasil menampilkan "profil" untuk
+  // inventori kepribadian, bukan persen dan kelulusan.
+  const jenis = await jenisPaketBanyak([...new Set(data.map((a) => a.testId))]);
+  res.json({
+    data: data.map((a) => ({ ...a, test: { ...a.test, kind: jenis.get(a.testId) ?? 'pengetahuan' } })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+  });
 };
 
 export const getResultDetail = async (req: Request, res: Response) => {
@@ -704,14 +750,31 @@ export const getResultDetail = async (req: Request, res: Response) => {
 
   // Rincian per kategori menjawab pertanyaan yang sebenarnya ditanyakan HR:
   // lemahnya di mana, bukan sekadar berapa nilainya.
+  //
+  // Butir skala punya nilai terendah yang bukan nol (mis. 1 dari 1–5), jadi
+  // profil kepribadian memakai persenSkala: posisi antara nilai terendah dan
+  // tertinggi yang mungkin, bukan sekadar diperoleh/maksimal.
+  const bulat2 = (n: number) => Math.round(n * 100) / 100;
   const perKategori = [...new Set(butir.map((b) => b.category))].map((kategori) => {
     const isi = butir.filter((b) => b.category === kategori);
     const maks = isi.reduce((n, b) => n + b.maxPoints, 0);
+    const minimal = isi.reduce((n, b) => n + (b.type === 'skala' ? rentangSkala(bacaPilihan(b.options)).min : 0), 0);
     const dapat = isi.reduce((n, b) => n + (b.points ?? 0), 0);
-    return { kategori, maksimal: maks, diperoleh: Math.round(dapat * 100) / 100, persen: maks > 0 ? Math.round((dapat / maks) * 10000) / 100 : 0 };
+    const rentang = maks - minimal;
+    return {
+      kategori,
+      maksimal: maks,
+      minimal,
+      diperoleh: bulat2(dapat),
+      persen: maks > 0 ? bulat2((dapat / maks) * 100) : 0,
+      persenSkala: rentang > 0 ? bulat2((Math.max(0, dapat - minimal) / rentang) * 100) : 0,
+    };
   });
 
-  res.json({ attempt: { ...attempt, answers: undefined }, butir, perKategori });
+  const jenis = jenisPaket(butir.map((b) => b.type));
+  const profil = jenis === 'kepribadian' ? perKategori.map((k) => ({ ...interpretasiDimensi(k.kategori, k.persenSkala), persen: k.persenSkala })) : [];
+
+  res.json({ attempt: { ...attempt, answers: undefined }, butir, perKategori, jenis, profil });
 };
 
 export const gradeAttempt = async (req: Request, res: Response) => {

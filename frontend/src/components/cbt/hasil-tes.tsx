@@ -51,12 +51,14 @@ export const HasilTes = () => {
         </div>
       ),
     },
-    { key: "tes", header: "Paket", cell: (a) => a.test.title },
+    { key: "tes", header: "Paket", cell: (a) => <span>{a.test.title}{a.test.kind === "kepribadian" && <Badge tone="info" className="ml-1.5">Kepribadian</Badge>}</span> },
     {
       key: "nilai",
       header: "Nilai",
       cell: (a) =>
-        a.status === "graded" && a.attempt?.percent !== null && a.attempt ? (
+        a.test.kind === "kepribadian" ? (
+          <span className="text-xs text-muted">Profil kepribadian</span>
+        ) : a.status === "graded" && a.attempt?.percent !== null && a.attempt ? (
           <span className="font-medium tabular-nums">
             {a.attempt.percent}% <span className="text-xs font-normal text-muted">({a.attempt.scoreTotal}/{a.attempt.maxScore})</span>
           </span>

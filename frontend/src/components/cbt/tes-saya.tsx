@@ -50,7 +50,8 @@ export const TesSayaPanel = () => {
               {t.note && <div className="italic">“{t.note}”</div>}
             </dl>
 
-            {t.status === "graded" && t.test.showResultToTaker && t.attempt?.percent !== null && t.attempt && (
+            {t.test.kind === "kepribadian" && <p className="mt-2 text-xs text-muted">Inventori kepribadian: tidak ada jawaban benar atau salah.</p>}
+            {t.status === "graded" && t.test.kind !== "kepribadian" && t.test.showResultToTaker && t.attempt?.percent !== null && t.attempt && (
               <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium">
                 <Award className="h-4 w-4 text-primary" aria-hidden /> Nilai {t.attempt.percent}%
                 {t.attempt.passed !== null && (t.attempt.passed ? " · lulus" : " · belum lulus")}
