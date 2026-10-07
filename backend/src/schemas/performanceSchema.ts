@@ -133,7 +133,15 @@ export const submitReviewSchema = z
       .max(50),
     feedback: z.string().trim().max(5000).optional(),
   })
-  .strict();
+  .strict()
+  // Kriteria yang dikirim dua kali dulu lolos ke createMany dan jatuh sebagai
+  // galat server (constraint unik), bukan pesan validasi.
+  .superRefine((d, ctx) => {
+    const ids = d.scores.map((s) => s.criterionId);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: 'custom', path: ['scores'], message: 'Ada kriteria yang dinilai lebih dari sekali' });
+    }
+  });
 
 export const addDiscussionSchema = z
   .object({ note: z.string().trim().min(1).max(5000) })
@@ -161,6 +169,9 @@ export const createFeedbackSchema = z
 export const listFeedbackQuerySchema = z.object({
   ...paginationFields,
   recipientId: ulidField.optional(),
+  /// "me" atau id karyawan: umpan balik yang DIKIRIM orang itu. Pengirim
+  /// perlu bisa meninjau kirimannya sendiri; tanpa ini hanya penerima dan HR.
+  authorId: z.union([z.literal('me'), ulidField]).optional(),
   type: z.enum(FEEDBACK_TYPES).optional(),
 });
 

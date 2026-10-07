@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, CheckCheck, Send, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { bolehKelola } from "@/hooks/use-sesi";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea, Field } from "@/components/ui/input";
 import { Badge, nadaStatus } from "@/components/ui/badge";
@@ -32,7 +33,11 @@ const FormPenilaian = ({ review, kriteria, memuat, saya, onClose }: Props & { re
 
   const sayaPenilai = review.reviewerId === saya?.id;
   const sayaDinilai = review.revieweeId === saya?.id;
-  const bisaIsi = sayaPenilai && review.status === "draft";
+  const siklusTutup = review.cycle?.status === "closed";
+  const bisaIsi = sayaPenilai && review.status === "draft" && !siklusTutup;
+  const penilaianDiri = review.reviewerType === "self";
+  // Skala rating = skala kriteria terbesar (server memetakan ke sana); tanpa pembilang, 7.6 pada form berskala 5 terbaca melebihi skala.
+  const skalaRating = Math.max(0, ...kriteria.map((k) => k.maxScore), ...review.scores.map((s) => s.criterion.maxScore));
   const segarkan = () => qc.invalidateQueries({ queryKey: ["penilaian"] });
 
   const kirim = useMutation({
@@ -41,7 +46,7 @@ const FormPenilaian = ({ review, kriteria, memuat, saya, onClose }: Props & { re
       if (kurang.length) throw new Error(`Masih ada ${kurang.length} kriteria belum dinilai`);
       return (await api.post<Penilaian>(`/performance/reviews/${review.id}/submit`, { scores: kriteria.map((k) => ({ criterionId: k.id, score: skor[k.id], ...(komentar[k.id] ? { comment: komentar[k.id] } : {}) })), ...(umpan ? { feedback: umpan } : {}) })).data;
     },
-    onSuccess: (r) => { segarkan(); notifikasi.sukses("Penilaian terkirim", `Skor akhir ${r.totalScore} · ${r.reviewee.name} kini bisa membacanya.`); onClose(); },
+    onSuccess: (r) => { segarkan(); notifikasi.sukses(penilaianDiri ? "Penilaian diri terkirim" : "Penilaian terkirim", penilaianDiri ? `Skor akhir ${r.totalScore}.` : `Skor akhir ${r.totalScore} · ${r.reviewee.name} kini bisa membacanya.`); onClose(); },
     onError: (e) => notifikasi.galat(e, "Penilaian belum terkirim"),
   });
   const akui = useMutation({
@@ -60,13 +65,14 @@ const FormPenilaian = ({ review, kriteria, memuat, saya, onClose }: Props & { re
       footer={<>
         <Button variant="outline" onClick={onClose}><X className="h-4 w-4" aria-hidden /> Tutup</Button>
         {bisaIsi && <Button onClick={() => kirim.mutate()} loading={kirim.isPending}>{!kirim.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim Penilaian</Button>}
-        {sayaDinilai && review.status === "submitted" && <Button onClick={() => akui.mutate()} loading={akui.isPending}>{!akui.isPending && <CheckCheck className="h-4 w-4" aria-hidden />} Saya Sudah Membaca</Button>}
+        {sayaDinilai && review.status === "submitted" && !penilaianDiri && <Button onClick={() => akui.mutate()} loading={akui.isPending}>{!akui.isPending && <CheckCheck className="h-4 w-4" aria-hidden />} Saya Sudah Membaca</Button>}
       </>}>
       <div className="space-y-5 text-sm">
         {review.totalScore !== null && (
-          <div className="rounded-xl bg-primary-soft p-4 text-center"><p className="text-xs uppercase tracking-wide text-primary">Skor akhir</p><p className="text-3xl font-semibold tabular-nums text-primary">{review.totalScore}</p><p className="text-xs text-muted">dari 100, berbobot{review.rating !== null ? ` · rating ${review.rating}` : ""}</p></div>
+          <div className="rounded-xl bg-primary-soft p-4 text-center"><p className="text-xs uppercase tracking-wide text-primary">Skor akhir</p><p className="text-3xl font-semibold tabular-nums text-primary">{review.totalScore}</p><p className="text-xs text-muted">dari 100, berbobot{review.rating !== null ? ` · rating ${review.rating}${skalaRating > 0 ? ` dari ${skalaRating}` : ""}` : ""}</p></div>
         )}
         {bisaIsi && <Alert tone="info" title="Nilai tiap kriteria pada skalanya">Skor akhir dihitung berbobot oleh sistem. Komentar per kriteria membantu karyawan tahu apa yang harus diperbaiki.</Alert>}
+        {sayaPenilai && review.status === "draft" && siklusTutup && <Alert tone="warning" title="Siklus sudah ditutup">Penilaian ini tidak sempat diisi dan tidak bisa dikirim lagi. Hubungi HR bila masih diperlukan.</Alert>}
         {memuat && <SkeletonBaris />}
         <div className="space-y-3">
           {kriteria.map((k) => {
@@ -97,7 +103,7 @@ const FormPenilaian = ({ review, kriteria, memuat, saya, onClose }: Props & { re
             {review.discussions.length === 0 ? <p className="text-xs text-muted">Belum ada catatan.</p> : (
               <ul className="space-y-2">{review.discussions.map((d) => <li key={d.id} className="rounded-lg bg-surface-2 px-3 py-2"><p className="whitespace-pre-wrap">{d.note}</p><p className="mt-1 text-xs text-muted">{d.authorId === review.reviewerId ? review.reviewer.name : d.authorId === review.revieweeId ? review.reviewee.name : "HR"} · {formatTanggal(d.createdAt, "d MMM yyyy HH:mm")}</p></li>)}</ul>
             )}
-            {(sayaPenilai || sayaDinilai) && (
+            {(sayaPenilai || sayaDinilai || bolehKelola(saya, "kinerja")) && (
               <div className="mt-2 flex gap-2"><Textarea rows={2} placeholder="Tambahkan catatan dari sesi evaluasi…" value={catatan} onChange={(e) => setCatatan(e.target.value)} /><Button variant="outline" onClick={() => diskusi.mutate()} loading={diskusi.isPending} disabled={!catatan.trim()}>{!diskusi.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim</Button></div>
             )}
           </section>

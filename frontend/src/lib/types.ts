@@ -975,6 +975,8 @@ export interface Penilaian {
   reviewer: { id: string; nik: string; name: string };
   scores: SkorKriteria[];
   discussions: { id: string; authorId: string; note: string; createdAt: string }[];
+  /** Status siklusnya: draf pada siklus "closed" tidak bisa diisi lagi. Opsional karena backend lama belum mengirimnya. */
+  cycle?: { id: string; status: "draft" | "open" | "closed" };
   /** Hanya pada detail (GET /performance/reviews/:id): kriteria formulirnya, agar penilai bukan HR bisa mengisi draf. */
   criteria?: KriteriaKinerja[];
 }

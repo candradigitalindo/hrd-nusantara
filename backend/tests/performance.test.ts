@@ -646,3 +646,54 @@ describe('Umpan balik berkelanjutan', () => {
     expect(res.body.pagination.total).toBe(1);
   });
 });
+
+describe('Perbaikan audit Pengembangan (kinerja)', () => {
+  it('kriteria yang dinilai dua kali ditolak 400, bukan galat server', async () => {
+    const { reviewId, criteria } = await siapkanPenugasan();
+    const res = await request(app)
+      .post(`/api/performance/reviews/${reviewId}/submit`)
+      .set(auth(sitiToken))
+      .send({ scores: [{ criterionId: criteria[0].id, score: 2 }, { criterionId: criteria[0].id, score: 5 }, { criterionId: criteria[1].id, score: 2 }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('penilai yang sama tidak bisa ditugaskan dua kali untuk orang yang sama walau sudut pandangnya beda', async () => {
+    const { cycleId, templateId } = await siapkanPenugasan('manager');
+    const peer = await request(app)
+      .post('/api/performance/reviews')
+      .set(auth(hrToken))
+      .send({ cycleId, revieweeId: budi.id, reviewerId: siti.id, reviewerType: 'peer', formTemplateId: templateId });
+    expect(peer.status).toBe(409);
+    expect(peer.body.error).toMatch(/manager/);
+  });
+
+  it('penilaian diri langsung berstatus diakui saat dikirim, tanpa "baca & akui" oleh penulisnya', async () => {
+    const { reviewId, criteria } = await siapkanPenugasan('self', budi.id);
+    const res = await request(app)
+      .post(`/api/performance/reviews/${reviewId}/submit`)
+      .set(auth(budiToken))
+      .send({ scores: [{ criterionId: criteria[0].id, score: 4 }, { criterionId: criteria[1].id, score: 4 }] });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('acknowledged');
+    expect(res.body.cycle.status).toBe('open');
+  });
+
+  it('daftar penilaian membawa status siklus sehingga draf pada siklus tertutup bisa dikenali', async () => {
+    const { cycleId } = await siapkanPenugasan();
+    await request(app).patch(`/api/performance/cycles/${cycleId}/status`).set(auth(hrToken)).send({ status: 'closed' });
+    const daftar = await request(app).get(`/api/performance/reviews?cycleId=${cycleId}`).set(auth(sitiToken));
+    expect(daftar.status).toBe(200);
+    expect(daftar.body.data[0]).toMatchObject({ status: 'draft', cycle: { id: cycleId, status: 'closed' } });
+  });
+
+  it('pengirim bisa meninjau umpan balik yang ia kirim; orang lain tetap tidak', async () => {
+    await request(app).post('/api/feedback').set(auth(sitiToken)).send({ recipientId: budi.id, message: 'Bagus' });
+    const kiriman = await request(app).get('/api/feedback?authorId=me').set(auth(sitiToken));
+    expect(kiriman.status).toBe(200);
+    expect(kiriman.body.pagination.total).toBe(1);
+    expect(kiriman.body.data[0].recipient.id).toBe(budi.id);
+    expect((await request(app).get(`/api/feedback?authorId=${siti.id}`).set(auth(budiToken))).status).toBe(403);
+    // Pemeriksaan lama tetap: penerima lain tidak bisa dilihat non-pengelola.
+    expect((await request(app).get(`/api/feedback?recipientId=${siti.id}`).set(auth(budiToken))).status).toBe(403);
+  });
+});

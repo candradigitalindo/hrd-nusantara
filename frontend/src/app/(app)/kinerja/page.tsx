@@ -43,13 +43,17 @@ export default function HalamanKinerja() {
   const [ringkasSiklus, setRingkasSiklus] = React.useState("");
   const [ringkasKaryawan, setRingkasKaryawan] = React.useState("");
   const [umpanUntuk, setUmpanUntuk] = React.useState("");
+  // "dari": umpan balik yang saya kirim (authorId=me); pengirim perlu bisa meninjau kirimannya.
+  const [umpanMode, setUmpanMode] = React.useState<"untuk" | "dari">("untuk");
 
   const siklus = useQuery({ queryKey: ["siklus-kinerja"], queryFn: async () => (await api.get<Halaman<SiklusPenilaian>>("/performance/cycles?limit=50")).data.data, enabled: hr });
   const template = useQuery({ queryKey: ["template-kinerja"], queryFn: async () => (await api.get<Halaman<TemplatePenilaian> | TemplatePenilaian[]>("/performance/templates?limit=100")).data, select: (d) => (Array.isArray(d) ? d : d.data), enabled: hr });
   const pr = new URLSearchParams({ limit: "100" }); if (filterStatus) pr.set("status", filterStatus);
   const penilaian = useQuery({ queryKey: ["penilaian", pr.toString()], queryFn: async () => (await api.get<Halaman<Penilaian>>(`/performance/reviews?${pr}`)).data.data });
+  // Badge tugas dihitung dari daftar penuh, bukan daftar yang sedang disaring status.
+  const penilaianSemua = useQuery({ queryKey: ["penilaian", "semua"], queryFn: async () => (await api.get<Halaman<Penilaian>>("/performance/reviews?limit=100")).data.data });
   const karyawan = useQuery({ queryKey: ["direktori"], queryFn: async () => (await api.get<{ data: KaryawanDirektori[] }>("/employees/directory")).data.data, enabled: tugasBuka || umpanBuka || tab === "ringkasan" || (hr && tab === "umpan") });
-  const umpan = useQuery({ queryKey: ["umpan-balik", umpanUntuk], queryFn: async () => (await api.get<Halaman<UmpanBalik>>(`/feedback?limit=50${umpanUntuk ? `&recipientId=${umpanUntuk}` : ""}`)).data.data, enabled: tab === "umpan" });
+  const umpan = useQuery({ queryKey: ["umpan-balik", umpanUntuk, umpanMode], queryFn: async () => (await api.get<Halaman<UmpanBalik>>(`/feedback?limit=50${umpanMode === "dari" ? "&authorId=me" : umpanUntuk ? `&recipientId=${umpanUntuk}` : ""}`)).data.data, enabled: tab === "umpan" });
   const ringkasan = useQuery({ queryKey: ["ringkasan-kinerja", ringkasSiklus, ringkasKaryawan], queryFn: async () => (await api.get<RingkasanKinerja>(`/performance/summary/${ringkasSiklus}/${ringkasKaryawan}`)).data, enabled: hr && tab === "ringkasan" && Boolean(ringkasSiklus && ringkasKaryawan) });
   // Detail memuat kriteria formulir + diskusi terbaru; daftar tidak membawanya.
   const detail = useQuery({ queryKey: ["penilaian", "detail", review?.id], queryFn: async () => (await api.get<Penilaian>(`/performance/reviews/${review!.id}`)).data, enabled: Boolean(review) });
@@ -79,8 +83,9 @@ export default function HalamanKinerja() {
     onError: (e) => notifikasi.galat(e, "Umpan balik gagal dikirim"),
   });
 
-  const perluSaya = (penilaian.data ?? []).filter((r) => r.reviewerId === saya?.id && r.status === "draft").length;
-  const perluAkui = (penilaian.data ?? []).filter((r) => r.revieweeId === saya?.id && r.status === "submitted").length;
+  // Draf pada siklus tertutup tidak lagi ditagih; penilaian diri tidak perlu diakui penulisnya.
+  const perluSaya = (penilaianSemua.data ?? []).filter((r) => r.reviewerId === saya?.id && r.status === "draft" && r.cycle?.status !== "closed").length;
+  const perluAkui = (penilaianSemua.data ?? []).filter((r) => r.revieweeId === saya?.id && r.status === "submitted" && r.reviewerType !== "self").length;
   const TABS: { id: Tab; label: string; hrSaja?: boolean }[] = [{ id: "penilaian", label: "Penilaian" }, { id: "umpan", label: "Umpan Balik" }, { id: "siklus", label: "Siklus", hrSaja: true }, { id: "template", label: "Form KPI", hrSaja: true }, { id: "ringkasan", label: "Ringkasan 360°", hrSaja: true }];
 
   return (
@@ -101,7 +106,8 @@ export default function HalamanKinerja() {
             <ul className="divide-y divide-border">
               {penilaian.data.map((r) => {
                 const sayaPenilai = r.reviewerId === saya?.id, sayaDinilai = r.revieweeId === saya?.id;
-                const tindakan = sayaPenilai && r.status === "draft" ? "Isi penilaian" : sayaDinilai && r.status === "submitted" ? "Baca & akui" : null;
+                const siklusTutup = r.cycle?.status === "closed";
+                const tindakan = sayaPenilai && r.status === "draft" && !siklusTutup ? "Isi penilaian" : sayaDinilai && r.status === "submitted" && r.reviewerType !== "self" ? "Baca & akui" : null;
                 return (
                   <li key={r.id}>
                     <button type="button" onClick={() => setReview(r)} className="flex w-full items-center gap-3 p-4 text-left hover:bg-surface-2 transition-colors animate-fade-up">
@@ -110,7 +116,7 @@ export default function HalamanKinerja() {
                         <p className="font-medium truncate">{r.reviewerType === "self" && sayaDinilai ? "Penilaian diri Anda" : sayaDinilai ? `Penilaian Anda oleh ${r.reviewer.name}` : `${r.reviewee.name} · dinilai ${r.reviewer.name}`}</p>
                         <p className="text-xs text-muted">{LABEL_PENILAI[r.reviewerType]}{r.period ? ` · ${r.period}` : ""} · {r.submittedAt ? `dikirim ${formatRelatif(r.submittedAt)}` : `ditugaskan ${formatRelatif(r.createdAt)}`}</p>
                       </div>
-                      <div className="flex items-center gap-2">{r.totalScore !== null && <span className="font-semibold tabular-nums">{r.totalScore}</span>}{tindakan ? <Badge tone="warning" dot>{tindakan}</Badge> : <Badge tone={nadaStatus(r.status)} dot>{labelStatus(r.status)}</Badge>}</div>
+                      <div className="flex items-center gap-2">{r.totalScore !== null && <span className="font-semibold tabular-nums">{r.totalScore}</span>}{tindakan ? <Badge tone="warning" dot>{tindakan}</Badge> : r.status === "draft" && siklusTutup ? <Badge tone="neutral" dot>Siklus ditutup</Badge> : <Badge tone={nadaStatus(r.status)} dot>{labelStatus(r.status)}</Badge>}</div>
                     </button>
                   </li>
                 );
@@ -122,7 +128,7 @@ export default function HalamanKinerja() {
 
       {tab === "umpan" && (
         <Card>
-          {hr && <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanUntuk} onChange={(e) => setUmpanUntuk(e.target.value)} aria-label="Penerima"><option value="">Umpan balik untuk saya</option>{(karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>}
+          <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanMode === "dari" ? "__dari" : umpanUntuk} onChange={(e) => { if (e.target.value === "__dari") { setUmpanMode("dari"); } else { setUmpanMode("untuk"); setUmpanUntuk(e.target.value); } }} aria-label="Saringan umpan balik"><option value="">Umpan balik untuk saya</option><option value="__dari">Yang saya kirim</option>{hr && (karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>
           {umpan.isLoading ? <SkeletonBaris /> : !umpan.data?.length ? (
             <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button>} />
           ) : (
@@ -132,7 +138,7 @@ export default function HalamanKinerja() {
                   <Badge tone={nadaStatus(u.type)} className="mt-0.5 shrink-0">{LABEL_UMPAN[u.type]}</Badge>
                   <div className="min-w-0 flex-1">
                     <p className="whitespace-pre-wrap text-sm">{u.message}</p>
-                    <p className="mt-1 text-xs text-muted">{u.author?.name ?? "Anonim"} → {u.recipientId === saya?.id ? "Anda" : ((karyawan.data ?? []).find((k) => k.id === u.recipientId)?.name ?? "—")} · {formatRelatif(u.createdAt)}{u.isPrivate ? " · privat" : ""}</p>
+                    <p className="mt-1 text-xs text-muted">{u.authorId === saya?.id ? "Anda" : (u.author?.name ?? "Anonim")} → {u.recipientId === saya?.id ? "Anda" : (u.recipient?.name ?? (karyawan.data ?? []).find((k) => k.id === u.recipientId)?.name ?? "—")} · {formatRelatif(u.createdAt)}</p>
                   </div>
                 </li>
               ))}
@@ -208,9 +214,9 @@ export default function HalamanKinerja() {
       </Modal>
 
       <Modal open={tugasBuka} onClose={() => setTugasBuka(false)} title="Tugaskan Penilai" description="Satu penugasan = satu penilai untuk satu karyawan. Ulangi untuk atasan, rekan, dan bawahan (360°)."
-        footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending}>{!tugaskan.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Tugaskan</Button></>}>
+        footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending} disabled={!(siklus.data ?? []).some((s) => s.status === "open")}>{!tugaskan.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Tugaskan</Button></>}>
         <form id="form-tugas" onSubmit={ft.handleSubmit((v) => tugaskan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
-          <Field label="Siklus" error={ft.formState.errors.cycleId?.message} className="sm:col-span-2"><Select {...ft.register("cycleId", { required: "Pilih siklus" })}><option value="">— Pilih —</option>{(siklus.data ?? []).filter((s) => s.status !== "closed").map((s) => <option key={s.id} value={s.id}>{s.name} ({labelStatus(s.status)})</option>)}</Select></Field>
+          <Field label="Siklus" error={ft.formState.errors.cycleId?.message} className="sm:col-span-2" hint={(siklus.data ?? []).some((s) => s.status === "open") ? undefined : "Belum ada siklus terbuka — buka siklus di tab Siklus dulu; siklus draf tidak bisa menerima penugasan."}><Select {...ft.register("cycleId", { required: "Pilih siklus" })}><option value="">— Pilih —</option>{(siklus.data ?? []).filter((s) => s.status === "open").map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
           <Field label="Yang dinilai" error={ft.formState.errors.revieweeId?.message}><Select {...ft.register("revieweeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
           <Field label="Penilai" error={ft.formState.errors.reviewerId?.message}><Select {...ft.register("reviewerId", { required: "Pilih penilai" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
           <Field label="Hubungan penilai"><Select {...ft.register("reviewerType")}>{Object.entries(LABEL_PENILAI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
@@ -218,7 +224,7 @@ export default function HalamanKinerja() {
         </form>
       </Modal>
 
-      <Modal open={umpanBuka} onClose={() => setUmpanBuka(false)} title="Beri Umpan Balik" description="Informal, tercatat, dan bisa dilihat penerimanya — untuk momen yang tidak perlu menunggu siklus penilaian"
+      <Modal open={umpanBuka} onClose={() => setUmpanBuka(false)} title="Beri Umpan Balik" description="Informal dan tercatat; hanya terlihat oleh penerima, Anda, dan HR — untuk momen yang tidak perlu menunggu siklus penilaian"
         footer={<><Button variant="outline" onClick={() => setUmpanBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-umpan" type="submit" loading={kirimUmpan.isPending}>{!kirimUmpan.isPending && <Send className="h-4 w-4" aria-hidden />} Kirim</Button></>}>
         <form id="form-umpan" onSubmit={fu.handleSubmit((v) => kirimUmpan.mutate(v))} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -226,7 +232,6 @@ export default function HalamanKinerja() {
             <Field label="Jenis"><Select {...fu.register("type")}>{Object.entries(LABEL_UMPAN).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
           </div>
           <Field label="Pesan" error={fu.formState.errors.message?.message}><Textarea rows={4} {...fu.register("message", { required: "Wajib diisi" })} placeholder="Tadi siang kamu menangani komplain meja 7 dengan tenang — tamu pulang tersenyum." /></Field>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...fu.register("isPrivate")} className="h-4 w-4 accent-[var(--primary)]" /> Privat — hanya penerima dan HR yang bisa melihat</label>
         </form>
       </Modal>
     </>

@@ -24,6 +24,14 @@ import type {
 } from '../schemas/performanceSchema';
 
 const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
+/**
+ * Pengelola kinerja: HR, atau peran kustom pemegang kinerja.buat/ubah.
+ * Penjaga rute memakai izin, jadi pemeriksaan di sini harus memakai izin
+ * juga — dulu memakai Role enum sehingga peran kustom bisa menugaskan
+ * penilai tetapi tidak bisa melihat penugasannya sendiri.
+ */
+const bolehKelolaKinerja = (u: { role: Role; permissions: string[] }) =>
+  isHr(u.role) || u.permissions.includes('kinerja.buat') || u.permissions.includes('kinerja.ubah');
 const num = (d: Prisma.Decimal | null) => (d === null ? null : d.toNumber());
 
 // ============ Formulir penilaian ============
@@ -191,6 +199,9 @@ const reviewSelect = {
   createdAt: true,
   reviewee: { select: { id: true, nik: true, name: true, departmentId: true } },
   reviewer: { select: { id: true, nik: true, name: true } },
+  // Status siklus ikut dikirim: klien perlu tahu draf pada siklus yang sudah
+  // ditutup tidak bisa diisi lagi, alih-alih menagihnya terus.
+  cycle: { select: { id: true, status: true } },
   scores: {
     select: {
       criterionId: true,
@@ -220,8 +231,8 @@ const reviewDTO = (row: ReviewRow) => ({
 /** Apakah pengguna boleh membuka penilaian ini. */
 const bolehLihat = (
   review: { revieweeId: string; reviewerId: string },
-  actor: { id: string; role: Role }
-) => review.revieweeId === actor.id || review.reviewerId === actor.id || isHr(actor.role);
+  actor: { id: string; role: Role; permissions: string[] }
+) => review.revieweeId === actor.id || review.reviewerId === actor.id || bolehKelolaKinerja(actor);
 
 export const assignReview = async (req: Request, res: Response) => {
   const input = req.body as AssignReviewInput;
@@ -249,6 +260,19 @@ export const assignReview = async (req: Request, res: Response) => {
   if (siklus.status !== 'open') {
     return res.status(409).json({
       error: `Penugasan hanya bisa pada siklus berstatus "open", ini "${siklus.status}"`,
+    });
+  }
+
+  // Satu orang hanya punya satu hubungan dengan yang dinilai. Dulu penilai
+  // yang sama bisa ditugaskan sebagai atasan, rekan, dan bawahan sekaligus,
+  // lalu ringkasan 360 memberinya tiga suara.
+  const sudah = await prisma.performanceReview.findFirst({
+    where: { cycleId: input.cycleId, revieweeId: input.revieweeId, reviewerId: input.reviewerId },
+    select: { reviewerType: true },
+  });
+  if (sudah) {
+    return res.status(409).json({
+      error: `Penilai ini sudah ditugaskan menilai orang tersebut pada siklus ini (sebagai ${sudah.reviewerType})`,
     });
   }
 
@@ -293,6 +317,7 @@ export const submitReview = async (req: Request, res: Response) => {
     select: {
       id: true,
       reviewerId: true,
+      reviewerType: true,
       status: true,
       formTemplateId: true,
       cycle: { select: { status: true } },
@@ -360,7 +385,8 @@ export const submitReview = async (req: Request, res: Response) => {
         totalScore: new Prisma.Decimal(hasil.totalScore),
         rating: hasil.rating,
         feedback: input.feedback,
-        status: 'submitted',
+        // Penilaian diri tidak perlu "dibaca dan diakui" oleh penulisnya sendiri.
+        status: review.reviewerType === 'self' ? 'acknowledged' : 'submitted',
         submittedAt: new Date(),
       },
       select: reviewSelect,
@@ -411,9 +437,9 @@ export const getAllReviews = async (req: Request, res: Response) => {
     ...(query.status ? { status: query.status } : {}),
   };
 
-  // Yang bukan HR hanya melihat penilaian yang melibatkan dirinya, baik
-  // sebagai penilai maupun yang dinilai.
-  if (!isHr(actor.role)) {
+  // Yang bukan pengelola hanya melihat penilaian yang melibatkan dirinya,
+  // baik sebagai penilai maupun yang dinilai.
+  if (!bolehKelolaKinerja(actor)) {
     where.OR = [{ reviewerId: actor.id }, { revieweeId: actor.id }];
   }
 
@@ -497,7 +523,7 @@ export const getReviewSummary = async (req: Request, res: Response) => {
   const actor = req.user!;
   const { employeeId, cycleId } = req.params;
 
-  if (employeeId !== actor.id && !isHr(actor.role)) {
+  if (employeeId !== actor.id && !bolehKelolaKinerja(actor)) {
     return res.status(403).json({ error: 'Anda tidak punya akses ke rangkuman ini' });
   }
 
@@ -558,22 +584,29 @@ export const getFeedback = async (req: Request, res: Response) => {
   const query = req.query as unknown as ListFeedbackQuery;
   const actor = req.user!;
 
-  const recipientId = query.recipientId ?? actor.id;
-
-  if (recipientId !== actor.id && !isHr(actor.role)) {
-    return res.status(403).json({ error: 'Anda hanya bisa melihat umpan balik untuk diri sendiri' });
+  // Dua mode: umpan balik UNTUK seseorang (bawaan: diri sendiri; orang lain
+  // hanya untuk pengelola) atau umpan balik yang DIKIRIM seseorang (bawaan
+  // "me"), supaya pengirim bisa meninjau kirimannya sendiri.
+  const authorId = query.authorId === 'me' ? actor.id : query.authorId;
+  let where: Prisma.ContinuousFeedbackWhereInput;
+  if (authorId) {
+    if (authorId !== actor.id && !bolehKelolaKinerja(actor)) {
+      return res.status(403).json({ error: 'Anda hanya bisa melihat umpan balik yang Anda kirim sendiri' });
+    }
+    where = { authorId, ...(query.recipientId ? { recipientId: query.recipientId } : {}), ...(query.type ? { type: query.type } : {}) };
+  } else {
+    const recipientId = query.recipientId ?? actor.id;
+    if (recipientId !== actor.id && !bolehKelolaKinerja(actor)) {
+      return res.status(403).json({ error: 'Anda hanya bisa melihat umpan balik untuk diri sendiri' });
+    }
+    where = { recipientId, ...(query.type ? { type: query.type } : {}) };
   }
-
-  const where: Prisma.ContinuousFeedbackWhereInput = {
-    recipientId,
-    ...(query.type ? { type: query.type } : {}),
-  };
 
   const [total, data] = await Promise.all([
     prisma.continuousFeedback.count({ where }),
     prisma.continuousFeedback.findMany({
       where,
-      include: { author: { select: { id: true, name: true } } },
+      include: { author: { select: { id: true, name: true } }, recipient: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
       skip: (query.page - 1) * query.limit,
       take: query.limit,
