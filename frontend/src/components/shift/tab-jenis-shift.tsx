@@ -18,9 +18,12 @@ import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
-import type { Departemen, JenisShift, WarnaJenisShift } from "@/lib/types";
+import type { Departemen, JamHariShift, JenisShift, WarnaJenisShift } from "@/lib/types";
 import { ChipJenis } from "./chip-jenis";
-import { KUNCI_WARNA, WARNA_JENIS, formatIstirahat, lintasMalam, menitShift } from "./util-shift";
+import { HARI_PEKAN, KUNCI_WARNA, WARNA_JENIS, formatIstirahat, lintasMalam, menitShift, ringkasPengecualian } from "./util-shift";
+
+/** Satu baris "jam berbeda" di formulir; kuncinya hari pekan "0" (Minggu) … "6" (Sabtu). */
+type JamHariForm = { aktif: boolean; startTime: string; endTime: string; breakDuration: string };
 
 type FormJenis = {
   name: string;
@@ -30,9 +33,48 @@ type FormJenis = {
   breakDuration: string;
   color: WarnaJenisShift;
   departmentId: string;
+  /** Jam berbeda pada hari tertentu, mis. Reguler yang Jumat dan Sabtunya lebih pendek. */
+  adaPerHari: boolean;
+  perHari: Record<string, JamHariForm>;
 };
 
-const KOSONG: FormJenis = { name: "", code: "", startTime: "07:00", endTime: "15:00", breakDuration: "1", color: "teal", departmentId: "" };
+const KUNCI_HARI = ["0", "1", "2", "3", "4", "5", "6"];
+
+/** Baris per hari terisi jam bawaan; jam khusus yang ada menimpanya dan menyala. */
+const perHariAwal = (bawaan: { startTime: string; endTime: string; breakDuration: string }, khusus: JamHariShift[] = []) =>
+  Object.fromEntries(
+    KUNCI_HARI.map((k) => {
+      const j = khusus.find((x) => String(x.weekday) === k);
+      return [k, j ? { aktif: true, startTime: j.startTime, endTime: j.endTime, breakDuration: String(j.breakDuration) } : { aktif: false, ...bawaan }];
+    })
+  ) as Record<string, JamHariForm>;
+
+const KOSONG: FormJenis = {
+  name: "",
+  code: "",
+  startTime: "07:00",
+  endTime: "15:00",
+  breakDuration: "1",
+  color: "teal",
+  departmentId: "",
+  adaPerHari: false,
+  perHari: perHariAwal({ startTime: "07:00", endTime: "15:00", breakDuration: "1" }),
+};
+
+/**
+ * Jam per hari yang akan disimpan: hanya hari yang dinyalakan, urut per hari,
+ * dan yang persis sama dengan jam bawaan dibuang (aturan yang sama dengan server).
+ */
+const jamPerHariDari = (v: Pick<FormJenis, "startTime" | "endTime" | "breakDuration" | "adaPerHari" | "perHari">): JamHariShift[] =>
+  !v.adaPerHari
+    ? []
+    : KUNCI_HARI.map((k) => ({ k, r: v.perHari[k] }))
+        .filter(({ r }) => r?.aktif)
+        .map(({ k, r }) => ({ weekday: Number(k), startTime: r.startTime, endTime: r.endTime, breakDuration: Number(r.breakDuration || 0) }))
+        .filter((j) => !(j.startTime === v.startTime && j.endTime === v.endTime && j.breakDuration === Number(v.breakDuration || 0)));
+
+const kunciJamPerHari = (daftar: JamHariShift[] = []) =>
+  JSON.stringify([...daftar].sort((a, b) => a.weekday - b.weekday).map((j) => [j.weekday, j.startTime, j.endTime, j.breakDuration]));
 
 /** Jam kerja satu jenis, dengan penanda bila selesainya keesokan hari. */
 export const JamJenis = ({ mulai, selesai }: { mulai: string; selesai: string }) => (
@@ -69,9 +111,9 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
   const bisaDikelola = (j: JenisShift) => hr || (j.departmentId !== null && j.departmentId === saya?.departmentId);
 
   const f = useForm<FormJenis>({ defaultValues: KOSONG });
-  const [mulai, selesai, istirahat, warna, kode, nama] = useWatch({
+  const [mulai, selesai, istirahat, warna, kode, nama, adaPerHari, perHari] = useWatch({
     control: f.control,
-    name: ["startTime", "endTime", "breakDuration", "color", "code", "name"],
+    name: ["startTime", "endTime", "breakDuration", "color", "code", "name", "adaPerHari", "perHari"],
   });
 
   const bukaForm = (item: JenisShift | null) => {
@@ -85,16 +127,30 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
             breakDuration: String(item.breakDuration),
             color: (KUNCI_WARNA as string[]).includes(item.color) ? (item.color as WarnaJenisShift) : "teal",
             departmentId: item.departmentId ?? "",
+            adaPerHari: Boolean(item.dailyHours?.length),
+            perHari: perHariAwal({ startTime: item.startTime, endTime: item.endTime, breakDuration: String(item.breakDuration) }, item.dailyHours),
           }
         : { ...KOSONG, departmentId: hr ? "" : (saya?.departmentId ?? "") }
     );
     setForm({ open: true, item });
   };
+
+  /** Menyalakan jam khusus sebuah hari: mulai dari jam bawaan saat ini, tinggal disesuaikan. */
+  const ubahHari = (k: string, aktif: boolean) => {
+    f.setValue(`perHari.${k}.aktif`, aktif, { shouldDirty: true });
+    if (aktif) {
+      f.setValue(`perHari.${k}.startTime`, mulai);
+      f.setValue(`perHari.${k}.endTime`, selesai);
+      f.setValue(`perHari.${k}.breakDuration`, istirahat);
+    }
+  };
   const tutupForm = () => setForm({ open: false, item: null });
 
   const item = form.item;
+  const perHariBaru = jamPerHariDari({ startTime: mulai, endTime: selesai, breakDuration: istirahat, adaPerHari, perHari });
+  const perHariBerubah = item !== null && kunciJamPerHari(perHariBaru) !== kunciJamPerHari(item.dailyHours);
   const jamBerubah =
-    item !== null && (mulai !== item.startTime || selesai !== item.endTime || Number(istirahat || 0) !== item.breakDuration);
+    item !== null && (mulai !== item.startTime || selesai !== item.endTime || Number(istirahat || 0) !== item.breakDuration || perHariBerubah);
 
   const segarkan = () => {
     qc.invalidateQueries({ queryKey: ["shift-jenis"] });
@@ -105,6 +161,7 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
   const simpan = useMutation({
     mutationFn: async (v: FormJenis) => {
       const kodeBersih = v.code.trim().toUpperCase();
+      const jamPerHari = jamPerHariDari(v);
       if (!item) {
         const badan = {
           name: v.name.trim(),
@@ -112,6 +169,7 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
           startTime: v.startTime,
           endTime: v.endTime,
           breakDuration: Number(v.breakDuration || 0),
+          ...(jamPerHari.length ? { dailyHours: jamPerHari } : {}),
           color: v.color,
           // Manajer tidak mengirim departemen: server memaksanya ke departemen manajer itu.
           ...(hr && v.departmentId ? { departmentId: v.departmentId } : {}),
@@ -126,6 +184,8 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
       if (v.startTime !== item.startTime) badan.startTime = v.startTime;
       if (v.endTime !== item.endTime) badan.endTime = v.endTime;
       if (Number(v.breakDuration || 0) !== item.breakDuration) badan.breakDuration = Number(v.breakDuration || 0);
+      // Jam per hari dikirim utuh bila berubah; daftar kosong = semua hari sama.
+      if (kunciJamPerHari(jamPerHari) !== kunciJamPerHari(item.dailyHours)) badan.dailyHours = jamPerHari;
       if (v.color !== item.color) badan.color = v.color;
       if (hr && (v.departmentId || null) !== item.departmentId) badan.departmentId = v.departmentId || null;
       if (Object.keys(badan).length === 0) return { template: item, rowsUpdated: 0 };
@@ -138,7 +198,7 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
         item ? "Jenis shift diperbarui" : "Jenis shift ditambahkan",
         r.rowsUpdated > 0
           ? `${r.template.name} · ${r.rowsUpdated} shift ke depan ikut memakai jam baru.`
-          : `${r.template.name} · ${r.template.startTime}–${r.template.endTime}`
+          : `${r.template.name} · ${r.template.startTime}–${r.template.endTime}${r.template.dailyHours?.length ? ` · ${ringkasPengecualian(r.template)}` : ""}`
       );
       tutupForm();
     },
@@ -181,7 +241,17 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
         </div>
       ),
     },
-    { key: "jam", header: "Jam", cell: (j) => <JamJenis mulai={j.startTime} selesai={j.endTime} /> },
+    {
+      key: "jam",
+      header: "Jam",
+      cell: (j) => (
+        <div className="space-y-0.5">
+          <JamJenis mulai={j.startTime} selesai={j.endTime} />
+          {/* Hari yang jamnya berbeda dari jam di atas, mis. "Jum 08:00–11:30 · Sab 08:00–13:00". */}
+          {j.dailyHours?.length ? <p className="text-xs text-muted">{ringkasPengecualian(j)}</p> : null}
+        </div>
+      ),
+    },
     { key: "istirahat", header: "Istirahat", cell: (j) => formatIstirahat(j.breakDuration) },
     { key: "dept", header: "Departemen", cell: (j) => j.department?.name ?? <span className="text-muted">Semua</span> },
     { key: "penugasan", header: "Penugasan aktif", className: "md:text-right", cell: (j) => <span className="tabular-nums">{j.activeAssignments}</span> },
@@ -244,6 +314,7 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
       <Modal
         open={form.open}
         onClose={tutupForm}
+        size="lg"
         title={item ? "Ubah Jenis Shift" : "Jenis Shift Baru"}
         description="Shift malam yang melewati tengah malam ditulis apa adanya, mis. 23:00–07:00."
         footer={
@@ -296,6 +367,68 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
             </Field>
           </div>
 
+          <fieldset className="min-w-0 space-y-2">
+            <legend className="sr-only">Jam berbeda per hari</legend>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" {...f.register("adaPerHari")} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
+              <span>
+                <span className="font-medium">Jam berbeda pada hari tertentu</span>
+                <span className="block text-xs text-muted">Mis. Reguler 08:00–16:00, tetapi Jumat 08:00–11:30 dan Sabtu 08:00–13:00. Hari yang tidak dicentang memakai jam di atas.</span>
+              </span>
+            </label>
+            {adaPerHari && (
+              <div className="space-y-1 rounded-xl border border-border p-2">
+                <div className="hidden px-1 text-xs font-medium text-muted sm:grid sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem] sm:gap-2">
+                  <span>Hari</span><span>Mulai</span><span>Selesai</span><span>Istirahat (jam)</span>
+                </div>
+                {HARI_PEKAN.map((h) => {
+                  const k = String(h.nilai);
+                  const aktif = Boolean(perHari?.[k]?.aktif);
+                  const galat = f.formState.errors.perHari?.[k];
+                  const pesan = galat?.startTime?.message ?? galat?.endTime?.message ?? galat?.breakDuration?.message;
+                  return (
+                    <div key={k} className="rounded-lg px-1 py-1 sm:grid sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_5.5rem] sm:items-center sm:gap-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={aktif} onChange={(e) => ubahHari(k, e.target.checked)} className="h-4 w-4 accent-[var(--primary)]" aria-label={`Jam khusus hari ${h.panjang}`} />
+                        <span className={cn(aktif ? "font-medium" : "text-muted")}>{h.panjang}</span>
+                      </label>
+                      {aktif ? (
+                        <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_3.75rem] gap-1.5 sm:contents">
+                          <Input type="time" aria-label={`Jam mulai ${h.panjang}`} {...f.register(`perHari.${k}.startTime`, { required: "Jam mulai wajib diisi" })} />
+                          <Input
+                            type="time"
+                            aria-label={`Jam selesai ${h.panjang}`}
+                            {...f.register(`perHari.${k}.endTime`, {
+                              required: "Jam selesai wajib diisi",
+                              validate: (v, x) => v !== x.perHari[k].startTime || `Jam selesai ${h.panjang} tidak boleh sama dengan jam mulainya`,
+                            })}
+                          />
+                          <Input
+                            type="number"
+                            step="0.5"
+                            min={0}
+                            max={12}
+                            aria-label={`Istirahat ${h.panjang} (jam)`}
+                            {...f.register(`perHari.${k}.breakDuration`, {
+                              validate: (v, x) =>
+                                Number(v || 0) * 60 < menitShift(x.perHari[k].startTime, x.perHari[k].endTime) || `Istirahat ${h.panjang} harus lebih pendek dari shift hari itu`,
+                            })}
+                          />
+                        </div>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-muted sm:col-span-3 sm:mt-0">Jam bawaan {mulai}–{selesai}</p>
+                      )}
+                      {aktif && perHari?.[k] && lintasMalam(perHari[k].startTime, perHari[k].endTime) && !pesan && (
+                        <p className="mt-1 text-xs text-muted sm:col-span-3 sm:col-start-2 sm:mt-0">Berakhir keesokan harinya</p>
+                      )}
+                      {pesan && <p className="mt-1 text-xs text-danger sm:col-span-3 sm:col-start-2 sm:mt-0">{pesan}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </fieldset>
+
           <fieldset className="min-w-0">
             <legend className="mb-1.5 text-sm font-medium">Warna</legend>
             <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Warna jenis shift">
@@ -338,7 +471,7 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
 
           {jamBerubah && item && (
             <Alert tone="warning" title="Shift ke depan ikut berubah">
-              Shift mulai hari ini yang dibuat dari jenis {item.name} ikut memakai jam baru — kecuali yang sudah diubah manual atau sudah ada presensinya.
+              Shift mulai hari ini yang dibuat dari jenis {item.name} ikut memakai jam baru{perHariBerubah ? ", sesuai harinya" : ""} — kecuali yang sudah diubah manual atau sudah ada presensinya.
             </Alert>
           )}
         </form>

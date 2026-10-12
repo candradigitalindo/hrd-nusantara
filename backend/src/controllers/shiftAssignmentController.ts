@@ -11,6 +11,7 @@ import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { calendarKey } from '../utils/leaveDays';
+import { bacaJamPerHari, jamUntukTanggal } from '../utils/shiftTemplateHours';
 import {
   HORIZON_HARI,
   hariIni,
@@ -38,7 +39,7 @@ const assignmentSelect = {
   id: true,
   employeeId: true,
   employee: { select: { id: true, name: true, nik: true, departmentId: true } },
-  template: { select: { id: true, name: true, code: true, color: true, startTime: true, endTime: true } },
+  template: { select: { id: true, name: true, code: true, color: true, startTime: true, endTime: true, dailyHours: true } },
   startDate: true,
   endDate: true,
   weekdays: true,
@@ -53,6 +54,7 @@ type AssignmentRow = Prisma.ShiftAssignmentGetPayload<{ select: typeof assignmen
 /** Tanggal dikirim sebagai YYYY-MM-DD: penugasan berbicara dalam tanggal kalender, bukan waktu. */
 const toAssignmentDTO = (a: AssignmentRow) => ({
   ...a,
+  template: { ...a.template, dailyHours: bacaJamPerHari(a.template.dailyHours) },
   startDate: calendarKey(a.startDate),
   endDate: a.endDate ? calendarKey(a.endDate) : null,
   weekdays: [...a.weekdays].sort((x, y) => x - y),
@@ -193,14 +195,19 @@ export const createAssignments = async (req: Request, res: Response) => {
   if (tanpaDept) return res.status(tanpaDept.status).json({ error: tanpaDept.error });
 
   // Jam yang akan dipakai: dari jenis shift, atau jam kustom untuk 1 hari.
-  let jenis: { id: string; name: string; startTime: string; endTime: string; breakDuration: number } | null = null;
+  // Untuk jenis dengan jam berbeda per hari, jam di sini adalah jam tanggal
+  // mulai — itulah yang dipakai durasi "1 hari"; durasi lain menghitung jam
+  // tiap tanggalnya sendiri saat materialisasi.
+  let jenis: { id: string; name: string } | null = null;
+  let jamJenis: ReturnType<typeof jamUntukTanggal> | null = null;
   if (input.templateId) {
     const cari = await cariJenisShiftUntukDipakai(actor, input.templateId);
     if (!cari.ok) return res.status(cari.status).json({ error: cari.error });
-    jenis = { ...cari.template, breakDuration: cari.template.breakDuration.toNumber() };
+    jenis = { id: cari.template.id, name: cari.template.name };
+    jamJenis = jamUntukTanggal(cari.template, input.startDate);
   }
-  const jam = jenis
-    ? { startTime: jenis.startTime, endTime: jenis.endTime, breakDuration: jenis.breakDuration, templateId: jenis.id }
+  const jam = jenis && jamJenis
+    ? { ...jamJenis, templateId: jenis.id }
     : { startTime: input.startTime!, endTime: input.endTime!, breakDuration: input.breakDuration ?? 0, templateId: null };
 
   const waktuError = validateShiftTimes({ date: input.startDate, ...jam });

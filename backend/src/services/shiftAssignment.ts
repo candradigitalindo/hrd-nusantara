@@ -15,6 +15,7 @@ import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { resolveShiftWindow, type ShiftWindow } from '../utils/shiftTime';
 import { calendarKey } from '../utils/leaveDays';
+import { jamUntukTanggal } from '../utils/shiftTemplateHours';
 import { ACTIVE_STATUSES } from '../middleware/auth';
 
 /**
@@ -75,7 +76,7 @@ const pilihPenugasan = {
   status: true,
   notes: true,
   materializedUntil: true,
-  template: { select: { id: true, startTime: true, endTime: true, breakDuration: true } },
+  template: { select: { id: true, startTime: true, endTime: true, breakDuration: true, dailyHours: true } },
   employee: { select: { status: true, exitDate: true, flexibleHours: true } },
 } satisfies Prisma.ShiftAssignmentSelect;
 
@@ -126,7 +127,9 @@ const bangunBaris = async (
   const kunciKeluar = p.employee.exitDate ? calendarKey(tanggalBisnis(p.employee.exitDate)) : null;
 
   const dilewati: TanggalDilewati[] = [];
-  const rencana: Date[] = [];
+  // Jam tiap tanggal mengikuti harinya: jenis "Reguler" bisa punya jam Jumat
+  // dan Sabtu yang berbeda dari hari lain.
+  const rencana: { hari: Date; jam: ReturnType<typeof jamUntukTanggal> }[] = [];
   const jendelaRencana: ShiftWindow[] = [];
 
   for (const hari of tanggal) {
@@ -149,13 +152,14 @@ const bangunBaris = async (
       continue;
     }
 
-    const jendela = resolveShiftWindow(hari, p.template.startTime, p.template.endTime, env.APP_TIMEZONE);
+    const jam = jamUntukTanggal(p.template, hari);
+    const jendela = resolveShiftWindow(hari, jam.startTime, jam.endTime, env.APP_TIMEZONE);
     if (jendelaLain.some((j) => bertumpuk(j, jendela)) || jendelaRencana.some((j) => bertumpuk(j, jendela))) {
       dilewati.push({ date: kunci, alasan: 'bentrok' });
       continue;
     }
 
-    rencana.push(hari);
+    rencana.push({ hari, jam });
     jendelaRencana.push(jendela);
   }
 
@@ -164,13 +168,13 @@ const bangunBaris = async (
   // skipDuplicates bersandar pada unik (assignmentId, date): dua proses yang
   // memperpanjang penugasan yang sama bersamaan tidak menggandakan baris.
   const dibuat = await db.shiftSchedule.createMany({
-    data: rencana.map((hari) => ({
+    data: rencana.map(({ hari, jam }) => ({
       id: generateULID(),
       employeeId: p.employeeId,
       date: hari,
-      startTime: p.template.startTime,
-      endTime: p.template.endTime,
-      breakDuration: p.template.breakDuration,
+      startTime: jam.startTime,
+      endTime: jam.endTime,
+      breakDuration: new Prisma.Decimal(jam.breakDuration),
       status: p.status,
       notes: p.notes,
       templateId: p.template.id,

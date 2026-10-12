@@ -88,6 +88,25 @@ export const shiftRecapQuerySchema = z
  */
 export const WARNA_JENIS_SHIFT = ['teal', 'blue', 'amber', 'violet', 'rose', 'slate', 'green', 'orange'] as const;
 
+/** Jam khusus satu hari dalam pekan pada jenis shift, mis. Jumat 08:00–11:30. */
+const jamHariField = z
+  .object({
+    weekday: z.number().int().min(0).max(6),
+    startTime: timeField,
+    endTime: timeField,
+    breakDuration: z.coerce.number().min(0).max(12).default(0),
+  })
+  .strict();
+
+/**
+ * Jam berbeda per hari: hari yang tidak tercantum memakai jam bawaan jenisnya.
+ * Dikirim utuh saat menyimpan — daftar kosong berarti semua hari sama.
+ */
+const dailyHoursField = z
+  .array(jamHariField)
+  .max(7)
+  .refine((daftar) => new Set(daftar.map((j) => j.weekday)).size === daftar.length, 'Satu hari hanya boleh punya satu jam khusus');
+
 const templateFields = {
   name: z.string().trim().min(2, 'Nama minimal 2 karakter').max(40, 'Nama maksimal 40 karakter'),
   code: z.string().trim().min(1).max(4, 'Kode maksimal 4 karakter'),
@@ -105,6 +124,7 @@ export const createShiftTemplateSchema = z
     breakDuration: templateFields.breakDuration.default(0),
     color: templateFields.color.optional(),
     departmentId: templateFields.departmentId.optional(),
+    dailyHours: dailyHoursField.default([]),
   })
   .strict();
 
@@ -118,6 +138,7 @@ export const updateShiftTemplateSchema = z
     breakDuration: templateFields.breakDuration.optional(),
     color: templateFields.color.optional(),
     departmentId: ulidField.nullable().optional(),
+    dailyHours: dailyHoursField.optional(),
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, { message: 'Tidak ada field yang diubah' });

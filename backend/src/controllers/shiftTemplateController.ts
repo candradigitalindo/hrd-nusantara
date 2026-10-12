@@ -10,6 +10,14 @@ import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
 import { resolveShiftWindow, parseHHmm } from '../utils/shiftTime';
 import { hariIni, geserHari } from '../services/shiftAssignment';
+import {
+  bacaJamPerHari,
+  jamUntukTanggal,
+  normalkanJamPerHari,
+  samaJam,
+  type JamHari,
+  type JamShift,
+} from '../utils/shiftTemplateHours';
 import { tolakManajerTanpaDepartemen, type AktorJadwal } from './shiftController';
 import type {
   CreateShiftTemplateInput,
@@ -30,6 +38,7 @@ const templateSelect = () =>
     startTime: true,
     endTime: true,
     breakDuration: true,
+    dailyHours: true,
     color: true,
     departmentId: true,
     department: { select: { id: true, name: true } },
@@ -46,6 +55,8 @@ const toTemplateDTO = (t: TemplateRow) => ({
   startTime: t.startTime,
   endTime: t.endTime,
   breakDuration: t.breakDuration.toNumber(),
+  /** Jam berbeda per hari; hari yang tidak tercantum memakai jam di atas. */
+  dailyHours: bacaJamPerHari(t.dailyHours),
   color: t.color,
   departmentId: t.departmentId,
   department: t.department,
@@ -63,6 +74,18 @@ const panjangMenit = (startTime: string, endTime: string) => {
 
 const istirahatTerlaluPanjang = (startTime: string, endTime: string, breakDuration: number) =>
   breakDuration * 60 >= panjangMenit(startTime, endTime);
+
+const NAMA_HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+
+/** Pesan galat bila istirahat sebuah jam khusus menghabiskan panjang shift hari itu. */
+const periksaJamPerHari = (jamPerHari: readonly JamHari[]): string | null => {
+  const salah = jamPerHari.find((j) => istirahatTerlaluPanjang(j.startTime, j.endTime, j.breakDuration));
+  return salah ? `Istirahat hari ${NAMA_HARI[salah.weekday]} tidak boleh sama atau melebihi panjang shift hari itu` : null;
+};
+
+/** "Jumat 08:00–11:30, Sabtu 08:00–13:00" untuk ringkasan jejak audit. */
+const ringkasJamPerHari = (jamPerHari: readonly JamHari[]) =>
+  jamPerHari.map((j) => `${NAMA_HARI[j.weekday]} ${j.startTime}–${j.endTime}`).join(', ');
 
 /** Nama jenis shift unik di antara yang aktif, per departemen (null = semua departemen). */
 const namaSudahDipakai = (name: string, departmentId: string | null, kecualiId?: string) =>
@@ -124,6 +147,13 @@ export const createShiftTemplate = async (req: Request, res: Response) => {
   if (istirahatTerlaluPanjang(input.startTime, input.endTime, input.breakDuration)) {
     return res.status(400).json({ error: 'Durasi istirahat tidak boleh sama atau melebihi panjang shift' });
   }
+  const jamPerHari = normalkanJamPerHari(input.dailyHours, {
+    startTime: input.startTime,
+    endTime: input.endTime,
+    breakDuration: input.breakDuration,
+  });
+  const salahHari = periksaJamPerHari(jamPerHari);
+  if (salahHari) return res.status(400).json({ error: salahHari });
 
   if (await namaSudahDipakai(input.name, departmentId)) {
     return res.status(409).json({ error: `Jenis shift "${input.name}" sudah ada` });
@@ -137,6 +167,7 @@ export const createShiftTemplate = async (req: Request, res: Response) => {
       startTime: input.startTime,
       endTime: input.endTime,
       breakDuration: new Prisma.Decimal(input.breakDuration),
+      dailyHours: jamPerHari as unknown as Prisma.InputJsonValue,
       ...(input.color ? { color: input.color } : {}),
       departmentId,
       createdById: actor.id,
@@ -148,7 +179,7 @@ export const createShiftTemplate = async (req: Request, res: Response) => {
     action: 'shift.template.create',
     entity: 'ShiftTemplate',
     entityId: template.id,
-    summary: `Membuat jenis shift ${template.name} (${template.startTime}–${template.endTime})`,
+    summary: `Membuat jenis shift ${template.name} (${template.startTime}–${template.endTime}${jamPerHari.length ? `; ${ringkasJamPerHari(jamPerHari)}` : ''})`,
   };
 
   res.status(201).json(toTemplateDTO(template));
@@ -159,14 +190,17 @@ export const createShiftTemplate = async (req: Request, res: Response) => {
  * jenis ini — selama belum dikoreksi manual, belum dibatalkan, dan belum
  * dipakai presensi. Jadwal yang sudah lewat adalah catatan sejarah.
  *
+ * Jam tiap baris mengikuti hari tanggalnya: jenis dengan jam berbeda per hari
+ * memberi Jumat jam Jumat, Sabtu jam Sabtu, dan hari lain jam bawaannya.
+ * Baris yang jamnya sudah sesuai tidak disentuh dan tidak dihitung.
+ *
  * Baris yang dengan jam baru akan bertabrakan dengan shift lain orang itu
  * dibiarkan dengan jam lamanya dan dilaporkan, bukan dipaksakan bertumpuk.
  */
 const terapkanJamBaru = async (
   tx: PrismaTransactionClient,
   templateId: string,
-  jam: { startTime: string; endTime: string; breakDuration: number },
-  periksaBentrok: boolean
+  jenis: JamShift & { dailyHours: JamHari[] }
 ): Promise<{ rowsUpdated: number; rowsSkipped: number }> => {
   const baris = await tx.shiftSchedule.findMany({
     where: {
@@ -176,18 +210,25 @@ const terapkanJamBaru = async (
       status: { not: 'cancelled' },
       attendances: { none: {} },
     },
-    select: { id: true, employeeId: true, date: true },
+    select: { id: true, employeeId: true, date: true, startTime: true, endTime: true, breakDuration: true },
   });
-  if (baris.length === 0) return { rowsUpdated: 0, rowsSkipped: 0 };
 
-  let diperbarui = baris.map((b) => b.id);
-  if (periksaBentrok) {
-    const waktu = baris.map((b) => b.date.getTime());
+  const berubah = baris
+    .map((b) => ({ b, jam: jamUntukTanggal(jenis, b.date) }))
+    .filter(({ b, jam }) => !samaJam({ startTime: b.startTime, endTime: b.endTime, breakDuration: b.breakDuration.toNumber() }, jam));
+  if (berubah.length === 0) return { rowsUpdated: 0, rowsSkipped: 0 };
+
+  // Bentrok hanya mungkin bagi baris yang jam mulai/selesainya bergeser;
+  // perubahan istirahat saja tidak menggeser jendela shift.
+  const geser = berubah.filter(({ b, jam }) => b.startTime !== jam.startTime || b.endTime !== jam.endTime);
+  const bentrok = new Set<string>();
+  if (geser.length > 0) {
+    const waktu = geser.map(({ b }) => b.date.getTime());
     const lain = await tx.shiftSchedule.findMany({
       where: {
-        employeeId: { in: [...new Set(baris.map((b) => b.employeeId))] },
+        employeeId: { in: [...new Set(geser.map(({ b }) => b.employeeId))] },
         status: { not: 'cancelled' },
-        id: { notIn: diperbarui },
+        id: { notIn: baris.map((b) => b.id) },
         date: { gte: geserHari(new Date(Math.min(...waktu)), -1), lte: geserHari(new Date(Math.max(...waktu)), 1) },
       },
       select: { employeeId: true, date: true, startTime: true, endTime: true },
@@ -196,22 +237,28 @@ const terapkanJamBaru = async (
       employeeId: r.employeeId,
       ...resolveShiftWindow(r.date, r.startTime, r.endTime, env.APP_TIMEZONE),
     }));
-
-    diperbarui = baris
-      .filter((b) => {
-        const baru = resolveShiftWindow(b.date, jam.startTime, jam.endTime, env.APP_TIMEZONE);
-        return !jendelaLain.some((j) => j.employeeId === b.employeeId && j.start < baru.end && baru.start < j.end);
-      })
-      .map((b) => b.id);
+    for (const { b, jam } of geser) {
+      const baru = resolveShiftWindow(b.date, jam.startTime, jam.endTime, env.APP_TIMEZONE);
+      if (jendelaLain.some((j) => j.employeeId === b.employeeId && j.start < baru.end && baru.start < j.end)) bentrok.add(b.id);
+    }
   }
 
-  if (diperbarui.length > 0) {
+  // Dikelompokkan per jam: paling banyak tujuh kelompok (satu per hari pekan).
+  const kelompok = new Map<string, { jam: JamShift; ids: string[] }>();
+  for (const { b, jam } of berubah) {
+    if (bentrok.has(b.id)) continue;
+    const kunci = `${jam.startTime}|${jam.endTime}|${jam.breakDuration}`;
+    const k = kelompok.get(kunci) ?? { jam, ids: [] };
+    k.ids.push(b.id);
+    kelompok.set(kunci, k);
+  }
+  for (const { jam, ids } of kelompok.values()) {
     await tx.shiftSchedule.updateMany({
-      where: { id: { in: diperbarui } },
+      where: { id: { in: ids } },
       data: { startTime: jam.startTime, endTime: jam.endTime, breakDuration: new Prisma.Decimal(jam.breakDuration) },
     });
   }
-  return { rowsUpdated: diperbarui.length, rowsSkipped: baris.length - diperbarui.length };
+  return { rowsUpdated: berubah.length - bentrok.size, rowsSkipped: bentrok.size };
 };
 
 export const updateShiftTemplate = async (req: Request, res: Response) => {
@@ -244,6 +291,12 @@ export const updateShiftTemplate = async (req: Request, res: Response) => {
   if (istirahatTerlaluPanjang(jam.startTime, jam.endTime, jam.breakDuration)) {
     return res.status(400).json({ error: 'Durasi istirahat tidak boleh sama atau melebihi panjang shift' });
   }
+  // Jam per hari dikirim utuh bila diubah; bila tidak, yang lama dipertahankan
+  // (hari yang kini sama persis dengan jam bawaan baru ikut dibuang).
+  const perHariLama = bacaJamPerHari(lama.dailyHours);
+  const perHari = normalkanJamPerHari(input.dailyHours ?? perHariLama, jam);
+  const salahHari = periksaJamPerHari(perHari);
+  if (salahHari) return res.status(400).json({ error: salahHari });
 
   const nama = input.name ?? lama.name;
   if (lama.isActive && (nama !== lama.name || departmentId !== lama.departmentId)) {
@@ -252,8 +305,9 @@ export const updateShiftTemplate = async (req: Request, res: Response) => {
     }
   }
 
-  const jamPindah = jam.startTime !== lama.startTime || jam.endTime !== lama.endTime;
-  const jamBerubah = jamPindah || jam.breakDuration !== lama.breakDuration.toNumber();
+  const jamBerubah =
+    !samaJam(jam, { startTime: lama.startTime, endTime: lama.endTime, breakDuration: lama.breakDuration.toNumber() }) ||
+    JSON.stringify(perHari) !== JSON.stringify(perHariLama);
 
   const { template, hasil } = await prisma.$transaction(
     async (tx) => {
@@ -265,13 +319,14 @@ export const updateShiftTemplate = async (req: Request, res: Response) => {
           startTime: jam.startTime,
           endTime: jam.endTime,
           breakDuration: new Prisma.Decimal(jam.breakDuration),
+          dailyHours: perHari as unknown as Prisma.InputJsonValue,
           ...(input.color ? { color: input.color } : {}),
           departmentId,
         },
         select: templateSelect(),
       });
       const hasil = jamBerubah
-        ? await terapkanJamBaru(tx, lama.id, jam, jamPindah)
+        ? await terapkanJamBaru(tx, lama.id, { ...jam, dailyHours: perHari })
         : { rowsUpdated: 0, rowsSkipped: 0 };
       return { template, hasil };
     },
@@ -283,7 +338,7 @@ export const updateShiftTemplate = async (req: Request, res: Response) => {
     entity: 'ShiftTemplate',
     entityId: lama.id,
     summary: jamBerubah
-      ? `Mengubah jam jenis shift ${template.name} menjadi ${jam.startTime}–${jam.endTime}; ${hasil.rowsUpdated} jadwal ke depan ikut berubah`
+      ? `Mengubah jam jenis shift ${template.name} menjadi ${jam.startTime}–${jam.endTime}${perHari.length ? ` (${ringkasJamPerHari(perHari)})` : ''}; ${hasil.rowsUpdated} jadwal ke depan ikut berubah`
       : `Memperbarui jenis shift ${template.name}`,
     metadata: { fieldBerubah: Object.keys(input), ...hasil },
   };

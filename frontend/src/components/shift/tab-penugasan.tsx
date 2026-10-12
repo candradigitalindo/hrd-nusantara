@@ -18,7 +18,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatTanggal } from "@/lib/utils";
 import type { Halaman, KaryawanDirektori, PenugasanShift } from "@/lib/types";
 import { ChipJenis } from "./chip-jenis";
-import { dariISO, formatHariPekan, formatPeriode, geserISO, penugasanAktif, tanggalISO } from "./util-shift";
+import { dariISO, formatHariPekan, formatPeriode, geserISO, penugasanAktif, ringkasJamJenis, tanggalISO } from "./util-shift";
 
 /** Pembaruan cache setelah penugasan berubah: roster, rekap, daftar penugasan, dan hitungan di jenis shift. */
 export const segarkanPenugasan = (qc: ReturnType<typeof useQueryClient>) => {
@@ -175,7 +175,7 @@ export const TabPenugasan = ({
       cell: (p) => (
         <span className="inline-flex flex-wrap items-center justify-end gap-1.5 md:justify-start">
           <ChipJenis jenis={p.template} />
-          <span className="text-xs text-muted tabular-nums">{p.template.startTime}–{p.template.endTime}</span>
+          <span className="text-xs text-muted tabular-nums">{ringkasJamJenis(p.template, p.weekdays)}</span>
         </span>
       ),
     },

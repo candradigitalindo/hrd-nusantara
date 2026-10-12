@@ -1,6 +1,6 @@
 import { addMonths } from "date-fns";
 import { formatTanggal } from "@/lib/utils";
-import type { DurasiPenugasan, Shift, WarnaJenisShift } from "@/lib/types";
+import type { DurasiPenugasan, JamHariShift, Shift, WarnaJenisShift } from "@/lib/types";
 
 /** "YYYY-MM-DD" dari komponen tanggal lokal — tanpa pergeseran zona waktu. */
 export const tanggalISO = (d: Date) =>
@@ -151,3 +151,42 @@ export const labelAlasan = (kode: string) => LABEL_ALASAN[kode] ?? kode.replace(
 
 /** Penugasan masih berlaku bila belum punya tanggal akhir atau akhirnya belum lewat. */
 export const penugasanAktif = (p: { endDate: string | null }, hariIni: string) => p.endDate === null || p.endDate.slice(0, 10) >= hariIni;
+
+type JenisBerjam = { startTime: string; endTime: string; breakDuration?: number; dailyHours?: JamHariShift[] | null };
+
+/** Jam jenis shift pada hari pekan tertentu (0 = Minggu … 6 = Sabtu): jam khusus hari itu, atau jam bawaannya. */
+export const jamJenisPadaHari = (jenis: JenisBerjam, weekday: number): JamHariShift =>
+  jenis.dailyHours?.find((j) => j.weekday === weekday) ?? { weekday, startTime: jenis.startTime, endTime: jenis.endTime, breakDuration: jenis.breakDuration ?? 0 };
+
+const teksJam = (j: { startTime: string; endTime: string }) => `${j.startTime}–${j.endTime}`;
+
+/**
+ * Jam per hari dalam urutan Senin dulu; hari berurutan yang jamnya sama
+ * digabung: "Sen–Kam 08:00–16:00 · Jum 08:00–11:30 · Sab 08:00–13:00".
+ * Jenis tanpa jam per hari cukup "08:00–16:00". `hari` membatasi ke hari
+ * yang dipakai sebuah penugasan.
+ */
+export const ringkasJamJenis = (jenis: JenisBerjam, hari?: number[]) => {
+  if (!jenis.dailyHours?.length) return teksJam(jenis);
+  const dipakai = HARI_PEKAN.filter((h) => !hari || hari.includes(h.nilai));
+  const grup: { awal: string; akhir: string; posisi: number; teks: string }[] = [];
+  for (const h of dipakai) {
+    const teks = teksJam(jamJenisPadaHari(jenis, h.nilai));
+    const posisi = HARI_PEKAN.indexOf(h);
+    const akhir = grup[grup.length - 1];
+    if (akhir && akhir.teks === teks && akhir.posisi === posisi - 1) {
+      akhir.akhir = h.pendek;
+      akhir.posisi = posisi;
+    } else {
+      grup.push({ awal: h.pendek, akhir: h.pendek, posisi, teks });
+    }
+  }
+  return grup.map((g) => `${g.awal === g.akhir ? g.awal : `${g.awal}–${g.akhir}`} ${g.teks}`).join(" · ");
+};
+
+/** Hanya hari yang jamnya berbeda dari jam bawaan: "Jum 08:00–11:30 · Sab 08:00–13:00". */
+export const ringkasPengecualian = (jenis: JenisBerjam) =>
+  HARI_PEKAN.map((h) => ({ h, j: jenis.dailyHours?.find((x) => x.weekday === h.nilai) }))
+    .filter((x): x is { h: (typeof HARI_PEKAN)[number]; j: JamHariShift } => Boolean(x.j))
+    .map(({ h, j }) => `${h.pendek} ${teksJam(j)}`)
+    .join(" · ");

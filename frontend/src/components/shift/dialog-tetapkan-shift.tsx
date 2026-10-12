@@ -14,6 +14,7 @@ import { cn, formatTanggal } from "@/lib/utils";
 import type { DurasiPenugasan, HasilPenugasan, JenisShift, KaryawanDirektori } from "@/lib/types";
 import {
   HARI_PEKAN,
+  ringkasJamJenis,
   akhirEfektif,
   dariISO,
   formatIstirahat,
@@ -336,7 +337,10 @@ export const DialogTetapkanShift = ({
               label="Jenis shift"
               hint={
                 jenisDipilih
-                  ? `${jenisDipilih.startTime}–${jenisDipilih.endTime}${lintasMalam(jenisDipilih.startTime, jenisDipilih.endTime) ? " (+1 hari)" : ""} · istirahat ${formatIstirahat(jenisDipilih.breakDuration)}`
+                  ? jenisDipilih.dailyHours?.length
+                    ? // Jam berbeda per hari: tampilkan jam tiap hari yang akan dijadwalkan.
+                      `Jam per hari: ${ringkasJamJenis(jenisDipilih, sehari && mulai ? [dariISO(mulai).getDay()] : hari)}`
+                    : `${jenisDipilih.startTime}–${jenisDipilih.endTime}${lintasMalam(jenisDipilih.startTime, jenisDipilih.endTime) ? " (+1 hari)" : ""} · istirahat ${formatIstirahat(jenisDipilih.breakDuration)}`
                   : !jenis.isLoading && daftarJenis.length === 0
                     ? "Belum ada jenis shift — buat dulu di tab Jenis Shift."
                     : "Jam kustom hanya untuk 1 hari"
@@ -346,7 +350,7 @@ export const DialogTetapkanShift = ({
                 <option value="">{jenis.isLoading ? "Memuat…" : "Pilih jenis shift"}</option>
                 {daftarJenis.map((j) => (
                   <option key={j.id} value={j.id}>
-                    {j.name} · {j.startTime}–{j.endTime}{j.department ? ` · ${j.department.name}` : ""}
+                    {j.name} · {j.startTime}–{j.endTime}{j.dailyHours?.length ? " · jam berbeda per hari" : ""}{j.department ? ` · ${j.department.name}` : ""}
                   </option>
                 ))}
                 <option value={KUSTOM} disabled={!sehari}>Jam kustom{sehari ? "" : " (hanya 1 hari)"}</option>

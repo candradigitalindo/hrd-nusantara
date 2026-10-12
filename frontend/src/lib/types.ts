@@ -1149,11 +1149,22 @@ export interface JenisShiftRingkas {
   color: WarnaJenisShift | string;
 }
 
+/** Jam khusus satu hari pada jenis shift, mis. Jumat 08:00–11:30. */
+export interface JamHariShift {
+  /** 0 = Minggu … 6 = Sabtu. */
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  breakDuration: number;
+}
+
 /** Jenis shift (template jam kerja) yang bisa ditetapkan berulang, dari /shifts/templates. */
 export interface JenisShift extends JenisShiftRingkas {
   startTime: string;
   endTime: string;
   breakDuration: number;
+  /** Jam berbeda per hari; hari yang tidak tercantum memakai jam di atas. Opsional untuk backend lama. */
+  dailyHours?: JamHariShift[];
   /** null = berlaku untuk semua departemen. */
   departmentId: string | null;
   department: Ref | null;
@@ -1167,7 +1178,7 @@ export interface PenugasanShift {
   id: string;
   employeeId: string;
   employee: { id: string; name: string; nik: string; departmentId: string | null };
-  template: JenisShiftRingkas & { startTime: string; endTime: string };
+  template: JenisShiftRingkas & { startTime: string; endTime: string; dailyHours?: JamHariShift[] };
   /** "YYYY-MM-DD" */
   startDate: string;
   /** "YYYY-MM-DD", inklusif; null = seterusnya. */

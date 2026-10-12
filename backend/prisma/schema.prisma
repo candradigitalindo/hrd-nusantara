@@ -1886,6 +1886,12 @@ model ShiftTemplate {
   startTime     String // HH:mm
   endTime       String // HH:mm; <= startTime berarti berakhir keesokan harinya
   breakDuration Decimal     @default(0) @db.Decimal(4, 2) // jam
+  /// Jam yang berbeda untuk hari tertentu dalam pekan, mis. jenis "Reguler"
+  /// 08:00–16:00 tetapi Jumat 08:00–11:30 dan Sabtu 08:00–13:00. Daftar
+  /// [{ weekday: 0 (Minggu)–6 (Sabtu), startTime, endTime, breakDuration }];
+  /// hari yang tidak tercantum memakai startTime/endTime/breakDuration di atas.
+  /// Dibaca lewat utils/shiftTemplateHours.ts.
+  dailyHours    Json        @default("[]")
   /// Kunci palet tetap (teal, blue, amber, violet, rose, slate, green,
   /// orange) — bukan kode warna bebas, supaya tetap terbaca di mode gelap.
   color         String      @default("teal")

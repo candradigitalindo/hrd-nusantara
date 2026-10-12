@@ -60,6 +60,8 @@ describe('POST /api/shifts/templates', () => {
       startTime: '07:00',
       endTime: '15:00',
       breakDuration: 1,
+      // Tanpa jam berbeda per hari: semua hari memakai jam di atas.
+      dailyHours: [],
       color: 'teal',
       departmentId: null,
       department: null,
@@ -375,5 +377,108 @@ describe('POST /api/shifts dengan templateId', () => {
       .set(auth(hrToken))
       .send({ employeeId: budi.id, date: hari(3), templateId: pagi.id });
     expect(res.status).toBe(422);
+  });
+});
+
+describe('Jenis shift dengan jam berbeda per hari', () => {
+  /** Tanggal ke depan (mulai besok) yang jatuh pada hari pekan tertentu, 0 = Minggu. */
+  const hariBerikut = (weekday: number) => {
+    for (let n = 1; n <= 7; n++) {
+      const iso = hari(n);
+      if (tgl(iso).getUTCDay() === weekday) return iso;
+    }
+    throw new Error('tidak terjangkau');
+  };
+  const JUMAT = { weekday: 5, startTime: '08:00', endTime: '11:30', breakDuration: 0 };
+  const SABTU = { weekday: 6, startTime: '08:00', endTime: '13:00', breakDuration: 0 };
+  const REGULER = { name: 'Reguler', code: 'R', startTime: '08:00', endTime: '16:00', breakDuration: 1, color: 'blue' };
+
+  it('menyimpan jam khusus per hari; hari yang sama dengan jam bawaan dibuang', async () => {
+    const res = await buatJenis({
+      ...REGULER,
+      dailyHours: [SABTU, JUMAT, { weekday: 1, startTime: '08:00', endTime: '16:00', breakDuration: 1 }],
+    });
+    expectStatus(res, 201);
+    // Urut per hari; Senin yang persis sama dengan jam bawaan tidak disimpan.
+    expect(res.body.dailyHours).toEqual([JUMAT, SABTU]);
+
+    const daftar = await request(app).get('/api/shifts/templates').set(auth(hrToken));
+    expect(daftar.body.data.find((j: { id: string }) => j.id === res.body.id).dailyHours).toEqual([JUMAT, SABTU]);
+  });
+
+  it('jenis lama tanpa jam per hari tetap seperti sebelumnya', async () => {
+    const res = await buatJenis(PAGI);
+    expect(res.body.dailyHours).toEqual([]);
+  });
+
+  it('menolak hari ganda dan istirahat yang menghabiskan shift hari itu', async () => {
+    const ganda = await buatJenis({ ...REGULER, dailyHours: [JUMAT, { ...JUMAT, endTime: '12:00' }] });
+    expectStatus(ganda, 400);
+    const istirahat = await buatJenis({ ...REGULER, dailyHours: [{ ...JUMAT, breakDuration: 4 }] });
+    expectStatus(istirahat, 400);
+    expect(istirahat.body.error).toMatch(/Jumat/);
+    expect(await prisma.shiftTemplate.count()).toBe(0);
+  });
+
+  it('jadwal satu hari dari jenis ini memakai jam hari tanggalnya', async () => {
+    const reguler = (await buatJenis({ ...REGULER, dailyHours: [JUMAT, SABTU] })).body;
+    const jumat = await request(app).post('/api/shifts').set(auth(hrToken)).send({ employeeId: budi.id, date: hariBerikut(5), templateId: reguler.id });
+    expectStatus(jumat, 201);
+    expect(jumat.body).toMatchObject({ startTime: '08:00', endTime: '11:30', breakDuration: 0 });
+    const selasa = await request(app).post('/api/shifts').set(auth(hrToken)).send({ employeeId: budi.id, date: hariBerikut(2), templateId: reguler.id });
+    expect(selasa.body).toMatchObject({ startTime: '08:00', endTime: '16:00', breakDuration: 1 });
+  });
+
+  it('mengubah jam satu hari hanya memperbarui jadwal ke depan pada hari itu', async () => {
+    const reguler = (await buatJenis({ ...REGULER, dailyHours: [SABTU] })).body;
+    const jumat = await barisJadwal(budi.id, hariBerikut(5), { templateId: reguler.id, startTime: '08:00', endTime: '16:00' });
+    const sabtu = await barisJadwal(budi.id, hariBerikut(6), { templateId: reguler.id, startTime: '08:00', endTime: '13:00', breakDuration: new Prisma.Decimal(0) });
+    const senin = await barisJadwal(budi.id, hariBerikut(1), { templateId: reguler.id, startTime: '08:00', endTime: '16:00' });
+
+    const res = await ubahJenis(reguler.id, { dailyHours: [JUMAT, SABTU] });
+    expectStatus(res, 200);
+    expect(res.body.rowsUpdated).toBe(1);
+    expect(res.body.template.dailyHours).toEqual([JUMAT, SABTU]);
+
+    const jam = async (id: string) => {
+      const r = await prisma.shiftSchedule.findUniqueOrThrow({ where: { id } });
+      return `${r.startTime}-${r.endTime}/${r.breakDuration.toNumber()}`;
+    };
+    expect(await jam(jumat.id)).toBe('08:00-11:30/0');
+    expect(await jam(sabtu.id)).toBe('08:00-13:00/0');
+    expect(await jam(senin.id)).toBe('08:00-16:00/1');
+  });
+
+  it('jam bawaan berubah: hari berjam khusus tidak ikut, hari lain ikut', async () => {
+    const reguler = (await buatJenis({ ...REGULER, dailyHours: [SABTU] })).body;
+    const sabtu = await barisJadwal(budi.id, hariBerikut(6), { templateId: reguler.id, startTime: '08:00', endTime: '13:00', breakDuration: new Prisma.Decimal(0) });
+    const rabu = await barisJadwal(budi.id, hariBerikut(3), { templateId: reguler.id, startTime: '08:00', endTime: '16:00' });
+
+    const res = await ubahJenis(reguler.id, { startTime: '09:00', endTime: '17:00' });
+    expect(res.body.rowsUpdated).toBe(1);
+    expect((await prisma.shiftSchedule.findUniqueOrThrow({ where: { id: rabu.id } })).startTime).toBe('09:00');
+    expect((await prisma.shiftSchedule.findUniqueOrThrow({ where: { id: sabtu.id } })).endTime).toBe('13:00');
+  });
+
+  it('menghapus jam khusus mengembalikan jadwal ke depan hari itu ke jam bawaan', async () => {
+    const reguler = (await buatJenis({ ...REGULER, dailyHours: [SABTU] })).body;
+    const sabtu = await barisJadwal(budi.id, hariBerikut(6), { templateId: reguler.id, startTime: '08:00', endTime: '13:00', breakDuration: new Prisma.Decimal(0) });
+
+    const res = await ubahJenis(reguler.id, { dailyHours: [] });
+    expect(res.body.rowsUpdated).toBe(1);
+    expect(res.body.template.dailyHours).toEqual([]);
+    const baris = await prisma.shiftSchedule.findUniqueOrThrow({ where: { id: sabtu.id } });
+    expect(`${baris.startTime}-${baris.endTime}`).toBe('08:00-16:00');
+  });
+
+  it('jam khusus yang akan bertabrakan dengan shift lain hari itu dibiarkan dan dilaporkan', async () => {
+    const reguler = (await buatJenis(REGULER)).body;
+    const jumat = hariBerikut(5);
+    const baris = await barisJadwal(budi.id, jumat, { templateId: reguler.id, startTime: '08:00', endTime: '16:00' });
+    await barisJadwal(budi.id, jumat, { startTime: '17:00', endTime: '20:00', breakDuration: new Prisma.Decimal(0) });
+
+    const res = await ubahJenis(reguler.id, { dailyHours: [{ weekday: 5, startTime: '13:00', endTime: '18:00', breakDuration: 0 }] });
+    expect(res.body).toMatchObject({ rowsUpdated: 0, rowsSkipped: 1 });
+    expect((await prisma.shiftSchedule.findUniqueOrThrow({ where: { id: baris.id } })).startTime).toBe('08:00');
   });
 });

@@ -4,6 +4,7 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma, type PrismaTransactionClient } from '../lib/prisma';
 import { env } from '../config/env';
 import { generateULID } from '../utils/generateULID';
+import { jamUntukTanggal } from '../utils/shiftTemplateHours';
 import { resolveShiftWindow } from '../utils/shiftTime';
 import {
   hitungRekapLibur,
@@ -209,17 +210,19 @@ export const createShift = async (req: Request, res: Response) => {
   }
 
   // Jam dari jenis shift dipakai hanya untuk yang tidak dikirim eksplisit,
-  // jadi "Pagi tapi masuk 08:00 hari ini saja" tetap bisa.
+  // jadi "Pagi tapi masuk 08:00 hari ini saja" tetap bisa. Jenis dengan jam
+  // berbeda per hari memberi jam hari tanggal itu (mis. Sabtu setengah hari).
   let templateId: string | null = null;
   let jam = { startTime: input.startTime, endTime: input.endTime, breakDuration: input.breakDuration };
   if (input.templateId) {
     const jenis = await cariJenisShiftUntukDipakai(actor, input.templateId);
     if (!jenis.ok) return res.status(jenis.status).json({ error: jenis.error });
     templateId = jenis.template.id;
+    const jamJenis = jamUntukTanggal(jenis.template, input.date);
     jam = {
-      startTime: input.startTime ?? jenis.template.startTime,
-      endTime: input.endTime ?? jenis.template.endTime,
-      breakDuration: input.breakDuration ?? jenis.template.breakDuration.toNumber(),
+      startTime: input.startTime ?? jamJenis.startTime,
+      endTime: input.endTime ?? jamJenis.endTime,
+      breakDuration: input.breakDuration ?? jamJenis.breakDuration,
     };
   }
 

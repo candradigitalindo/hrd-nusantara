@@ -599,7 +599,7 @@ describe('GET /api/shifts/assignments', () => {
       id: aktif.body.results[0].assignmentId,
       employeeId: budi.id,
       employee: { id: budi.id, name: 'Budi', nik: 'EMP-1', departmentId: dapurId },
-      template: { id: pagiId, name: 'Pagi', code: 'P', color: 'teal', startTime: '07:00', endTime: '15:00' },
+      template: { id: pagiId, name: 'Pagi', code: 'P', color: 'teal', startTime: '07:00', endTime: '15:00', dailyHours: [] },
       startDate: hari(0),
       endDate: null,
       weekdays: [1, 5],
@@ -871,5 +871,73 @@ describe('Validasi tanggal kalender', () => {
       .set(auth(hrToken))
       .send({ employeeId: budi.id, date: '2028-02-29', startTime: '08:00', endTime: '16:00' });
     expectStatus(res, 201);
+  });
+});
+
+describe('Penugasan dari jenis shift berjam berbeda per hari', () => {
+  let regulerId: string;
+  beforeEach(async () => {
+    const res = await request(app)
+      .post('/api/shifts/templates')
+      .set(auth(hrToken))
+      .send({
+        name: 'Reguler',
+        code: 'R',
+        startTime: '08:00',
+        endTime: '16:00',
+        breakDuration: 1,
+        dailyHours: [
+          { weekday: 5, startTime: '08:00', endTime: '11:30', breakDuration: 0 },
+          { weekday: 6, startTime: '08:00', endTime: '13:00', breakDuration: 0.5 },
+        ],
+      });
+    expectStatus(res, 201);
+    regulerId = res.body.id;
+  });
+
+  it('seminggu Senin–Sabtu: Jumat dan Sabtu memakai jamnya sendiri, hari lain jam bawaan', async () => {
+    const senin = seninDari(hari(1));
+    const res = await tetapkan({ employeeIds: [budi.id], templateId: regulerId, startDate: senin, durasi: 'minggu', weekdays: [1, 2, 3, 4, 5, 6] });
+    expectStatus(res, 201);
+    expect(res.body.totals.created).toBe(6);
+
+    const baris = await prisma.shiftSchedule.findMany({ where: { employeeId: budi.id }, orderBy: { date: 'asc' } });
+    const ringkas = baris.map((r) => `${r.date.getUTCDay()}:${r.startTime}-${r.endTime}/${r.breakDuration.toNumber()}`);
+    expect(ringkas).toEqual([
+      '1:08:00-16:00/1',
+      '2:08:00-16:00/1',
+      '3:08:00-16:00/1',
+      '4:08:00-16:00/1',
+      '5:08:00-11:30/0',
+      '6:08:00-13:00/0.5',
+    ]);
+    expect(baris.every((r) => r.templateId === regulerId)).toBe(true);
+  });
+
+  it('1 hari pada Sabtu memakai jam Sabtu', async () => {
+    const sabtu = geser(seninDari(hari(1)), 5);
+    const res = await tetapkan({ employeeIds: [budi.id], templateId: regulerId, startDate: sabtu, durasi: 'hari' });
+    expectStatus(res, 201);
+    const baris = await prisma.shiftSchedule.findFirstOrThrow({ where: { employeeId: budi.id } });
+    expect(`${baris.startTime}-${baris.endTime}/${baris.breakDuration.toNumber()}`).toBe('08:00-13:00/0.5');
+  });
+
+  it('daftar penugasan membawa jam per hari jenisnya', async () => {
+    await tetapkan({ employeeIds: [budi.id], templateId: regulerId, startDate: seninDari(hari(1)), durasi: 'minggu', weekdays: [1, 2, 3, 4, 5, 6] });
+    const daftar = await request(app).get('/api/shifts/assignments').set(auth(hrToken));
+    expect(daftar.body.data[0].template.dailyHours).toEqual([
+      { weekday: 5, startTime: '08:00', endTime: '11:30', breakDuration: 0 },
+      { weekday: 6, startTime: '08:00', endTime: '13:00', breakDuration: 0.5 },
+    ]);
+  });
+
+  it('perpanjangan berkala juga memakai jam per hari', async () => {
+    const senin = seninDari(hari(1));
+    const res = await tetapkan({ employeeIds: [budi.id], templateId: regulerId, startDate: senin, durasi: 'seterusnya', weekdays: [5] });
+    expectStatus(res, 201);
+    await perpanjangSemua();
+    const jumat = await prisma.shiftSchedule.findMany({ where: { employeeId: budi.id } });
+    expect(jumat.length).toBeGreaterThan(4);
+    expect(jumat.every((r) => r.startTime === '08:00' && r.endTime === '11:30')).toBe(true);
   });
 });
