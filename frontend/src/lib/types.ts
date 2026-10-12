@@ -881,6 +881,9 @@ export interface SesiPelatihan {
   createdAt: string;
   program: { id: string; code: string; name: string; isMandatory: boolean; passingScore: number | null };
   registrationCount: number;
+  /** Dari daftar sesi: daftar tunggu, dan pendaftaran aktif yang ikut batal bila sesinya dibatalkan. */
+  waitlistCount?: number;
+  cancellableCount?: number;
 }
 
 export type StatusPendaftaran = "registered" | "waitlisted" | "attended" | "completed" | "failed" | "no_show" | "cancelled";

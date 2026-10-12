@@ -4,6 +4,7 @@ import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
 import { pasanganTeks } from '../utils/richText';
+import { dalamLingkup, saringanLingkupKaryawan } from '../utils/lingkupData';
 import {
   decideRegistrationStatus,
   evaluateTraining,
@@ -26,6 +27,21 @@ import type {
 } from '../schemas/trainingSchema';
 
 const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
+
+/**
+ * Mengurus pendaftaran orang lain (mendaftarkan, membatalkan, termasuk setelah
+ * sesi dimulai): pemegang pelatihan.ubah, atas karyawan dalam lingkup datanya.
+ * Izin, bukan Role: HR yang izinnya dicabut lewat matriks Peran tidak lagi
+ * mengurus pendaftaran orang lain; Super Admin selalu memegang semua izin.
+ */
+const urusPendaftaran = (
+  actor: { id: string; role: Role; departmentId: string | null; permissions: string[] },
+  karyawan: { id: string; departmentId: string | null }
+) => actor.permissions.includes('pelatihan.ubah') && dalamLingkup(actor, karyawan);
+
+/** Pengelola pelatihan (program, sesi, peserta): pelatihan.buat/ubah. */
+const kelolaPelatihan = (actor: { permissions: string[] }) =>
+  actor.permissions.includes('pelatihan.buat') || actor.permissions.includes('pelatihan.ubah');
 const num = (d: Prisma.Decimal | null) => (d === null ? null : d.toNumber());
 const dec = (v: number | null | undefined) => (v == null ? null : new Prisma.Decimal(v));
 
@@ -232,8 +248,20 @@ export const getAllSessions = async (req: Request, res: Response) => {
     }),
   ]);
 
+  // Untuk dialog "Batalkan sesi": berapa pendaftaran aktif yang ikut batal,
+  // termasuk daftar tunggu yang tidak terhitung sebagai pemegang kursi.
+  const kelompok = rows.length
+    ? await prisma.trainingRegistration.groupBy({
+        by: ['trainingSessionId', 'status'],
+        where: { trainingSessionId: { in: rows.map((r) => r.id) }, status: { in: ['registered', 'waitlisted', 'attended'] } },
+        _count: { _all: true },
+      })
+    : [];
+  const hitung = (sesiId: string, status?: string) =>
+    kelompok.filter((k) => k.trainingSessionId === sesiId && (!status || k.status === status)).reduce((n, k) => n + k._count._all, 0);
+
   res.json({
-    data: rows.map(sessionDTO),
+    data: rows.map((r) => ({ ...sessionDTO(r), waitlistCount: hitung(r.id, 'waitlisted'), cancellableCount: hitung(r.id) })),
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
   });
 };
@@ -269,6 +297,15 @@ export const changeSessionStatus = async (req: Request, res: Response) => {
           status: { in: ['registered', 'waitlisted', 'attended'] },
         },
         data: { status: 'cancelled', note: note ?? 'Sesi dibatalkan' },
+      });
+    }
+    // Sesi selesai: yang masih di daftar tunggu tidak pernah mendapat kursi.
+    // Tanpa ini statusnya "daftar tunggu" selamanya pada pelatihan yang sudah
+    // lewat, dan tidak ada jalur untuk membereskannya.
+    if (status === 'completed') {
+      await tx.trainingRegistration.updateMany({
+        where: { trainingSessionId: sesi.id, status: 'waitlisted' },
+        data: { status: 'cancelled', note: 'Sesi selesai; tidak mendapat kursi' },
       });
     }
 
@@ -322,9 +359,13 @@ export const register = async (req: Request, res: Response) => {
 
   const employeeId = input.employeeId ?? actor.id;
 
-  // Mendaftarkan orang lain adalah wewenang HR; karyawan hanya mendaftar sendiri.
-  if (employeeId !== actor.id && !isHr(actor.role)) {
-    return res.status(403).json({ error: 'Anda hanya bisa mendaftarkan diri sendiri' });
+  // Mendaftarkan orang lain adalah wewenang pengurus pelatihan dalam lingkupnya;
+  // karyawan hanya mendaftar sendiri.
+  if (employeeId !== actor.id) {
+    const target = await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, departmentId: true } });
+    if (!target || !urusPendaftaran(actor, target)) {
+      return res.status(403).json({ error: 'Anda hanya bisa mendaftarkan diri sendiri' });
+    }
   }
 
   const sesi = await prisma.trainingSession.findUnique({
@@ -432,12 +473,14 @@ export const cancelRegistration = async (req: Request, res: Response) => {
       employeeId: true,
       status: true,
       trainingSessionId: true,
-      trainingSession: { select: { maxParticipants: true, status: true } },
+      trainingSession: { select: { maxParticipants: true, status: true, startDateTime: true } },
+      employee: { select: { id: true, departmentId: true } },
     },
   });
   if (!pendaftaran) return res.status(404).json({ error: 'Pendaftaran tidak ditemukan' });
 
-  if (pendaftaran.employeeId !== actor.id && !isHr(actor.role)) {
+  const urus = urusPendaftaran(actor, pendaftaran.employee);
+  if (pendaftaran.employeeId !== actor.id && !urus) {
     return res.status(403).json({ error: 'Anda tidak punya akses membatalkan pendaftaran ini' });
   }
 
@@ -454,8 +497,11 @@ export const cancelRegistration = async (req: Request, res: Response) => {
   if (statusSesi === 'completed' || statusSesi === 'cancelled') {
     return res.status(409).json({ error: `Sesi sudah ${statusSesi === 'completed' ? 'selesai' : 'dibatalkan'}; pendaftaran tidak bisa dibatalkan` });
   }
-  if (statusSesi === 'ongoing' && !isHr(actor.role)) {
-    return res.status(409).json({ error: 'Sesi sedang berlangsung; hubungi HR bila tidak bisa hadir' });
+  // Jam mulai yang sudah lewat sama dengan "berlangsung" walau HR belum
+  // menekan Mulai: pendaftaran ditutup pada jam yang sama, jadi mundur pun.
+  const sudahMulai = statusSesi === 'ongoing' || pendaftaran.trainingSession.startDateTime.getTime() <= Date.now();
+  if (sudahMulai && !urus) {
+    return res.status(409).json({ error: 'Sesi sudah dimulai; hubungi HR bila tidak bisa hadir' });
   }
 
   const dipromosikan = await prisma.$transaction(async (tx) => {
@@ -576,6 +622,8 @@ export const evaluate = async (req: Request, res: Response) => {
       id: true,
       status: true,
       employeeId: true,
+      completedAt: true,
+      evaluationScore: true,
       trainingSession: {
         select: {
           program: {
@@ -594,15 +642,20 @@ export const evaluate = async (req: Request, res: Response) => {
   if (!pendaftaran) return res.status(404).json({ error: 'Pendaftaran tidak ditemukan' });
 
   // Hanya yang hadir yang bisa dievaluasi: menilai orang yang tidak datang
-  // membuat riwayat pelatihannya tidak bisa dipercaya.
-  if (pendaftaran.status !== 'attended') {
+  // membuat riwayat pelatihannya tidak bisa dipercaya. Yang sudah dievaluasi
+  // (lulus/tidak lulus) boleh DIKOREKSI — salah ketik nilai (9 untuk 90)
+  // tidak boleh menjadi permanen di riwayat dan laporan kepatuhan.
+  const koreksi = pendaftaran.status === 'completed' || pendaftaran.status === 'failed';
+  if (pendaftaran.status !== 'attended' && !koreksi) {
     return res.status(409).json({
       error: `Hanya peserta berstatus "attended" yang bisa dievaluasi, ini "${pendaftaran.status}"`,
     });
   }
 
   const program = pendaftaran.trainingSession.program;
-  const selesai = new Date();
+  // Koreksi mempertahankan tanggal selesai semula: masa berlaku tetap dihitung
+  // dari pelatihan yang sebenarnya, bukan dari hari koreksinya.
+  const selesai = koreksi && pendaftaran.completedAt ? pendaftaran.completedAt : new Date();
 
   const hasil = evaluateTraining({
     score: input.score ?? null,
@@ -626,13 +679,31 @@ export const evaluate = async (req: Request, res: Response) => {
       select: registrationSelect,
     });
 
-    if (!hasil.passed) return { diperbarui: baris, sertifikat: [] };
+    // Sertifikat yang sudah terbit dari pendaftaran ini (evaluasi sebelumnya).
+    const sudahTerbit = await tx.certificationRecord.findMany({
+      where: { trainingRegistrationId: pendaftaran.id, revokedAt: null },
+      select: { id: true, certificationTypeId: true },
+    });
+
+    if (!hasil.passed) {
+      // Koreksi menjadi tidak lulus: sertifikat yang terbit karena kelulusan
+      // lama dicabut, bukan dibiarkan berlaku.
+      if (sudahTerbit.length > 0) {
+        await tx.certificationRecord.updateMany({
+          where: { id: { in: sudahTerbit.map((c) => c.id) } },
+          data: { revokedAt: new Date(), revokedReason: 'Evaluasi pelatihan dikoreksi: tidak lulus' },
+        });
+      }
+      return { diperbarui: baris, sertifikat: [] };
+    }
 
     // Kelulusan menerbitkan sertifikat untuk tiap jenis yang terikat program
     // ini. Tanpa otomatisasi, HR harus menerbitkannya satu per satu untuk
     // setiap peserta yang lulus — pekerjaan berulang yang mudah terlewat.
+    // Pada koreksi, jenis yang sertifikatnya sudah berlaku tidak diterbitkan dua kali.
+    const jenisTerbit = new Set(sudahTerbit.map((c) => c.certificationTypeId));
     const diterbitkan = [];
-    for (const jenis of program.certificationTypes) {
+    for (const jenis of program.certificationTypes.filter((j) => !jenisTerbit.has(j.id))) {
       const kedaluwarsa =
         jenis.validityMonths !== null ? addMonths(selesai, jenis.validityMonths) : null;
 
@@ -659,7 +730,16 @@ export const evaluate = async (req: Request, res: Response) => {
     return { diperbarui: baris, sertifikat: diterbitkan };
   });
 
-  res.json({ ...registrationDTO(diperbarui), issuedCertifications: sertifikat });
+  if (koreksi) {
+    res.locals.audit = {
+      action: 'pelatihan.evaluasi.koreksi',
+      entity: 'TrainingRegistration',
+      entityId: pendaftaran.id,
+      summary: `Mengoreksi evaluasi pelatihan (${pendaftaran.status} → ${hasil.status})`,
+      metadata: { nilaiLama: num(pendaftaran.evaluationScore), nilaiBaru: input.score ?? null },
+    };
+  }
+  res.json({ ...registrationDTO(diperbarui), issuedCertifications: sertifikat, corrected: koreksi });
 };
 
 export const getAllRegistrations = async (req: Request, res: Response) => {
@@ -671,11 +751,30 @@ export const getAllRegistrations = async (req: Request, res: Response) => {
     ...(query.status ? { status: query.status } : {}),
   };
 
-  // Yang bukan HR dan tidak mengelola pelatihan hanya melihat riwayatnya
-  // sendiri. Pemegang pelatihan.buat/ubah (mis. peran kustom manajer) perlu
-  // melihat peserta sesi yang ia catat kehadirannya.
-  const kelola = isHr(actor.role) || actor.permissions.includes('pelatihan.buat') || actor.permissions.includes('pelatihan.ubah');
-  where.employeeId = kelola ? (query.employeeId ?? undefined) : actor.id;
+  const kelola = kelolaPelatihan(actor);
+
+  // Kontrak:
+  //   - tanpa saringan          → pendaftaran milik sendiri, untuk SIAPA PUN
+  //                               (APK memakainya sebagai "riwayat saya", dan
+  //                               tab Jadwal web sebagai status pendaftaran sendiri);
+  //   - trainingSessionId       → peserta sesi itu: pengelola melihat semuanya
+  //                               (kehadiran dicatat lintas departemen);
+  //   - employeeId              → riwayat orang itu, bila dalam lingkup pengelola;
+  //   - scope=semua             → riwayat semua karyawan dalam lingkup pengelola
+  //                               (HR seluruh perusahaan, manajer departemennya).
+  if (!kelola) {
+    where.employeeId = actor.id;
+  } else if (query.trainingSessionId) {
+    if (query.employeeId) where.employeeId = query.employeeId;
+  } else if (query.employeeId) {
+    where.employeeId = query.employeeId;
+    if (query.employeeId !== actor.id) where.employee = saringanLingkupKaryawan(actor) ?? { id: actor.id };
+  } else if (query.scope === 'semua') {
+    const lingkup = saringanLingkupKaryawan(actor) ?? { id: actor.id };
+    if (Object.keys(lingkup).length > 0) where.OR = [{ employeeId: actor.id }, { employee: lingkup }];
+  } else {
+    where.employeeId = actor.id;
+  }
 
   const [total, rows] = await Promise.all([
     prisma.trainingRegistration.count({ where }),
@@ -709,6 +808,11 @@ export const getAllRegistrations = async (req: Request, res: Response) => {
 export const getComplianceReport = async (req: Request, res: Response) => {
   const query = req.query as unknown as ComplianceQuery;
 
+  // Daftar siapa yang belum patuh adalah data per karyawan: manajer hanya
+  // melihat departemennya sendiri.
+  const lingkup = saringanLingkupKaryawan(req.user!, query.departmentId);
+  if (!lingkup) return res.status(403).json({ error: 'Anda hanya bisa melihat departemen sendiri' });
+
   const programs = await prisma.trainingProgram.findMany({
     where: {
       isMandatory: true,
@@ -724,7 +828,7 @@ export const getComplianceReport = async (req: Request, res: Response) => {
   const employees = await prisma.employee.findMany({
     where: {
       status: { notIn: ['resign', 'terminated', 'inactive'] },
-      ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+      ...lingkup,
     },
     select: { id: true, nik: true, name: true, departmentId: true, positionId: true },
     orderBy: { name: 'asc' },

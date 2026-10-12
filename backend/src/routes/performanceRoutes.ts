@@ -1,6 +1,7 @@
 // src/routes/performanceRoutes.ts
 import express from 'express';
 import {
+  deleteReview,
   createTemplate,
   getAllTemplates,
   createCycle,
@@ -89,6 +90,12 @@ router.get(
   requirePermission(...lihatAtauKelola('kinerja')),
   validate(listReviewQuerySchema, 'query'),
   asyncHandler(getAllReviews)
+);
+router.delete(
+  '/performance/reviews/:id',
+  requirePermission('kinerja.buat', 'kinerja.ubah'),
+  validate(idParamSchema, 'params'),
+  asyncHandler(deleteReview)
 );
 router.get(
   '/performance/reviews/:id',

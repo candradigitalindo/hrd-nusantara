@@ -1,8 +1,9 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { prisma, resetDatabase, makeEmployee, makePosition } from './helpers/db';
+import { prisma, resetDatabase, makeEmployee, makePosition, makeDepartment } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
+import { generateULID } from '../src/utils/generateULID';
 
 const app = bikinApp();
 
@@ -695,5 +696,68 @@ describe('Perbaikan audit Pengembangan (kinerja)', () => {
     expect((await request(app).get(`/api/feedback?authorId=${siti.id}`).set(auth(budiToken))).status).toBe(403);
     // Pemeriksaan lama tetap: penerima lain tidak bisa dilihat non-pengelola.
     expect((await request(app).get(`/api/feedback?recipientId=${siti.id}`).set(auth(budiToken))).status).toBe(403);
+  });
+});
+
+describe('Lingkup data kinerja bagi peran kustom', () => {
+  let kepalaToken: string;
+  let bawahan: { id: string };
+  let luar: { id: string };
+
+  beforeEach(async () => {
+    const fo = await makeDepartment('Front Office');
+    const dapur = await makeDepartment('Kitchen');
+    const peran = await prisma.customRole.create({
+      data: { id: generateULID(), name: 'Pengelola Kinerja', baseRole: Role.MANAGER, permissions: ['karyawan.lihat', 'kinerja.lihat', 'kinerja.buat', 'kinerja.ubah'] },
+    });
+    await makeEmployee({ email: 'kepala@resto.id', nik: 'MGR-1', role: Role.MANAGER, customRoleId: peran.id, departmentId: fo.id });
+    kepalaToken = await login(app, 'kepala@resto.id');
+    bawahan = await makeEmployee({ email: 'fo@resto.id', nik: 'FO-1', departmentId: fo.id });
+    luar = await makeEmployee({ email: 'dapur@resto.id', nik: 'KT-1', departmentId: dapur.id });
+  });
+
+  const siapkanSiklus = async () => {
+    const formulir = await buatFormulir();
+    const siklus = await buatSiklus();
+    await bukaSiklus(siklus.body.id);
+    return { cycleId: siklus.body.id as string, formTemplateId: formulir.body.id as string };
+  };
+  const tugaskanOleh = (token: string, isi: Record<string, unknown>) =>
+    request(app).post('/api/performance/reviews').set(auth(token)).send(isi);
+
+  it('menugaskan penilaian hanya untuk karyawan departemennya; penilainya boleh lintas departemen', async () => {
+    const { cycleId, formTemplateId } = await siapkanSiklus();
+    expectStatus(await tugaskanOleh(kepalaToken, { cycleId, formTemplateId, revieweeId: bawahan.id, reviewerId: luar.id, reviewerType: 'peer' }), 201);
+    expectStatus(await tugaskanOleh(kepalaToken, { cycleId, formTemplateId, revieweeId: luar.id, reviewerId: bawahan.id, reviewerType: 'peer' }), 403);
+  });
+
+  it('daftar, rincian, dan rangkuman penilaian terbatas pada departemennya', async () => {
+    const { cycleId, formTemplateId } = await siapkanSiklus();
+    const milikBawahan = await tugaskanOleh(hrToken, { cycleId, formTemplateId, revieweeId: bawahan.id, reviewerId: siti.id, reviewerType: 'peer' });
+    const milikLuar = await tugaskanOleh(hrToken, { cycleId, formTemplateId, revieweeId: luar.id, reviewerId: budi.id, reviewerType: 'peer' });
+    expectStatus(milikBawahan, 201);
+    expectStatus(milikLuar, 201);
+
+    const daftar = await request(app).get('/api/performance/reviews').set(auth(kepalaToken));
+    expectStatus(daftar, 200);
+    expect(daftar.body.data.map((r: { id: string }) => r.id)).toEqual([milikBawahan.body.id]);
+
+    expectStatus(await request(app).get(`/api/performance/reviews/${milikBawahan.body.id}`).set(auth(kepalaToken)), 200);
+    expectStatus(await request(app).get(`/api/performance/reviews/${milikLuar.body.id}`).set(auth(kepalaToken)), 403);
+    expectStatus(await request(app).post(`/api/performance/reviews/${milikLuar.body.id}/discussions`).set(auth(kepalaToken)).send({ note: 'Catatan' }), 403);
+
+    expectStatus(await request(app).get(`/api/performance/summary/${cycleId}/${bawahan.id}`).set(auth(kepalaToken)), 200);
+    expectStatus(await request(app).get(`/api/performance/summary/${cycleId}/${luar.id}`).set(auth(kepalaToken)), 403);
+    // HR tetap seluruh perusahaan.
+    expect((await request(app).get('/api/performance/reviews').set(auth(hrToken))).body.pagination.total).toBe(2);
+  });
+
+  it('umpan balik orang di luar departemennya tidak bisa dibaca', async () => {
+    await request(app).post('/api/feedback').set(auth(budiToken)).send({ recipientId: luar.id, message: 'Rapi' });
+    await request(app).post('/api/feedback').set(auth(budiToken)).send({ recipientId: bawahan.id, message: 'Sigap' });
+
+    expectStatus(await request(app).get(`/api/feedback?recipientId=${bawahan.id}`).set(auth(kepalaToken)), 200);
+    expectStatus(await request(app).get(`/api/feedback?recipientId=${luar.id}`).set(auth(kepalaToken)), 403);
+    expectStatus(await request(app).get(`/api/feedback?authorId=${luar.id}`).set(auth(kepalaToken)), 403);
   });
 });

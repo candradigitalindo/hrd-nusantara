@@ -166,6 +166,8 @@ export const listRegistrationQuerySchema = z.object({
   employeeId: ulidField.optional(),
   trainingSessionId: ulidField.optional(),
   status: z.enum(REGISTRATION_STATUSES).optional(),
+  /** "semua" = riwayat semua karyawan dalam lingkup pengelola; tanpa ini, milik sendiri. */
+  scope: z.enum(['semua']).optional(),
 });
 
 export const complianceQuerySchema = z.object({

@@ -153,6 +153,8 @@ export const listReviewQuerySchema = z.object({
   revieweeId: ulidField.optional(),
   reviewerId: ulidField.optional(),
   status: z.enum(REVIEW_STATUSES).optional(),
+  /** "semua" = semua penilaian dalam lingkup pembaca kinerja; tanpa ini, yang melibatkan diri sendiri. */
+  scope: z.enum(['semua']).optional(),
 });
 
 // --- Umpan balik berkelanjutan ---

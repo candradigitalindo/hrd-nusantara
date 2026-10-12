@@ -4,6 +4,7 @@ import { prisma, resetDatabase, makeEmployee, makeDepartment, makePosition } fro
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
 import { generateULID } from '../src/utils/generateULID';
+import { tungguAuditSelesai } from '../src/services/audit/record';
 
 const app = bikinApp();
 
@@ -367,8 +368,14 @@ describe('Riwayat pelatihan', () => {
     expect(budiLihat.body.pagination.total).toBe(1);
     expect(budiLihat.body.data[0].employeeId).toBe(budi.id);
 
-    const hrLihat = await request(app).get('/api/training/registrations').set(auth(hrToken));
-    expect(hrLihat.body.pagination.total).toBe(2);
+    // Tanpa saringan = milik sendiri, juga bagi HR: APK dan tab Jadwal web
+    // memakainya sebagai "pendaftaran saya". Riwayat semua lewat scope=semua.
+    const hrSendiri = await request(app).get('/api/training/registrations').set(auth(hrToken));
+    expect(hrSendiri.body.pagination.total).toBe(0);
+    const hrSemua = await request(app).get('/api/training/registrations?scope=semua').set(auth(hrToken));
+    expect(hrSemua.body.pagination.total).toBe(2);
+    // Karyawan biasa tidak bisa memperluas lingkupnya.
+    expect((await request(app).get('/api/training/registrations?scope=semua').set(auth(budiToken))).body.pagination.total).toBe(1);
   });
 });
 
@@ -554,5 +561,141 @@ describe('Perbaikan audit Pengembangan (pelatihan)', () => {
     expectStatus(await request(app).patch(`/api/training/registrations/${sitiDaftar.id}/cancel`).set(auth(hrToken)), 200);
     expectStatus(await request(app).patch(`/api/training/sessions/${sesi.body.id}/status`).set(auth(hrToken)).send({ status: 'completed' }), 200);
     expectStatus(await request(app).patch(`/api/training/registrations/${pendaftaran.body.id}/cancel`).set(auth(hrToken)), 409);
+  });
+});
+
+describe('Lingkup data pelatihan bagi peran kustom', () => {
+  let koordinatorToken: string;
+  let dapurId: string;
+  let bawahan: { id: string };
+  let bawahanToken: string;
+  let luar: { id: string };
+  let luarToken: string;
+
+  beforeEach(async () => {
+    const fo = await makeDepartment('Front Office');
+    dapurId = (await makeDepartment('Kitchen')).id;
+    const peran = await prisma.customRole.create({
+      data: { id: generateULID(), name: 'Koordinator Pelatihan', baseRole: Role.MANAGER, permissions: ['pelatihan.lihat', 'pelatihan.buat', 'pelatihan.ubah'] },
+    });
+    await makeEmployee({ email: 'koordinator@resto.id', nik: 'MGR-1', role: Role.MANAGER, customRoleId: peran.id, departmentId: fo.id });
+    koordinatorToken = await login(app, 'koordinator@resto.id');
+    bawahan = await makeEmployee({ email: 'fo@resto.id', nik: 'FO-1', departmentId: fo.id });
+    bawahanToken = await login(app, 'fo@resto.id');
+    luar = await makeEmployee({ email: 'dapur@resto.id', nik: 'KT-1', departmentId: dapurId });
+    luarToken = await login(app, 'dapur@resto.id');
+  });
+
+  it('peserta satu sesi terlihat lintas departemen; daftar menyeluruh hanya departemennya', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id);
+    expectStatus(await daftar(sesi.body.id, bawahanToken), 201);
+    expectStatus(await daftar(sesi.body.id, luarToken), 201);
+
+    // Kehadiran satu sesi dicatat untuk semua pesertanya, apa pun departemennya.
+    const peserta = await request(app).get(`/api/training/registrations?trainingSessionId=${sesi.body.id}`).set(auth(koordinatorToken));
+    expect(peserta.body.pagination.total).toBe(2);
+
+    // Tanpa saringan: milik sendiri (kontrak APK) — koordinator belum mendaftar apa pun.
+    expect((await request(app).get('/api/training/registrations').set(auth(koordinatorToken))).body.pagination.total).toBe(0);
+    const semua = await request(app).get('/api/training/registrations?scope=semua').set(auth(koordinatorToken));
+    expect(semua.body.data.map((r: { employeeId: string }) => r.employeeId)).toEqual([bawahan.id]);
+    expect((await request(app).get(`/api/training/registrations?employeeId=${luar.id}`).set(auth(koordinatorToken))).body.pagination.total).toBe(0);
+    expect((await request(app).get(`/api/training/registrations?employeeId=${bawahan.id}`).set(auth(koordinatorToken))).body.pagination.total).toBe(1);
+  });
+
+  it('laporan kepatuhan hanya departemennya; departemen lain ditolak', async () => {
+    await buatProgram();
+    const res = await request(app).get('/api/training/compliance').set(auth(koordinatorToken));
+    expectStatus(res, 200);
+    const ids = res.body.programs[0].needsAction.map((b: { employee: { id: string } }) => b.employee.id);
+    expect(ids).toContain(bawahan.id);
+    expect(ids).not.toContain(luar.id);
+    expectStatus(await request(app).get(`/api/training/compliance?departmentId=${dapurId}`).set(auth(koordinatorToken)), 403);
+  });
+
+  it('pendaftaran milik sendiri bisa disaring lewat employeeId, termasuk oleh HR', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id);
+    expectStatus(await daftar(sesi.body.id, budiToken), 201);
+    const hr = await prisma.employee.findFirstOrThrow({ where: { email: 'hr@resto.id' } });
+
+    // Dulu tab Jadwal memakai daftar tanpa saringan, sehingga HR tampak terdaftar di sesi Budi.
+    const milikHr = await request(app).get(`/api/training/registrations?employeeId=${hr.id}`).set(auth(hrToken));
+    expect(milikHr.body.pagination.total).toBe(0);
+  });
+});
+
+describe('Perbaikan tinjauan Pelatihan', () => {
+  it('sesi selesai menutup daftar tunggu, bukan membiarkannya menggantung', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id, { maxParticipants: 1 });
+    expectStatus(await daftar(sesi.body.id, budiToken), 201);
+    const tunggu = await daftar(sesi.body.id, sitiToken);
+    expect(tunggu.body.status).toBe('waitlisted');
+
+    const daftarSesi = await request(app).get('/api/training/sessions').set(auth(hrToken));
+    expect(daftarSesi.body.data.find((x: { id: string }) => x.id === sesi.body.id)).toMatchObject({ registrationCount: 1, waitlistCount: 1, cancellableCount: 2 });
+
+    expectStatus(await request(app).patch(`/api/training/sessions/${sesi.body.id}/status`).set(auth(hrToken)).send({ status: 'ongoing' }), 200);
+    expectStatus(await request(app).patch(`/api/training/sessions/${sesi.body.id}/status`).set(auth(hrToken)).send({ status: 'completed' }), 200);
+    const milikSiti = await prisma.trainingRegistration.findUniqueOrThrow({ where: { id: tunggu.body.id } });
+    expect(milikSiti.status).toBe('cancelled');
+    expect(milikSiti.note).toMatch(/tidak mendapat kursi/);
+  });
+
+  it('setelah jam mulai karyawan tidak bisa mundur walau status sesi belum diubah; HR masih bisa', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id);
+    const budiDaftar = await daftar(sesi.body.id, budiToken);
+    const sitiDaftar = await daftar(sesi.body.id, sitiToken);
+    // Jam mulai lewat, HR lupa menekan "Mulai".
+    await prisma.trainingSession.update({ where: { id: sesi.body.id }, data: { startDateTime: new Date(Date.now() - 60_000) } });
+
+    const mundur = await request(app).patch(`/api/training/registrations/${budiDaftar.body.id}/cancel`).set(auth(budiToken));
+    expectStatus(mundur, 409);
+    expect(mundur.body.error).toMatch(/sudah dimulai/);
+    expectStatus(await request(app).patch(`/api/training/registrations/${sitiDaftar.body.id}/cancel`).set(auth(hrToken)), 200);
+  });
+
+  it('evaluasi yang keliru bisa dikoreksi: kelulusan dan sertifikatnya ikut menyesuaikan', async () => {
+    const { programId, registrationId } = await sampaiHadir();
+    expectStatus(
+      await request(app).post('/api/certification-types').set(auth(hrToken)).send({ code: 'HYGIENE_CERT', name: 'Sertifikat Hygiene', validityMonths: 12, trainingProgramId: programId }),
+      201
+    );
+
+    // Nilai 90 salah ketik menjadi 9: tidak lulus, tanpa sertifikat.
+    const salah = await request(app).post(`/api/training/registrations/${registrationId}/evaluate`).set(auth(hrToken)).send({ score: 9 });
+    expectStatus(salah, 200);
+    expect(salah.body).toMatchObject({ status: 'failed', passed: false, corrected: false });
+    expect(await prisma.certificationRecord.count()).toBe(0);
+    const selesaiAwal = salah.body.completedAt;
+
+    const koreksi = await request(app).post(`/api/training/registrations/${registrationId}/evaluate`).set(auth(hrToken)).send({ score: 90 });
+    expectStatus(koreksi, 200);
+    expect(koreksi.body).toMatchObject({ status: 'completed', passed: true, corrected: true, completedAt: selesaiAwal });
+    expect(koreksi.body.issuedCertifications).toHaveLength(1);
+
+    // Koreksi ulang yang tetap lulus tidak menerbitkan sertifikat kedua.
+    expectStatus(await request(app).post(`/api/training/registrations/${registrationId}/evaluate`).set(auth(hrToken)).send({ score: 95 }), 200);
+    expect(await prisma.certificationRecord.count({ where: { revokedAt: null } })).toBe(1);
+
+    // Koreksi menjadi tidak lulus mencabut sertifikat yang terbit karena kelulusan lama.
+    expectStatus(await request(app).post(`/api/training/registrations/${registrationId}/evaluate`).set(auth(hrToken)).send({ score: 20 }), 200);
+    const sertifikat = await prisma.certificationRecord.findFirstOrThrow();
+    expect(sertifikat.revokedAt).not.toBeNull();
+    expect(sertifikat.revokedReason).toMatch(/dikoreksi/);
+    // Tercatat di jejak audit (ditulis di latar setelah respons, jadi ditunggu dulu).
+    await tungguAuditSelesai();
+    expect(await prisma.auditLog.count({ where: { action: 'pelatihan.evaluasi.koreksi' } })).toBe(3);
+  });
+
+  it('peserta yang tidak hadir tetap tidak bisa dievaluasi', async () => {
+    const program = await buatProgram();
+    const sesi = await buatSesi(program.body.id);
+    const p = await daftar(sesi.body.id, budiToken);
+    await request(app).post(`/api/training/sessions/${sesi.body.id}/attendance`).set(auth(hrToken)).send({ entries: [{ registrationId: p.body.id, attended: false }] });
+    expectStatus(await request(app).post(`/api/training/registrations/${p.body.id}/evaluate`).set(auth(hrToken)).send({ score: 90 }), 409);
   });
 });

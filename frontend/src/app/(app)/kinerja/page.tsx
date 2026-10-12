@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { Target, Plus, ClipboardList, UserPlus, MessageSquareHeart, BarChart3, Lock, Send, Unlock, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola, bolehHr } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -53,6 +53,11 @@ export default function HalamanKinerja() {
   // Badge tugas dihitung dari daftar penuh, bukan daftar yang sedang disaring status.
   const penilaianSemua = useQuery({ queryKey: ["penilaian", "semua"], queryFn: async () => (await api.get<Halaman<Penilaian>>("/performance/reviews?limit=100")).data.data });
   const karyawan = useQuery({ queryKey: ["direktori"], queryFn: async () => (await api.get<{ data: KaryawanDirektori[] }>("/employees/directory")).data.data, enabled: tugasBuka || umpanBuka || tab === "ringkasan" || (hr && tab === "umpan") });
+  // Karyawan dalam lingkup data pengguna: yang boleh dinilai, dirangkum, atau
+  // dibaca umpan baliknya. Penilai dan penerima umpan balik tetap boleh siapa saja.
+  const dalamLingkup = (k: KaryawanDirektori) =>
+    bolehHr(saya?.role) || k.id === saya?.id || (saya?.role === "MANAGER" && saya.departmentId !== null && k.department?.id === saya.departmentId);
+  const karyawanLingkup = (karyawan.data ?? []).filter(dalamLingkup);
   const umpan = useQuery({ queryKey: ["umpan-balik", umpanUntuk, umpanMode], queryFn: async () => (await api.get<Halaman<UmpanBalik>>(`/feedback?limit=50${umpanMode === "dari" ? "&authorId=me" : umpanUntuk ? `&recipientId=${umpanUntuk}` : ""}`)).data.data, enabled: tab === "umpan" });
   const ringkasan = useQuery({ queryKey: ["ringkasan-kinerja", ringkasSiklus, ringkasKaryawan], queryFn: async () => (await api.get<RingkasanKinerja>(`/performance/summary/${ringkasSiklus}/${ringkasKaryawan}`)).data, enabled: hr && tab === "ringkasan" && Boolean(ringkasSiklus && ringkasKaryawan) });
   // Detail memuat kriteria formulir + diskusi terbaru; daftar tidak membawanya.
@@ -128,7 +133,7 @@ export default function HalamanKinerja() {
 
       {tab === "umpan" && (
         <Card>
-          <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanMode === "dari" ? "__dari" : umpanUntuk} onChange={(e) => { if (e.target.value === "__dari") { setUmpanMode("dari"); } else { setUmpanMode("untuk"); setUmpanUntuk(e.target.value); } }} aria-label="Saringan umpan balik"><option value="">Umpan balik untuk saya</option><option value="__dari">Yang saya kirim</option>{hr && (karyawan.data ?? []).filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>
+          <div className="border-b border-border p-3"><Select className="sm:w-72" value={umpanMode === "dari" ? "__dari" : umpanUntuk} onChange={(e) => { if (e.target.value === "__dari") { setUmpanMode("dari"); } else { setUmpanMode("untuk"); setUmpanUntuk(e.target.value); } }} aria-label="Saringan umpan balik"><option value="">Umpan balik untuk saya</option><option value="__dari">Yang saya kirim</option>{hr && karyawanLingkup.filter((k) => k.id !== saya?.id).map((k) => <option key={k.id} value={k.id}>Untuk {k.name}</option>)}</Select></div>
           {umpan.isLoading ? <SkeletonBaris /> : !umpan.data?.length ? (
             <EmptyState icon={MessageSquareHeart} title="Belum ada umpan balik" description="Umpan balik informal antar rekan atau dari atasan, tercatat kapan saja — tidak perlu menunggu siklus penilaian." action={<Button onClick={() => setUmpanBuka(true)}><MessageSquareHeart className="h-4 w-4" aria-hidden /> Beri Umpan Balik</Button>} />
           ) : (
@@ -183,7 +188,7 @@ export default function HalamanKinerja() {
         <>
           <div className="grid gap-2 sm:grid-cols-2 lg:w-2/3">
             <Select value={ringkasSiklus} onChange={(e) => setRingkasSiklus(e.target.value)} aria-label="Siklus"><option value="">— Pilih siklus —</option>{(siklus.data ?? []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select>
-            <Select value={ringkasKaryawan} onChange={(e) => setRingkasKaryawan(e.target.value)} aria-label="Karyawan"><option value="">— Pilih karyawan —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name} · {k.nik}</option>)}</Select>
+            <Select value={ringkasKaryawan} onChange={(e) => setRingkasKaryawan(e.target.value)} aria-label="Karyawan"><option value="">— Pilih karyawan —</option>{karyawanLingkup.map((k) => <option key={k.id} value={k.id}>{k.name} · {k.nik}</option>)}</Select>
           </div>
           {!ringkasSiklus || !ringkasKaryawan ? <Card><EmptyState icon={BarChart3} title="Pilih siklus dan karyawan" description="Ringkasan menggabungkan penilaian diri, atasan, rekan, dan bawahan." /></Card> : ringkasan.isLoading ? <Skeleton className="h-64" /> : ringkasan.data && (
             <>
@@ -217,7 +222,7 @@ export default function HalamanKinerja() {
         footer={<><Button variant="outline" onClick={() => setTugasBuka(false)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-tugas" type="submit" loading={tugaskan.isPending} disabled={!(siklus.data ?? []).some((s) => s.status === "open")}>{!tugaskan.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Tugaskan</Button></>}>
         <form id="form-tugas" onSubmit={ft.handleSubmit((v) => tugaskan.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="Siklus" error={ft.formState.errors.cycleId?.message} className="sm:col-span-2" hint={(siklus.data ?? []).some((s) => s.status === "open") ? undefined : "Belum ada siklus terbuka — buka siklus di tab Siklus dulu; siklus draf tidak bisa menerima penugasan."}><Select {...ft.register("cycleId", { required: "Pilih siklus" })}><option value="">— Pilih —</option>{(siklus.data ?? []).filter((s) => s.status === "open").map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
-          <Field label="Yang dinilai" error={ft.formState.errors.revieweeId?.message}><Select {...ft.register("revieweeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
+          <Field label="Yang dinilai" error={ft.formState.errors.revieweeId?.message}><Select {...ft.register("revieweeId", { required: "Pilih karyawan" })}><option value="">— Pilih —</option>{karyawanLingkup.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
           <Field label="Penilai" error={ft.formState.errors.reviewerId?.message}><Select {...ft.register("reviewerId", { required: "Pilih penilai" })}><option value="">— Pilih —</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
           <Field label="Hubungan penilai"><Select {...ft.register("reviewerType")}>{Object.entries(LABEL_PENILAI).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</Select></Field>
           <Field label="Form KPI" error={ft.formState.errors.formTemplateId?.message}><Select {...ft.register("formTemplateId", { required: "Pilih form" })}><option value="">— Pilih —</option>{(template.data ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</Select></Field>

@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateULID } from '../utils/generateULID';
+import { dalamLingkup, saringanLingkupKaryawan } from '../utils/lingkupData';
 import {
   calculateReviewScore,
   summarize360,
@@ -23,15 +24,15 @@ import type {
   ListFeedbackQuery,
 } from '../schemas/performanceSchema';
 
-const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
 /**
- * Pengelola kinerja: HR, atau peran kustom pemegang kinerja.buat/ubah.
- * Penjaga rute memakai izin, jadi pemeriksaan di sini harus memakai izin
- * juga — dulu memakai Role enum sehingga peran kustom bisa menugaskan
- * penilai tetapi tidak bisa melihat penugasannya sendiri.
+ * Pembaca kinerja orang lain: pemegang kinerja.ubah (katalog izin: "Buka /
+ * tutup siklus dan lihat ringkasan 360° semua karyawan"). kinerja.buat saja
+ * hanya menyiapkan siklus, form, dan penugasan — tidak membaca skor orang.
+ *
+ * Izin, bukan Role: HR yang izin kinerjanya dicabut lewat matriks Peran tidak
+ * lagi membaca data kinerja; Super Admin selalu memegang semua izin.
  */
-const bolehKelolaKinerja = (u: { role: Role; permissions: string[] }) =>
-  isHr(u.role) || u.permissions.includes('kinerja.buat') || u.permissions.includes('kinerja.ubah');
+const bolehBacaKinerja = (u: { permissions: string[] }) => u.permissions.includes('kinerja.ubah');
 const num = (d: Prisma.Decimal | null) => (d === null ? null : d.toNumber());
 
 // ============ Formulir penilaian ============
@@ -228,18 +229,35 @@ const reviewDTO = (row: ReviewRow) => ({
   })),
 });
 
+type AktorKinerja = { id: string; role: Role; departmentId: string | null; permissions: string[] };
+
+/**
+ * Pengelola kinerja atas karyawan tertentu: memegang izin kelola DAN karyawan
+ * itu ada dalam lingkup datanya. Peran kustom berlingkup "Departemen sendiri"
+ * tidak boleh membaca penilaian departemen lain hanya karena memegang izin.
+ */
+const kelolaAtas = (actor: AktorKinerja, karyawan: { id: string; departmentId: string | null }) =>
+  bolehBacaKinerja(actor) && dalamLingkup(actor, karyawan);
+
+/** Label hubungan penilai seperti di UI, untuk pesan galat. */
+const LABEL_HUBUNGAN: Record<string, string> = { self: 'Diri sendiri', manager: 'Atasan', peer: 'Rekan kerja', subordinate: 'Bawahan' };
+
 /** Apakah pengguna boleh membuka penilaian ini. */
 const bolehLihat = (
-  review: { revieweeId: string; reviewerId: string },
-  actor: { id: string; role: Role; permissions: string[] }
-) => review.revieweeId === actor.id || review.reviewerId === actor.id || bolehKelolaKinerja(actor);
+  review: { revieweeId: string; reviewerId: string; reviewee: { departmentId: string | null } },
+  actor: AktorKinerja
+) =>
+  review.revieweeId === actor.id ||
+  review.reviewerId === actor.id ||
+  kelolaAtas(actor, { id: review.revieweeId, departmentId: review.reviewee.departmentId });
 
 export const assignReview = async (req: Request, res: Response) => {
   const input = req.body as AssignReviewInput;
+  const actor = req.user!;
 
   const [siklus, dinilai, penilai, template] = await Promise.all([
     prisma.performanceCycle.findUnique({ where: { id: input.cycleId } }),
-    prisma.employee.findUnique({ where: { id: input.revieweeId }, select: { id: true } }),
+    prisma.employee.findUnique({ where: { id: input.revieweeId }, select: { id: true, departmentId: true } }),
     prisma.employee.findUnique({ where: { id: input.reviewerId }, select: { id: true } }),
     prisma.performanceFormTemplate.findUnique({
       where: { id: input.formTemplateId },
@@ -249,6 +267,11 @@ export const assignReview = async (req: Request, res: Response) => {
 
   if (!siklus) return res.status(404).json({ error: 'Siklus penilaian tidak ditemukan' });
   if (!dinilai) return res.status(404).json({ error: 'Karyawan yang dinilai tidak ditemukan' });
+  // Yang dinilai harus dalam lingkup data penugas; penilainya boleh dari
+  // departemen lain (rekan lintas fungsi pada penilaian 360).
+  if (!dalamLingkup(actor, dinilai)) {
+    return res.status(403).json({ error: 'Anda hanya bisa menugaskan penilaian untuk karyawan di departemen sendiri' });
+  }
   if (!penilai) return res.status(404).json({ error: 'Penilai tidak ditemukan' });
   if (!template || !template.isActive) {
     return res.status(404).json({ error: 'Formulir penilaian tidak ditemukan atau tidak aktif' });
@@ -272,7 +295,7 @@ export const assignReview = async (req: Request, res: Response) => {
   });
   if (sudah) {
     return res.status(409).json({
-      error: `Penilai ini sudah ditugaskan menilai orang tersebut pada siklus ini (sebagai ${sudah.reviewerType})`,
+      error: `Penilai ini sudah ditugaskan menilai orang tersebut pada siklus ini (sebagai ${LABEL_HUBUNGAN[sudah.reviewerType] ?? sudah.reviewerType}). Bila hubungannya keliru, hapus penugasan yang belum diisi itu lalu tugaskan ulang.`,
     });
   }
 
@@ -437,10 +460,18 @@ export const getAllReviews = async (req: Request, res: Response) => {
     ...(query.status ? { status: query.status } : {}),
   };
 
-  // Yang bukan pengelola hanya melihat penilaian yang melibatkan dirinya,
-  // baik sebagai penilai maupun yang dinilai.
-  if (!bolehKelolaKinerja(actor)) {
-    where.OR = [{ reviewerId: actor.id }, { revieweeId: actor.id }];
+  // Tanpa scope: penilaian yang melibatkan diri sendiri (sebagai penilai atau
+  // yang dinilai), untuk SIAPA PUN — APK dan badge tugas di web memakainya
+  // sebagai "milik saya", dan daftar yang lebih luas terpotong batas halaman
+  // sehingga tugas sendiri bisa hilang. scope=semua: pembaca kinerja melihat
+  // semua penilaian dalam lingkup datanya (HR seluruh perusahaan, manajer
+  // departemennya).
+  const milikSendiri: Prisma.PerformanceReviewWhereInput[] = [{ reviewerId: actor.id }, { revieweeId: actor.id }];
+  if (query.scope === 'semua' && bolehBacaKinerja(actor)) {
+    const lingkup = saringanLingkupKaryawan(actor) ?? { id: actor.id };
+    if (Object.keys(lingkup).length > 0) where.OR = [...milikSendiri, { reviewee: lingkup }];
+  } else {
+    where.OR = milikSendiri;
   }
 
   const [total, rows] = await Promise.all([
@@ -463,6 +494,43 @@ export const getAllReviews = async (req: Request, res: Response) => {
       totalPages: Math.ceil(total / query.limit) || 1,
     },
   });
+};
+
+/**
+ * Menghapus penugasan yang belum diisi. Tanpa ini, penugasan dengan hubungan
+ * penilai yang keliru (mis. lupa mengganti bawaan "Atasan") tidak bisa
+ * dikoreksi dalam siklus: penugasan ulang ditolak karena penilainya sama.
+ * Yang sudah dikirim adalah bagian dari riwayat dan tidak bisa dihapus.
+ */
+export const deleteReview = async (req: Request, res: Response) => {
+  const actor = req.user!;
+  const review = await prisma.performanceReview.findUnique({
+    where: { id: req.params.id },
+    select: {
+      id: true,
+      status: true,
+      reviewerType: true,
+      revieweeId: true,
+      reviewee: { select: { name: true, departmentId: true } },
+      reviewer: { select: { name: true } },
+    },
+  });
+  if (!review) return res.status(404).json({ error: 'Penilaian tidak ditemukan' });
+  if (!dalamLingkup(actor, { id: review.revieweeId, departmentId: review.reviewee.departmentId })) {
+    return res.status(403).json({ error: 'Anda hanya bisa mengelola penilaian karyawan di departemen sendiri' });
+  }
+  if (review.status !== 'draft') {
+    return res.status(409).json({ error: 'Hanya penugasan yang belum diisi yang bisa dihapus; penilaian yang sudah dikirim adalah bagian dari riwayat.' });
+  }
+
+  await prisma.performanceReview.delete({ where: { id: review.id } });
+  res.locals.audit = {
+    action: 'kinerja.penugasan.hapus',
+    entity: 'PerformanceReview',
+    entityId: review.id,
+    summary: `Menghapus penugasan: ${review.reviewer.name} menilai ${review.reviewee.name} (${LABEL_HUBUNGAN[review.reviewerType] ?? review.reviewerType})`,
+  };
+  res.status(204).send();
 };
 
 export const getReviewById = async (req: Request, res: Response) => {
@@ -498,12 +566,12 @@ export const addDiscussion = async (req: Request, res: Response) => {
 
   const review = await prisma.performanceReview.findUnique({
     where: { id: req.params.id },
-    select: { id: true, revieweeId: true, reviewerId: true },
+    select: { id: true, revieweeId: true, reviewerId: true, reviewee: { select: { departmentId: true } } },
   });
 
   if (!review) return res.status(404).json({ error: 'Penilaian tidak ditemukan' });
 
-  // Diskusi evaluasi melibatkan kedua pihak; HR boleh ikut mencatat.
+  // Diskusi evaluasi melibatkan kedua pihak; pengelola dalam lingkupnya boleh ikut mencatat.
   if (!bolehLihat(review, actor)) {
     return res.status(403).json({ error: 'Anda tidak terlibat dalam penilaian ini' });
   }
@@ -523,8 +591,12 @@ export const getReviewSummary = async (req: Request, res: Response) => {
   const actor = req.user!;
   const { employeeId, cycleId } = req.params;
 
-  if (employeeId !== actor.id && !bolehKelolaKinerja(actor)) {
-    return res.status(403).json({ error: 'Anda tidak punya akses ke rangkuman ini' });
+  if (employeeId !== actor.id) {
+    const karyawan = await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, departmentId: true } });
+    if (!karyawan) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+    if (!kelolaAtas(actor, karyawan)) {
+      return res.status(403).json({ error: 'Anda tidak punya akses ke rangkuman ini' });
+    }
   }
 
   const reviews = await prisma.performanceReview.findMany({
@@ -588,15 +660,22 @@ export const getFeedback = async (req: Request, res: Response) => {
   // hanya untuk pengelola) atau umpan balik yang DIKIRIM seseorang (bawaan
   // "me"), supaya pengirim bisa meninjau kirimannya sendiri.
   const authorId = query.authorId === 'me' ? actor.id : query.authorId;
+  /** Umpan balik milik orang lain hanya bagi pengelola yang orang itu dalam lingkupnya. */
+  const bolehAtas = async (employeeId: string) => {
+    if (employeeId === actor.id) return true;
+    if (!bolehBacaKinerja(actor)) return false;
+    const orang = await prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, departmentId: true } });
+    return Boolean(orang && dalamLingkup(actor, orang));
+  };
   let where: Prisma.ContinuousFeedbackWhereInput;
   if (authorId) {
-    if (authorId !== actor.id && !bolehKelolaKinerja(actor)) {
+    if (!(await bolehAtas(authorId))) {
       return res.status(403).json({ error: 'Anda hanya bisa melihat umpan balik yang Anda kirim sendiri' });
     }
     where = { authorId, ...(query.recipientId ? { recipientId: query.recipientId } : {}), ...(query.type ? { type: query.type } : {}) };
   } else {
     const recipientId = query.recipientId ?? actor.id;
-    if (recipientId !== actor.id && !bolehKelolaKinerja(actor)) {
+    if (!(await bolehAtas(recipientId))) {
       return res.status(403).json({ error: 'Anda hanya bisa melihat umpan balik untuk diri sendiri' });
     }
     where = { recipientId, ...(query.type ? { type: query.type } : {}) };
