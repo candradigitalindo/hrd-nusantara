@@ -25,8 +25,20 @@ describe('certificationState', () => {
     expect(cek(tgl('2026-09-01'))).toBe('expired');
   });
 
-  it('kedaluwarsa tepat pada tanggalnya', () => {
-    expect(cek(KINI)).toBe('expired');
+  it('masih berlaku sepanjang tanggal kedaluwarsanya, kedaluwarsa keesokan harinya', () => {
+    // "Berlaku sampai 15 Sep" berarti 15 Sep masih sah — seperti sertifikat fisiknya.
+    expect(cek(KINI)).toBe('expiring_soon');
+    expect(cek(tgl('2026-09-14'))).toBe('expired');
+    // Sore hari pada tanggal itu pun masih berlaku.
+    const sore = new Date('2026-09-15T16:59:00.000Z');
+    expect(certificationState({ expiryDate: KINI, revokedAt: null }, sore, PERINGATAN)).toBe('expiring_soon');
+  });
+
+  it('ambang peringatan dihitung dari akhir hari kedaluwarsa', () => {
+    // KINI + 29 hari: akhir harinya tepat 30 hari lagi → masih diperingatkan.
+    expect(cek(tgl('2026-10-14'))).toBe('expiring_soon');
+    // KINI + 30 hari: akhir harinya 31 hari lagi → belum diperingatkan.
+    expect(cek(tgl('2026-10-15'))).toBe('valid');
   });
 
   it('memperingatkan sebelum kedaluwarsa', () => {
@@ -116,10 +128,23 @@ describe('analyzeCompetencyGap', () => {
     expect(h.readinessPercent).toBe(100);
   });
 
-  it('menganggap jabatan tanpa syarat sebagai siap penuh', () => {
+  it('jabatan tanpa syarat tidak dinilai kesiapannya, bukan "siap penuh"', () => {
+    // Dulu 100: laporan kesiapan menampilkan "100% (0/0)" sehingga jabatan
+    // yang belum diberi standar tampak siap dan kebutuhannya tidak terlihat.
     const h = analyzeCompetencyGap([], [{ competencyId: 'a', currentLevel: 1 }]);
-    expect(h.readinessPercent).toBe(100);
+    expect(h.readinessPercent).toBeNull();
+    expect(h.totalRequired).toBe(0);
     expect(h.gaps).toHaveLength(0);
+  });
+
+  it('membawa catatan, bukti, tanggal, dan penilai penilaian terakhir', () => {
+    const dinilai = new Date('2026-09-01T03:00:00.000Z');
+    const h = analyzeCompetencyGap(
+      [standar('a', 2), standar('b', 2)],
+      [{ competencyId: 'a', currentLevel: 2, assessedAt: dinilai, assessedBy: { id: 'hr', name: 'HR' }, note: 'Diamati', evidenceUrl: 'https://contoh.id/bukti' }]
+    );
+    expect(h.gaps[0]).toMatchObject({ assessedAt: dinilai, assessedBy: { id: 'hr', name: 'HR' }, note: 'Diamati', evidenceUrl: 'https://contoh.id/bukti' });
+    expect(h.gaps[1]).toMatchObject({ notAssessed: true, assessedAt: null, assessedBy: null, note: null, evidenceUrl: null });
   });
 });
 

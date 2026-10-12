@@ -8,6 +8,19 @@ export interface CertificationInput {
 }
 
 /**
+ * Akhir masa berlaku sertifikat yang "berlaku sampai" suatu tanggal: sertifikat
+ * masih sah sepanjang hari itu dan baru kedaluwarsa pada pergantian hari
+ * berikutnya. Begitu pula sertifikat fisiknya dibaca — Food Handler yang
+ * tertulis "berlaku s.d. 7 Okt" masih berlaku pada 7 Okt.
+ *
+ * Tanggal kedaluwarsa disimpan sebagai tanggal UTC (date-only dari HR, atau
+ * turunan tanggal selesai pelatihan), jadi batas harinya diambil dari
+ * komponen tanggal UTC-nya.
+ */
+export const akhirMasaBerlaku = (expiryDate: Date): number =>
+  Date.UTC(expiryDate.getUTCFullYear(), expiryDate.getUTCMonth(), expiryDate.getUTCDate() + 1);
+
+/**
  * Status sertifikat, DIHITUNG bukan disimpan.
  *
  * Status tersimpan akan tetap berbunyi "valid" setelah tanggalnya lewat,
@@ -26,10 +39,11 @@ export const certificationState = (
 
   if (cert.expiryDate === null) return 'valid';
 
-  if (cert.expiryDate.getTime() <= now.getTime()) return 'expired';
+  const akhir = akhirMasaBerlaku(cert.expiryDate);
+  if (akhir <= now.getTime()) return 'expired';
 
-  const ambang = new Date(now.getTime() + warningDays * 24 * 60 * 60 * 1000);
-  return cert.expiryDate.getTime() <= ambang.getTime() ? 'expiring_soon' : 'valid';
+  const ambang = now.getTime() + warningDays * 24 * 60 * 60 * 1000;
+  return akhir <= ambang ? 'expiring_soon' : 'valid';
 };
 
 export interface StandardInput {
@@ -40,9 +54,19 @@ export interface StandardInput {
   maxLevel: number;
 }
 
+export interface PenilaiRingkas {
+  id: string;
+  name: string;
+}
+
 export interface HeldCompetency {
   competencyId: string;
   currentLevel: number;
+  /** Kapan, oleh siapa, dan atas bukti apa tingkat ini dinilai — bila ikut dimuat. */
+  assessedAt?: Date | null;
+  assessedBy?: PenilaiRingkas | null;
+  note?: string | null;
+  evidenceUrl?: string | null;
 }
 
 export interface CompetencyGap {
@@ -56,14 +80,21 @@ export interface CompetencyGap {
   meets: boolean;
   /** Belum pernah dinilai sama sekali. */
   notAssessed: boolean;
+  assessedAt: Date | null;
+  assessedBy: PenilaiRingkas | null;
+  note: string | null;
+  evidenceUrl: string | null;
 }
 
 export interface GapAnalysis {
   gaps: CompetencyGap[];
   totalRequired: number;
   totalMet: number;
-  /** Persen kesiapan terhadap seluruh syarat jabatan, 0-100. */
-  readinessPercent: number;
+  /**
+   * Persen kesiapan terhadap seluruh syarat jabatan, 0-100. null bila jabatan
+   * belum punya syarat sama sekali: "belum ada standar" bukan "100% siap".
+   */
+  readinessPercent: number | null;
 }
 
 /**
@@ -77,12 +108,12 @@ export const analyzeCompetencyGap = (
   standards: StandardInput[],
   held: HeldCompetency[]
 ): GapAnalysis => {
-  const dimiliki = new Map(held.map((h) => [h.competencyId, h.currentLevel]));
+  const dimiliki = new Map(held.map((h) => [h.competencyId, h]));
 
   const gaps = standards.map((standar) => {
-    const tingkat = dimiliki.get(standar.competencyId);
-    const notAssessed = tingkat === undefined;
-    const currentLevel = tingkat ?? 0;
+    const punya = dimiliki.get(standar.competencyId);
+    const notAssessed = punya === undefined;
+    const currentLevel = punya?.currentLevel ?? 0;
     const gap = Math.max(0, standar.requiredLevel - currentLevel);
 
     return {
@@ -94,6 +125,10 @@ export const analyzeCompetencyGap = (
       gap,
       meets: gap === 0,
       notAssessed,
+      assessedAt: punya?.assessedAt ?? null,
+      assessedBy: punya?.assessedBy ?? null,
+      note: punya?.note ?? null,
+      evidenceUrl: punya?.evidenceUrl ?? null,
     };
   });
 
@@ -104,7 +139,7 @@ export const analyzeCompetencyGap = (
     totalRequired: standards.length,
     totalMet,
     readinessPercent:
-      standards.length === 0 ? 100 : Math.round((totalMet / standards.length) * 1000) / 10,
+      standards.length === 0 ? null : Math.round((totalMet / standards.length) * 1000) / 10,
   };
 };
 

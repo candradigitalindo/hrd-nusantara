@@ -4,6 +4,11 @@ import { ulidField, dateOnlyField, paginationFields } from './common';
 
 const tingkat = z.coerce.number().int().min(0).max(20);
 
+// Tautan bukti dan berkas ditampilkan sebagai tautan yang bisa diklik, jadi
+// hanya http(s): skema lain (javascript:, data:) tidak punya tempat di sini.
+const tautanWeb = (nama: string) =>
+  z.url({ protocol: /^https?$/, error: `${nama} harus berupa URL http(s)` }).max(500);
+
 // --- Kamus kompetensi ---
 
 export const createCompetencySchema = z
@@ -30,10 +35,18 @@ export const listCompetencyQuerySchema = z.object({
 
 // --- Standar jabatan ---
 
+// Syarat jabatan minimal tingkat 1: syarat "tingkat 0" terpenuhi oleh siapa pun,
+// termasuk yang belum pernah dinilai, sehingga kesiapan jabatan menggelembung.
+const tingkatSyarat = z.coerce
+  .number()
+  .int()
+  .min(1, 'Syarat jabatan minimal tingkat 1')
+  .max(20);
+
 export const setStandardSchema = z
   .object({
     competencyId: ulidField,
-    requiredLevel: tingkat,
+    requiredLevel: tingkatSyarat,
     description: z.string().trim().max(500).optional(),
   })
   .strict();
@@ -44,7 +57,7 @@ export const assessCompetencySchema = z
   .object({
     competencyId: ulidField,
     currentLevel: tingkat,
-    evidenceUrl: z.url('evidenceUrl harus berupa URL').max(500).optional(),
+    evidenceUrl: tautanWeb('evidenceUrl').optional(),
     note: z.string().trim().max(1000).optional(),
   })
   .strict();
@@ -85,7 +98,7 @@ export const createCertificationSchema = z
     issuingOrganization: z.string().trim().min(1).max(150).optional(),
     issueDate: dateOnlyField,
     expiryDate: dateOnlyField.nullable().optional(),
-    certificateUrl: z.url('certificateUrl harus berupa URL').max(500).optional(),
+    certificateUrl: tautanWeb('certificateUrl').optional(),
     note: z.string().trim().max(1000).optional(),
   })
   .strict()
@@ -132,6 +145,14 @@ export const gapQuerySchema = z.object({
   positionId: ulidField.optional(),
 });
 
+// --- Kepatuhan sertifikat wajib ---
+
+export const certificationComplianceQuerySchema = z.object({
+  certificationTypeId: ulidField.optional(),
+  departmentId: ulidField.optional(),
+  warningDays: z.coerce.number().int().min(1).max(365).default(30),
+});
+
 export type CreateCompetencyInput = z.infer<typeof createCompetencySchema>;
 export type ListCompetencyQuery = z.infer<typeof listCompetencyQuerySchema>;
 export type SetStandardInput = z.infer<typeof setStandardSchema>;
@@ -142,3 +163,4 @@ export type CreateCertificationInput = z.infer<typeof createCertificationSchema>
 export type RevokeCertificationInput = z.infer<typeof revokeCertificationSchema>;
 export type ListCertificationQuery = z.infer<typeof listCertificationQuerySchema>;
 export type GapQuery = z.infer<typeof gapQuerySchema>;
+export type CertificationComplianceQuery = z.infer<typeof certificationComplianceQuerySchema>;

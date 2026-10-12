@@ -1,8 +1,9 @@
 import request from 'supertest';
 import { Role } from '@prisma/client';
-import { prisma, resetDatabase, makeEmployee, makePosition } from './helpers/db';
+import { prisma, resetDatabase, makeEmployee, makePosition, makeDepartment } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
+import { generateULID } from '../src/utils/generateULID';
 
 const app = bikinApp();
 
@@ -103,6 +104,24 @@ describe('Standar kompetensi jabatan', () => {
     expect(res.body.data[0].requiredLevel).toBe(4);
   });
 
+  it('menolak syarat tingkat 0: syarat itu terpenuhi oleh siapa pun, termasuk yang belum dinilai', async () => {
+    const k = await buatKompetensi();
+    const res = await request(app)
+      .put(`/api/positions/${waiterId}/competency-standards`)
+      .set(auth(hrToken))
+      .send({ competencyId: k.body.id, requiredLevel: 0 });
+
+    expectStatus(res, 400);
+    expect(JSON.stringify(res.body.details)).toMatch(/minimal tingkat 1/);
+    expect(await prisma.competencyStandard.count()).toBe(0);
+  });
+
+  it('penilaian tingkat 0 tetap diterima: "belum punya" adalah nilai yang sah', async () => {
+    const k = await buatKompetensi();
+    const res = await nilaiKaryawan(k.body.id, 0);
+    expect(res.body.currentLevel).toBe(0);
+  });
+
   it('menolak tingkat yang melebihi skala kompetensi', async () => {
     const k = await buatKompetensi({ maxLevel: 3 });
     const res = await request(app)
@@ -181,6 +200,62 @@ describe('Analisis kesenjangan kompetensi', () => {
     expect(res.status).toBe(403);
   });
 
+  it('penilaian ulang tanpa catatan tidak mewarisi catatan dan bukti lama', async () => {
+    const k = await buatKompetensi();
+    expectStatus(
+      await request(app)
+        .put(`/api/employees/${budi.id}/competencies`)
+        .set(auth(hrToken))
+        .send({ competencyId: k.body.id, currentLevel: 3, note: 'Catatan lama', evidenceUrl: 'https://contoh.id/bukti-lama' }),
+      200
+    );
+
+    const ulang = await nilaiKaryawan(k.body.id, 2);
+
+    expect(ulang.body).toMatchObject({ currentLevel: 2, note: null, evidenceUrl: null });
+  });
+
+  it('analisis membawa catatan, bukti, tanggal, dan penilai penilaian terakhir', async () => {
+    const a = await buatKompetensi({ code: 'FOOD_SAFETY', name: 'Food Safety' });
+    const b = await buatKompetensi({ code: 'SERVICE', name: 'Table Service' });
+    await tetapkanStandar(a.body.id, 2);
+    await tetapkanStandar(b.body.id, 2);
+    expectStatus(
+      await request(app)
+        .put(`/api/employees/${budi.id}/competencies`)
+        .set(auth(hrToken))
+        .send({ competencyId: a.body.id, currentLevel: 2, note: 'Diamati saat shift malam', evidenceUrl: 'https://contoh.id/bukti' }),
+      200
+    );
+
+    const res = await request(app).get(`/api/employees/${budi.id}/competency-gap`).set(auth(budiToken));
+    expectStatus(res, 200);
+    const dinilai = res.body.gaps.find((g: { competencyCode: string }) => g.competencyCode === 'FOOD_SAFETY');
+    expect(dinilai).toMatchObject({ note: 'Diamati saat shift malam', evidenceUrl: 'https://contoh.id/bukti', assessedBy: { name: expect.any(String) } });
+    expect(typeof dinilai.assessedAt).toBe('string');
+    const belum = res.body.gaps.find((g: { competencyCode: string }) => g.competencyCode === 'SERVICE');
+    expect(belum).toMatchObject({ notAssessed: true, note: null, evidenceUrl: null, assessedAt: null, assessedBy: null });
+  });
+
+  it('bukti penilaian hanya menerima tautan http(s)', async () => {
+    const k = await buatKompetensi();
+    const res = await request(app)
+      .put(`/api/employees/${budi.id}/competencies`)
+      .set(auth(hrToken))
+      .send({ competencyId: k.body.id, currentLevel: 1, evidenceUrl: 'javascript:alert(1)' });
+    expectStatus(res, 400);
+  });
+
+  it('jabatan tanpa standar tidak dilaporkan "100% siap"', async () => {
+    const individu = await request(app).get(`/api/employees/${budi.id}/competency-gap`).set(auth(hrToken));
+    expectStatus(individu, 200);
+    expect(individu.body).toMatchObject({ totalRequired: 0, readinessPercent: null });
+
+    const laporan = await request(app).get('/api/competency-gap').set(auth(hrToken));
+    const baris = laporan.body.data.find((d: { employee: { id: string } }) => d.employee.id === budi.id);
+    expect(baris).toMatchObject({ totalRequired: 0, totalMet: 0, readinessPercent: null, unmetCompetencies: [] });
+  });
+
   it('laporan menyeluruh hanya merinci yang belum terpenuhi', async () => {
     const a = await buatKompetensi({ code: 'FOOD_SAFETY', name: 'Food Safety' });
     const b = await buatKompetensi({ code: 'SERVICE', name: 'Table Service' });
@@ -225,6 +300,37 @@ describe('Sertifikat karyawan', () => {
     expect(res.status).toBe(201);
     expect(res.body.expiryDate.slice(0, 10)).toBe('2027-01-15');
     expect(res.body.certificationName).toBe('Food Handler Certificate');
+  });
+
+  it('menolak jabatan sasaran yang tidak ada dengan 404, bukan galat server', async () => {
+    const res = await buatJenis({ targetPositionId: generateULID() });
+    expectStatus(res, 404);
+    expect(res.body.error).toMatch(/Jabatan/);
+    expect(await prisma.certificationType.count()).toBe(0);
+  });
+
+  it('menerima jabatan sasaran yang ada', async () => {
+    const res = await buatJenis({ targetPositionId: waiterId });
+    expectStatus(res, 201);
+    expect(res.body.targetPositionId).toBe(waiterId);
+  });
+
+  it('sertifikat masih berlaku pada tanggal kedaluwarsanya dan kedaluwarsa keesokan harinya', async () => {
+    const hariIni = new Date().toISOString().slice(0, 10);
+    const kemarin = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    for (const [nama, expiryDate] of [['Berakhir hari ini', hariIni], ['Berakhir kemarin', kemarin]]) {
+      expectStatus(
+        await request(app)
+          .post('/api/certifications')
+          .set(auth(hrToken))
+          .send({ employeeId: budi.id, certificationName: nama, issuingOrganization: 'PMI', issueDate: '2025-01-01', expiryDate }),
+        201
+      );
+    }
+
+    const res = await request(app).get(`/api/certifications?employeeId=${budi.id}`).set(auth(hrToken));
+    const status = Object.fromEntries(res.body.data.map((s: { certificationName: string; state: string }) => [s.certificationName, s.state]));
+    expect(status).toEqual({ 'Berakhir hari ini': 'expiring_soon', 'Berakhir kemarin': 'expired' });
   });
 
   it('menuntut nama dan penerbit untuk sertifikat di luar daftar resmi', async () => {
@@ -493,5 +599,164 @@ describe('Integrasi pelatihan ke sertifikat', () => {
 
     expect(res.body.passed).toBe(true);
     expect(res.body.issuedCertifications).toHaveLength(0);
+  });
+});
+
+describe('Kepatuhan sertifikat wajib', () => {
+  const buatJenisWajib = async (ubah: Record<string, unknown> = {}) => {
+    const res = await request(app)
+      .post('/api/certification-types')
+      .set(auth(hrToken))
+      .send({ code: 'FOOD_HANDLER', name: 'Food Handler Certificate', issuingOrganization: 'Dinas Kesehatan', validityMonths: 24, isMandatory: true, targetPositionId: waiterId, ...ubah });
+    expectStatus(res, 201);
+    return res.body.id as string;
+  };
+  const catat = async (certificationTypeId: string, issueDate: string, expiryDate?: string, employeeId = budi.id) => {
+    const res = await request(app)
+      .post('/api/certifications')
+      .set(auth(hrToken))
+      .send({ employeeId, certificationTypeId, issueDate, ...(expiryDate ? { expiryDate } : {}) });
+    expectStatus(res, 201);
+    return res.body.id as string;
+  };
+  const kepatuhan = async () => {
+    const res = await request(app).get('/api/certifications/compliance').set(auth(hrToken));
+    expectStatus(res, 200);
+    return res.body;
+  };
+
+  it('karyawan yang disasar tanpa sertifikat tercatat "belum punya"; jabatan lain tidak dihitung', async () => {
+    await makeEmployee({ email: 'kasir@resto.id', nik: 'EMP-9', positionId: (await makePosition('Kasir')).id });
+    await buatJenisWajib();
+
+    const body = await kepatuhan();
+    expect(body.types).toHaveLength(1);
+    expect(body.types[0]).toMatchObject({ requiredFor: 1, summary: { valid: 0, expiringSoon: 0, expired: 0, missing: 1 } });
+    expect(body.types[0].needsAction).toEqual([expect.objectContaining({ employee: expect.objectContaining({ id: budi.id }), state: 'missing' })]);
+  });
+
+  it('sertifikat kedaluwarsa tercatat kedaluwarsa; yang berlaku menutupnya', async () => {
+    const jenis = await buatJenisWajib();
+    await catat(jenis, '2023-01-01', '2025-01-01');
+    let body = await kepatuhan();
+    expect(body.types[0].needsAction[0]).toMatchObject({ state: 'expired' });
+
+    await catat(jenis, '2026-01-01', '2030-01-01');
+    body = await kepatuhan();
+    // Sertifikat terbaik yang dipegang menentukan: yang lama tidak lagi jadi masalah.
+    expect(body.types[0].summary).toMatchObject({ valid: 1, expired: 0, missing: 0 });
+    expect(body.types[0].needsAction).toHaveLength(0);
+  });
+
+  it('sertifikat yang dicabut dianggap tidak ada', async () => {
+    const jenis = await buatJenisWajib();
+    const id = await catat(jenis, '2026-01-01', '2030-01-01');
+    expectStatus(await request(app).patch(`/api/certifications/${id}/revoke`).set(auth(hrToken)).send({ reason: 'Palsu' }), 200);
+
+    const body = await kepatuhan();
+    expect(body.types[0].needsAction[0]).toMatchObject({ state: 'missing' });
+  });
+
+  it('jenis yang tidak wajib tidak dipantau, dan karyawan biasa tidak boleh membuka laporannya', async () => {
+    await buatJenisWajib({ isMandatory: false });
+    expect((await kepatuhan()).types).toHaveLength(0);
+    expectStatus(await request(app).get('/api/certifications/compliance').set(auth(budiToken)), 403);
+  });
+});
+
+describe('Lingkup data kompetensi bagi peran kustom', () => {
+  let penilaiToken: string;
+  let bawahan: { id: string };
+  let luar: { id: string };
+  let kompetensiId: string;
+  let foId: string;
+  let dapurId: string;
+
+  /** Peran kustom pemegang izin kelola kompetensi dengan lingkup data tertentu. */
+  const peranPenilai = (baseRole: Role, nama: string) =>
+    prisma.customRole.create({
+      data: {
+        id: generateULID(),
+        name: nama,
+        baseRole,
+        permissions: ['karyawan.lihat', 'kompetensi.lihat', 'kompetensi.buat', 'kompetensi.ubah', 'kompetensi.hapus'],
+      },
+    });
+
+  const sertifikatUntuk = async (employeeId: string, token = hrToken) =>
+    request(app)
+      .post('/api/certifications')
+      .set(auth(token))
+      .send({ employeeId, certificationName: 'First Aid', issuingOrganization: 'PMI', issueDate: '2026-01-01' });
+
+  beforeEach(async () => {
+    foId = (await makeDepartment('Front Office')).id;
+    dapurId = (await makeDepartment('Kitchen')).id;
+    const peran = await peranPenilai(Role.MANAGER, 'Penilai Kompetensi');
+    await makeEmployee({ email: 'penilai@resto.id', nik: 'MGR-1', role: Role.MANAGER, customRoleId: peran.id, departmentId: foId, positionId: waiterId });
+    penilaiToken = await login(app, 'penilai@resto.id');
+    bawahan = await makeEmployee({ email: 'bawahan@resto.id', nik: 'FO-1', departmentId: foId, positionId: waiterId });
+    luar = await makeEmployee({ email: 'luar@resto.id', nik: 'KT-1', departmentId: dapurId, positionId: waiterId });
+    kompetensiId = (await buatKompetensi()).body.id;
+    await tetapkanStandar(kompetensiId, 2);
+  });
+
+  it('melihat kesenjangan bawahan sedepartemen, tidak departemen lain', async () => {
+    expectStatus(await request(app).get(`/api/employees/${bawahan.id}/competency-gap`).set(auth(penilaiToken)), 200);
+    expectStatus(await request(app).get(`/api/employees/${luar.id}/competency-gap`).set(auth(penilaiToken)), 403);
+  });
+
+  it('menilai hanya karyawan departemennya sendiri', async () => {
+    expectStatus(await request(app).put(`/api/employees/${bawahan.id}/competencies`).set(auth(penilaiToken)).send({ competencyId: kompetensiId, currentLevel: 2 }), 200);
+    expectStatus(await request(app).put(`/api/employees/${luar.id}/competencies`).set(auth(penilaiToken)).send({ competencyId: kompetensiId, currentLevel: 2 }), 403);
+    expect(await prisma.employeeCompetency.count({ where: { employeeId: luar.id } })).toBe(0);
+  });
+
+  it('mencatat dan mencabut sertifikat hanya di departemennya sendiri', async () => {
+    expectStatus(await sertifikatUntuk(bawahan.id, penilaiToken), 201);
+    expectStatus(await sertifikatUntuk(luar.id, penilaiToken), 403);
+
+    const milikLuar = await sertifikatUntuk(luar.id);
+    const milikBawahan = await sertifikatUntuk(bawahan.id);
+    expectStatus(await request(app).patch(`/api/certifications/${milikLuar.body.id}/revoke`).set(auth(penilaiToken)).send({ reason: 'Uji' }), 403);
+    expectStatus(await request(app).patch(`/api/certifications/${milikBawahan.body.id}/revoke`).set(auth(penilaiToken)).send({ reason: 'Uji' }), 200);
+  });
+
+  it('daftar sertifikat dan laporan kesiapan terbatas pada departemennya', async () => {
+    await sertifikatUntuk(bawahan.id);
+    await sertifikatUntuk(luar.id);
+
+    const daftar = await request(app).get('/api/certifications').set(auth(penilaiToken));
+    expectStatus(daftar, 200);
+    expect(daftar.body.data.map((s: { employeeId: string }) => s.employeeId)).toEqual([bawahan.id]);
+    expect((await request(app).get(`/api/certifications?employeeId=${luar.id}`).set(auth(penilaiToken))).body.pagination.total).toBe(0);
+
+    const laporan = await request(app).get('/api/competency-gap').set(auth(penilaiToken));
+    expectStatus(laporan, 200);
+    const ids = laporan.body.data.map((d: { employee: { id: string } }) => d.employee.id);
+    expect(ids).toContain(bawahan.id);
+    expect(ids).not.toContain(luar.id);
+    expectStatus(await request(app).get(`/api/competency-gap?departmentId=${dapurId}`).set(auth(penilaiToken)), 403);
+  });
+
+  it('manajer bawaan (hanya kompetensi.lihat) tetap hanya melihat miliknya sendiri', async () => {
+    await makeEmployee({ email: 'manajer@resto.id', nik: 'MGR-2', role: Role.MANAGER, departmentId: foId });
+    const manajer = await login(app, 'manajer@resto.id');
+    await sertifikatUntuk(bawahan.id);
+
+    expectStatus(await request(app).get('/api/competency-gap').set(auth(manajer)), 403);
+    expectStatus(await request(app).get(`/api/employees/${bawahan.id}/competency-gap`).set(auth(manajer)), 403);
+    expect((await request(app).get('/api/certifications').set(auth(manajer))).body.pagination.total).toBe(0);
+  });
+
+  it('peran berlingkup diri sendiri hanya menjangkau dirinya walau memegang izin kelola', async () => {
+    const peran = await peranPenilai(Role.EMPLOYEE, 'Penilai Mandiri');
+    const mandiri = await makeEmployee({ email: 'mandiri@resto.id', nik: 'FO-9', customRoleId: peran.id, departmentId: foId, positionId: waiterId });
+    const token = await login(app, 'mandiri@resto.id');
+
+    expectStatus(await request(app).put(`/api/employees/${bawahan.id}/competencies`).set(auth(token)).send({ competencyId: kompetensiId, currentLevel: 1 }), 403);
+    const laporan = await request(app).get('/api/competency-gap').set(auth(token));
+    expectStatus(laporan, 200);
+    expect(laporan.body.data.map((d: { employee: { id: string } }) => d.employee.id)).toEqual([mandiri.id]);
   });
 });

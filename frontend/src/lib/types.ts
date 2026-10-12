@@ -1036,6 +1036,11 @@ export interface ButirKesenjangan {
   gap: number;
   meets: boolean;
   notAssessed: boolean;
+  /** Penilaian terakhir: kapan, oleh siapa, dan atas bukti apa. null bila belum dinilai. */
+  assessedAt: string | null;
+  assessedBy: Ref | null;
+  note: string | null;
+  evidenceUrl: string | null;
 }
 
 export interface AnalisisKesenjangan {
@@ -1043,14 +1048,16 @@ export interface AnalisisKesenjangan {
   gaps: ButirKesenjangan[];
   totalRequired: number;
   totalMet: number;
-  readinessPercent: number;
+  /** null bila jabatannya belum punya standar kompetensi — bukan "100% siap". */
+  readinessPercent: number | null;
 }
 
 export interface BarisLaporanKesenjangan {
   employee: { id: string; nik: string; name: string; positionId: string | null };
   totalRequired: number;
   totalMet: number;
-  readinessPercent: number;
+  /** null bila jabatannya belum punya standar kompetensi. */
+  readinessPercent: number | null;
   unmetCompetencies: ButirKesenjangan[];
 }
 
@@ -1104,6 +1111,25 @@ export interface Sertifikat {
 
 export interface DaftarSertifikat extends Halaman<Sertifikat> {
   summary: { valid: number; expiringSoon: number; expired: number; revoked: number };
+}
+
+/** Status satu karyawan terhadap satu jenis sertifikat wajib; "missing" = belum punya yang berlaku. */
+export type StatusKepatuhanSertifikat = "valid" | "expiring_soon" | "expired" | "missing";
+
+/** Kepatuhan sertifikat wajib, dari /certifications/compliance. */
+export interface KepatuhanSertifikat {
+  warningDays: number;
+  types: {
+    type: { id: string; code: string; name: string; validityMonths: number | null; targetPositionId: string | null };
+    requiredFor: number;
+    summary: { valid: number; expiringSoon: number; expired: number; missing: number };
+    needsAction: {
+      employee: { id: string; nik: string; name: string; departmentId: string | null; positionId: string | null };
+      state: StatusKepatuhanSertifikat;
+      expiryDate: string | null;
+      certificationId: string | null;
+    }[];
+  }[];
 }
 
 // ===== Direktori, laporan, chat =====

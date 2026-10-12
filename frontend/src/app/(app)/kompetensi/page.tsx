@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { Award, Plus, BookOpen, ListChecks, BadgeCheck, ShieldCheck, AlertTriangle, Clock, Ban, ExternalLink, Trash2, FilePlus2, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { useSesi, punyaIzin, bolehKelola } from "@/hooks/use-sesi";
+import { useSesi, punyaIzin, bolehKelola, bolehHr } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -19,7 +19,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PanelKesenjangan } from "@/components/kompetensi/panel-kesenjangan";
 import { FormSertifikat } from "@/components/kompetensi/form-sertifikat";
 import { formatTanggal, labelStatus, labelTingkat, cn } from "@/lib/utils";
-import type { Halaman, Karyawan, Jabatan, Departemen, Kompetensi, StandarKompetensi, BarisLaporanKesenjangan, JenisSertifikasi, Sertifikat, DaftarSertifikat, ProgramPelatihan, StatusSertifikat } from "@/lib/types";
+import type { Halaman, Karyawan, Jabatan, Departemen, Kompetensi, StandarKompetensi, BarisLaporanKesenjangan, JenisSertifikasi, Sertifikat, DaftarSertifikat, ProgramPelatihan, StatusSertifikat, KepatuhanSertifikat, StatusKepatuhanSertifikat } from "@/lib/types";
 
 type Tab = "kesenjangan" | "laporan" | "kamus" | "standar" | "sertifikat";
 type FormKompetensi = { code: string; name: string; category: string; description: string; maxLevel: string; labels: Record<string, string> };
@@ -33,6 +33,12 @@ const STATUS_SERTIFIKAT: { kode: StatusSertifikat; label: string; kunci: keyof D
   { kode: "revoked", label: "Dicabut", kunci: "revoked", icon: Ban, tone: "info" },
 ];
 
+const LABEL_KEPATUHAN: Record<StatusKepatuhanSertifikat, string> = { valid: "Berlaku", expiring_soon: "Segera kedaluwarsa", expired: "Kedaluwarsa", missing: "Belum punya" };
+const NADA_KEPATUHAN: Record<StatusKepatuhanSertifikat, "success" | "warning" | "danger"> = { valid: "success", expiring_soon: "warning", expired: "danger", missing: "danger" };
+
+/** Yang paling butuh pelatihan di atas; jabatan tanpa standar (null) paling bawah. */
+const urutKesiapan = (a: BarisLaporanKesenjangan, b: BarisLaporanKesenjangan) => (a.readinessPercent ?? 101) - (b.readinessPercent ?? 101);
+
 export default function HalamanKompetensi() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
@@ -40,6 +46,8 @@ export default function HalamanKompetensi() {
   const bolehBuat = punyaIzin(saya, "kompetensi.buat");
   const bolehUbah = punyaIzin(saya, "kompetensi.ubah");
   const bolehHapus = punyaIzin(saya, "kompetensi.hapus");
+  // Lingkup data, bukan izin: hanya HR yang melihat seluruh departemen.
+  const lingkupHr = bolehHr(saya?.role);
   const [tab, setTab] = React.useState<Tab>("kesenjangan");
   const [karyawanGap, setKaryawanGap] = React.useState("");
   const [filterDept, setFilterDept] = React.useState("");
@@ -48,12 +56,12 @@ export default function HalamanKompetensi() {
   const [hapusStandar, setHapusStandar] = React.useState<StandarKompetensi | null>(null);
   const [kompetensiBuka, setKompetensiBuka] = React.useState(false);
   const [jenisBuka, setJenisBuka] = React.useState(false);
-  const [sertifikatBuka, setSertifikatBuka] = React.useState(false);
   const [cabut, setCabut] = React.useState<Sertifikat | null>(null);
   const [alasanCabut, setAlasanCabut] = React.useState("");
   const [fState, setFState] = React.useState("");
   const [fKaryawan, setFKaryawan] = React.useState("");
   const [fJenis, setFJenis] = React.useState("");
+  const [catatUntuk, setCatatUntuk] = React.useState<{ employeeId?: string; certificationTypeId?: string } | null>(null);
 
   const daftar = <T,>(d: Halaman<T> | T[]) => (Array.isArray(d) ? d : d.data);
   const karyawan = useQuery({ queryKey: ["karyawan", "pilihan"], queryFn: async () => (await api.get<Halaman<Karyawan>>("/employees?limit=100")).data.data, enabled: hr });
@@ -67,6 +75,7 @@ export default function HalamanKompetensi() {
   const jenis = useQuery({ queryKey: ["jenis-sertifikasi"], queryFn: async () => (await api.get<Halaman<JenisSertifikasi>>("/certification-types?limit=100")).data.data, enabled: tab === "sertifikat" });
   const ps = new URLSearchParams({ limit: "100", warningDays: "30" }); if (fState) ps.set("state", fState); if (fKaryawan) ps.set("employeeId", fKaryawan); if (fJenis) ps.set("certificationTypeId", fJenis);
   const sertifikat = useQuery({ queryKey: ["sertifikat", ps.toString()], queryFn: async () => (await api.get<DaftarSertifikat>(`/certifications?${ps}`)).data, enabled: tab === "sertifikat" });
+  const kepatuhan = useQuery({ queryKey: ["kepatuhan-sertifikat"], queryFn: async () => (await api.get<KepatuhanSertifikat>("/certifications/compliance?warningDays=30")).data, enabled: hr && tab === "sertifikat" });
 
   const fk = useForm<FormKompetensi>({ defaultValues: { code: "", name: "", category: "", description: "", maxLevel: "4", labels: { "1": "Dasar", "2": "Menengah", "3": "Mahir", "4": "Ahli" } } });
   const maxLevelForm = Math.min(20, Math.max(1, Number(useWatch({ control: fk.control, name: "maxLevel" })) || 1));
@@ -95,12 +104,12 @@ export default function HalamanKompetensi() {
   });
   const buatJenis = useMutation({
     mutationFn: async (v: FormJenis) => (await api.post<JenisSertifikasi>("/certification-types", { code: v.code.toUpperCase(), name: v.name, isMandatory: v.isMandatory, validityMonths: v.validityMonths ? Number(v.validityMonths) : null, targetPositionId: v.targetPositionId || null, trainingProgramId: v.trainingProgramId || null, ...(v.description ? { description: v.description } : {}), ...(v.issuingOrganization ? { issuingOrganization: v.issuingOrganization } : {}) })).data,
-    onSuccess: (j) => { qc.invalidateQueries({ queryKey: ["jenis-sertifikasi"] }); notifikasi.sukses("Jenis sertifikasi dibuat", j.validityMonths ? `${j.name} · berlaku ${j.validityMonths} bulan` : `${j.name} · tanpa kedaluwarsa`); setJenisBuka(false); fj.reset(); },
+    onSuccess: (j) => { qc.invalidateQueries({ queryKey: ["jenis-sertifikasi"] }); qc.invalidateQueries({ queryKey: ["kepatuhan-sertifikat"] }); notifikasi.sukses("Jenis sertifikasi dibuat", j.validityMonths ? `${j.name} · berlaku ${j.validityMonths} bulan` : `${j.name} · tanpa kedaluwarsa`); setJenisBuka(false); fj.reset(); },
     onError: (e) => notifikasi.galat(e, "Jenis gagal dibuat"),
   });
   const cabutSertifikat = useMutation({
     mutationFn: async () => (await api.patch<Sertifikat>(`/certifications/${cabut!.id}/revoke`, { reason: alasanCabut })).data,
-    onSuccess: (s) => { qc.invalidateQueries({ queryKey: ["sertifikat"] }); notifikasi.sukses("Sertifikat dicabut", s.certificationName); setCabut(null); setAlasanCabut(""); },
+    onSuccess: (s) => { qc.invalidateQueries({ queryKey: ["sertifikat"] }); qc.invalidateQueries({ queryKey: ["kepatuhan-sertifikat"] }); notifikasi.sukses("Sertifikat dicabut", s.certificationName); setCabut(null); setAlasanCabut(""); },
     onError: (e) => notifikasi.galat(e, "Pencabutan gagal"),
   });
 
@@ -112,7 +121,7 @@ export default function HalamanKompetensi() {
   return (
     <>
       <PageHeader title="Kompetensi & Sertifikasi" description={hr ? "Standar kompetensi per jabatan, kesenjangan tiap karyawan, dan masa berlaku sertifikat wajib" : "Syarat kompetensi jabatan Anda, tingkat yang sudah dinilai, dan sertifikat Anda"}
-        actions={bolehBuat ? (tab === "kamus" ? <Button onClick={() => setKompetensiBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Kompetensi</Button> : tab === "sertifikat" ? <div className="flex gap-2"><Button variant="outline" onClick={() => setJenisBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Jenis</Button><Button onClick={() => setSertifikatBuka(true)}><FilePlus2 className="h-4 w-4" aria-hidden /> Catat Sertifikat</Button></div> : null) : null} />
+        actions={bolehBuat ? (tab === "kamus" ? <Button onClick={() => setKompetensiBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Kompetensi</Button> : tab === "sertifikat" ? <div className="flex gap-2"><Button variant="outline" onClick={() => setJenisBuka(true)}><Plus className="h-4 w-4" aria-hidden /> Jenis</Button><Button onClick={() => setCatatUntuk({})}><FilePlus2 className="h-4 w-4" aria-hidden /> Catat Sertifikat</Button></div> : null) : null} />
 
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-surface-2 p-1 w-fit max-w-full" role="tablist">
         {TABS.filter((t) => !t.hrSaja || hr).map((t) => <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={cn("whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors", tab === t.id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground")}>{t.label}</button>)}
@@ -128,20 +137,27 @@ export default function HalamanKompetensi() {
       {tab === "laporan" && hr && (
         <>
           <div className="grid gap-2 sm:grid-cols-2 lg:w-2/3">
-            <Select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} aria-label="Departemen"><option value="">Semua departemen</option>{(departemen.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>
+            {lingkupHr && <Select value={filterDept} onChange={(e) => setFilterDept(e.target.value)} aria-label="Departemen"><option value="">Semua departemen</option>{(departemen.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>}
             <Select value={filterJabatan} onChange={(e) => setFilterJabatan(e.target.value)} aria-label="Jabatan"><option value="">Semua jabatan</option>{(jabatan.data ?? []).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</Select>
           </div>
           <Card>
-            <CardHeader><CardTitle>Kesiapan kompetensi per karyawan</CardTitle><CardDescription>Diurutkan dari yang paling butuh pelatihan. Karyawan tanpa jabatan tidak ikut dihitung.</CardDescription></CardHeader>
-            {laporan.isLoading ? <SkeletonBaris /> : !laporan.data?.length ? <EmptyState icon={ListChecks} title="Tidak ada data" description="Belum ada karyawan berjabatan pada filter ini, atau jabatannya belum punya standar." /> : (
+            <CardHeader><CardTitle>Kesiapan kompetensi per karyawan</CardTitle><CardDescription>Diurutkan dari yang paling butuh pelatihan; jabatan yang belum punya standar di bagian bawah. Karyawan tanpa jabatan tidak ikut dihitung.</CardDescription></CardHeader>
+            {laporan.isLoading ? <SkeletonBaris /> : !laporan.data?.length ? <EmptyState icon={ListChecks} title="Tidak ada data" description="Belum ada karyawan berjabatan pada filter ini." /> : (
               <ul className="divide-y divide-border">
-                {[...laporan.data].sort((a, b) => a.readinessPercent - b.readinessPercent).map((b) => (
+                {[...laporan.data].sort(urutKesiapan).map((b) => (
                   <li key={b.employee.id} className="p-4 space-y-2 animate-fade-up">
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                       <button type="button" className="text-left font-medium hover:underline" onClick={() => { setKaryawanGap(b.employee.id); setTab("kesenjangan"); }}>{b.employee.name} <span className="text-xs font-normal text-muted">{b.employee.nik} · {namaJabatan(b.employee.positionId)}</span></button>
-                      <span className={cn("text-sm font-semibold tabular-nums", b.readinessPercent >= 100 ? "text-success" : b.readinessPercent >= 50 ? "text-warning" : "text-danger")}>{b.readinessPercent}% <span className="text-xs font-normal text-muted">({b.totalMet}/{b.totalRequired})</span></span>
+                      {b.readinessPercent === null ? (
+                        <span className="flex items-center gap-2">
+                          <Badge tone="info">Jabatan belum punya standar</Badge>
+                          {(bolehBuat || bolehUbah) && b.employee.positionId && <Button size="sm" variant="ghost" onClick={() => { setJabatanStandar(b.employee.positionId ?? ""); fst.reset(); setTab("standar"); }}>Tetapkan standar</Button>}
+                        </span>
+                      ) : (
+                        <span className={cn("text-sm font-semibold tabular-nums", b.readinessPercent >= 100 ? "text-success" : b.readinessPercent >= 50 ? "text-warning" : "text-danger")}>{b.readinessPercent}% <span className="text-xs font-normal text-muted">({b.totalMet}/{b.totalRequired})</span></span>
+                      )}
                     </div>
-                    <div className="h-2 rounded-full bg-surface-2" role="img" aria-label={`Kesiapan ${b.readinessPercent}%`}><div className={cn("h-2 rounded-full transition-[width]", b.readinessPercent >= 100 ? "bg-success" : b.readinessPercent >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.min(100, b.readinessPercent)}%` }} /></div>
+                    {b.readinessPercent !== null && <div className="h-2 rounded-full bg-surface-2" role="img" aria-label={`Kesiapan ${b.readinessPercent}%`}><div className={cn("h-2 rounded-full transition-[width]", b.readinessPercent >= 100 ? "bg-success" : b.readinessPercent >= 50 ? "bg-warning" : "bg-danger")} style={{ width: `${Math.min(100, b.readinessPercent)}%` }} /></div>}
                     {b.unmetCompetencies.length > 0 && <div className="flex flex-wrap gap-1.5">{b.unmetCompetencies.map((u) => <Badge key={u.competencyId} tone={u.notAssessed ? "info" : "warning"}>{u.competencyName}{u.notAssessed ? " · belum dinilai" : ` · kurang ${u.gap}`}</Badge>)}</div>}
                   </li>
                 ))}
@@ -194,7 +210,7 @@ export default function HalamanKompetensi() {
                 <CardContent>
                   <form onSubmit={fst.handleSubmit((v) => simpanStandar.mutate(v))} className="space-y-3" noValidate>
                     <Field label="Kompetensi" error={fst.formState.errors.competencyId?.message}><Select {...fst.register("competencyId", { required: "Pilih kompetensi" })}><option value="">— Pilih —</option>{(kompetensi.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select></Field>
-                    <Field label="Tingkat minimal"><Select {...fst.register("requiredLevel")}>{Array.from({ length: (kompetensiStandar?.maxLevel ?? 4) + 1 }, (_, n) => <option key={n} value={n}>{n} · {labelTingkat(n, kompetensiStandar?.levelLabels)}</option>)}</Select></Field>
+                    <Field label="Tingkat minimal" hint="Minimal tingkat 1; hapus syaratnya bila kompetensi ini tidak diwajibkan"><Select {...fst.register("requiredLevel")}>{Array.from({ length: kompetensiStandar?.maxLevel ?? 4 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n} · {labelTingkat(n, kompetensiStandar?.levelLabels)}</option>)}</Select></Field>
                     <Field label="Keterangan"><Input {...fst.register("description")} placeholder="Wajib sebelum lepas probation" /></Field>
                     <Button type="submit" className="w-full" loading={simpanStandar.isPending}>{!simpanStandar.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan Syarat</Button>
                   </form>
@@ -214,6 +230,40 @@ export default function HalamanKompetensi() {
               </button>
             ))}
           </div>
+          {hr && kepatuhan.data && kepatuhan.data.types.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Kepatuhan sertifikat wajib</CardTitle><CardDescription>Karyawan aktif yang disasar tiap jenis wajib, yang belum punya sertifikat berlaku atau akan kedaluwarsa dalam {kepatuhan.data.warningDays} hari</CardDescription></CardHeader>
+              <ul className="divide-y divide-border border-t border-border">
+                {kepatuhan.data.types.map((k) => (
+                  <li key={k.type.id} className="space-y-2 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium">{k.type.name} <span className="text-xs font-normal text-muted">wajib bagi {k.requiredFor} karyawan{k.type.targetPositionId ? ` · ${namaJabatan(k.type.targetPositionId)}` : ""}</span></p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge tone="success">{k.summary.valid} berlaku</Badge>
+                        {k.summary.expiringSoon > 0 && <Badge tone="warning">{k.summary.expiringSoon} segera</Badge>}
+                        {k.summary.expired > 0 && <Badge tone="danger">{k.summary.expired} kedaluwarsa</Badge>}
+                        {k.summary.missing > 0 && <Badge tone="danger">{k.summary.missing} belum punya</Badge>}
+                      </div>
+                    </div>
+                    {k.needsAction.length > 0 && (
+                      <ul className="space-y-1">
+                        {k.needsAction.map((b) => (
+                          <li key={b.employee.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm">
+                            <span>{b.employee.name} <span className="text-xs text-muted">{b.employee.nik}</span></span>
+                            <span className="flex items-center gap-2">
+                              {b.expiryDate && <span className="text-xs text-muted">s/d {formatTanggal(b.expiryDate)}</span>}
+                              <Badge tone={NADA_KEPATUHAN[b.state]} dot>{LABEL_KEPATUHAN[b.state]}</Badge>
+                              {bolehBuat && <Button size="sm" variant="ghost" onClick={() => setCatatUntuk({ employeeId: b.employee.id, certificationTypeId: k.type.id })}><FilePlus2 className="h-4 w-4" aria-hidden /> Catat</Button>}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {hr && (
             <div className="grid gap-2 sm:grid-cols-2 lg:w-2/3">
               <Select value={fKaryawan} onChange={(e) => setFKaryawan(e.target.value)} aria-label="Karyawan"><option value="">Semua karyawan</option>{(karyawan.data ?? []).map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}</Select>
@@ -284,11 +334,11 @@ export default function HalamanKompetensi() {
           <Field label="Untuk jabatan"><Select {...fj.register("targetPositionId")}><option value="">Semua jabatan</option>{(jabatan.data ?? []).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}</Select></Field>
           <Field label="Terbit otomatis dari program pelatihan"><Select {...fj.register("trainingProgramId")}><option value="">Tidak tertaut</option>{(program.data ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
           <Field label="Deskripsi" className="sm:col-span-2"><Textarea rows={2} {...fj.register("description")} /></Field>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" {...fj.register("isMandatory")} className="h-4 w-4 accent-[var(--color-primary)]" /> Wajib dimiliki — muncul di laporan kepatuhan</label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" {...fj.register("isMandatory")} className="h-4 w-4 accent-[var(--color-primary)]" /> Wajib dimiliki — dipantau di kartu Kepatuhan sertifikat wajib (bagi jabatan di atas, atau semua karyawan)</label>
         </form>
       </Modal>
 
-      {sertifikatBuka && <FormSertifikat onClose={() => setSertifikatBuka(false)} karyawan={karyawan.data ?? []} jenis={jenis.data ?? []} employeeIdAwal={fKaryawan || undefined} />}
+      {catatUntuk && <FormSertifikat onClose={() => setCatatUntuk(null)} karyawan={karyawan.data ?? []} jenis={jenis.data ?? []} employeeIdAwal={catatUntuk.employeeId ?? (fKaryawan || undefined)} jenisIdAwal={catatUntuk.certificationTypeId} />}
 
       <Modal open={Boolean(cabut)} onClose={() => setCabut(null)} title="Cabut Sertifikat" description={cabut ? `${cabut.certificationName} · ${cabut.employee.name}` : undefined}
         footer={<><Button variant="outline" onClick={() => setCabut(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant="danger" onClick={() => cabutSertifikat.mutate()} loading={cabutSertifikat.isPending} disabled={alasanCabut.trim().length < 3}>{!cabutSertifikat.isPending && <Ban className="h-4 w-4" aria-hidden />} Cabut</Button></>}>

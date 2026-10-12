@@ -14,6 +14,7 @@ import {
   createCertification,
   revokeCertification,
   getAllCertifications,
+  getCertificationCompliance,
 } from '../controllers/competencyController';
 import { authenticateToken, requirePermission, asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
@@ -29,6 +30,7 @@ import {
   revokeCertificationSchema,
   listCertificationQuerySchema,
   gapQuerySchema,
+  certificationComplianceQuerySchema,
 } from '../schemas/competencySchema';
 import { kelola, lihatAtauKelola } from '../utils/permissions';
 
@@ -110,6 +112,14 @@ router.post(
 );
 
 // --- Sertifikat karyawan ---
+// Didaftarkan sebelum rute berparameter supaya "compliance" tidak terbaca
+// sebagai id sertifikat.
+router.get(
+  '/certifications/compliance',
+  requirePermission(...kelola('kompetensi')),
+  validate(certificationComplianceQuerySchema, 'query'),
+  asyncHandler(getCertificationCompliance)
+);
 router.get(
   '/certifications',
   requirePermission(...lihatAtauKelola('kompetensi')),

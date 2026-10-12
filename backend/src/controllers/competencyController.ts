@@ -7,8 +7,12 @@ import {
   certificationState,
   analyzeCompetencyGap,
   validateLevel,
+  type CertificationState,
 } from '../utils/competencyRules';
 import { addMonths } from '../utils/trainingRules';
+import { kelola } from '../utils/permissions';
+import { dalamLingkup, lingkupHr as isHr, saringanLingkupKaryawan as saringanLingkup } from '../utils/lingkupData';
+import type { AuthUser } from '../middleware/auth';
 import type {
   CreateCompetencyInput,
   ListCompetencyQuery,
@@ -20,9 +24,22 @@ import type {
   RevokeCertificationInput,
   ListCertificationQuery,
   GapQuery,
+  CertificationComplianceQuery,
 } from '../schemas/competencySchema';
 
-const isHr = (role: Role) => role === Role.HR_ADMIN || role === Role.SUPER_ADMIN;
+/**
+ * Pengelola kompetensi: pemegang kompetensi.buat/ubah/hapus. Penjaga rute
+ * memakai izin, jadi pemeriksaan di sini juga — izin kompetensi.lihat saja
+ * berarti "kompetensi dan sertifikat sendiri". Izin, bukan Role: HR yang
+ * izinnya dicabut lewat matriks Peran tidak lagi membaca data orang lain.
+ */
+const bolehKelolaKompetensi = (u: Pick<AuthUser, 'permissions'>): boolean =>
+  kelola('kompetensi').some((k) => u.permissions.includes(k));
+
+// Lingkup data (atas siapa) ada di utils/lingkupData.ts, dipakai bersama
+// modul Kinerja dan Pelatihan.
+
+const STATUS_NONAKTIF = ['resign', 'terminated', 'inactive'];
 
 // ============ Kamus kompetensi ============
 
@@ -134,13 +151,17 @@ export const removeStandard = async (req: Request, res: Response) => {
 export const assessCompetency = async (req: Request, res: Response) => {
   const input = req.body as AssessCompetencyInput;
   const employeeId = req.params.id;
+  const actor = req.user!;
 
   const [karyawan, kompetensi] = await Promise.all([
-    prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } }),
+    prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, departmentId: true } }),
     prisma.competency.findUnique({ where: { id: input.competencyId } }),
   ]);
 
   if (!karyawan) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+  if (!dalamLingkup(actor, karyawan)) {
+    return res.status(403).json({ error: 'Anda hanya bisa menilai karyawan di departemen sendiri' });
+  }
   if (!kompetensi || !kompetensi.isActive) {
     return res.status(404).json({ error: 'Kompetensi tidak ditemukan atau tidak aktif' });
   }
@@ -148,27 +169,32 @@ export const assessCompetency = async (req: Request, res: Response) => {
   const cek = validateLevel(input.currentLevel, kompetensi.maxLevel);
   if (!cek.valid) return res.status(400).json({ error: cek.reason });
 
+  // Penilaian baru menggantikan yang lama seutuhnya: catatan dan bukti
+  // penilaian sebelumnya tidak boleh diam-diam menempel pada tingkat baru.
   const penilaian = await prisma.employeeCompetency.upsert({
     where: {
       employeeId_competencyId: { employeeId, competencyId: input.competencyId },
     },
     update: {
       currentLevel: input.currentLevel,
-      assessedById: req.user!.id,
+      assessedById: actor.id,
       assessedAt: new Date(),
-      evidenceUrl: input.evidenceUrl,
-      note: input.note,
+      evidenceUrl: input.evidenceUrl ?? null,
+      note: input.note ?? null,
     },
     create: {
       id: generateULID(),
       employeeId,
       competencyId: input.competencyId,
       currentLevel: input.currentLevel,
-      assessedById: req.user!.id,
-      evidenceUrl: input.evidenceUrl,
-      note: input.note,
+      assessedById: actor.id,
+      evidenceUrl: input.evidenceUrl ?? null,
+      note: input.note ?? null,
     },
-    include: { competency: { select: { id: true, code: true, name: true, maxLevel: true } } },
+    include: {
+      competency: { select: { id: true, code: true, name: true, maxLevel: true } },
+      assessedBy: { select: { id: true, name: true } },
+    },
   });
 
   res.json(penilaian);
@@ -181,15 +207,17 @@ export const getEmployeeGap = async (req: Request, res: Response) => {
   const actor = req.user!;
   const employeeId = req.params.id;
 
-  if (employeeId !== actor.id && !isHr(actor.role)) {
-    return res.status(403).json({ error: 'Anda tidak punya akses ke analisis ini' });
-  }
-
   const karyawan = await prisma.employee.findUnique({
     where: { id: employeeId },
-    select: { id: true, nik: true, name: true, positionId: true },
+    select: { id: true, nik: true, name: true, positionId: true, departmentId: true },
   });
   if (!karyawan) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+
+  // Diri sendiri selalu boleh; orang lain hanya bagi pengelola kompetensi
+  // yang karyawan itu ada dalam lingkup datanya.
+  if (karyawan.id !== actor.id && !(bolehKelolaKompetensi(actor) && dalamLingkup(actor, karyawan))) {
+    return res.status(403).json({ error: 'Anda tidak punya akses ke analisis ini' });
+  }
 
   if (!karyawan.positionId) {
     return res.status(400).json({
@@ -204,7 +232,14 @@ export const getEmployeeGap = async (req: Request, res: Response) => {
     }),
     prisma.employeeCompetency.findMany({
       where: { employeeId },
-      select: { competencyId: true, currentLevel: true },
+      select: {
+        competencyId: true,
+        currentLevel: true,
+        assessedAt: true,
+        note: true,
+        evidenceUrl: true,
+        assessedBy: { select: { id: true, name: true } },
+      },
     }),
   ]);
 
@@ -226,11 +261,15 @@ export const getEmployeeGap = async (req: Request, res: Response) => {
 export const getGapReport = async (req: Request, res: Response) => {
   const query = req.query as unknown as GapQuery;
 
+  // Manajer hanya melihat departemennya sendiri, seperti daftar karyawan.
+  const lingkup = saringanLingkup(req.user!, query.departmentId);
+  if (!lingkup) return res.status(403).json({ error: 'Anda hanya bisa melihat departemen sendiri' });
+
   const employees = await prisma.employee.findMany({
     where: {
-      status: { notIn: ['resign', 'terminated', 'inactive'] },
+      status: { notIn: STATUS_NONAKTIF },
       positionId: query.positionId ?? { not: null },
-      ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+      ...lingkup,
     },
     select: { id: true, nik: true, name: true, positionId: true },
     orderBy: { name: 'asc' },
@@ -269,6 +308,7 @@ export const getGapReport = async (req: Request, res: Response) => {
       employee: karyawan,
       totalRequired: analisis.totalRequired,
       totalMet: analisis.totalMet,
+      // null bila jabatannya belum punya standar — bukan "100% siap".
       readinessPercent: analisis.readinessPercent,
       // Hanya yang belum terpenuhi yang dirinci — itulah yang perlu dilatih.
       unmetCompetencies: analisis.gaps.filter((g) => !g.meets),
@@ -290,6 +330,13 @@ export const createCertificationType = async (req: Request, res: Response) => {
     });
     if (!program) return res.status(404).json({ error: 'Program pelatihan tidak ditemukan' });
   }
+  if (input.targetPositionId) {
+    const posisi = await prisma.position.findUnique({
+      where: { id: input.targetPositionId },
+      select: { id: true },
+    });
+    if (!posisi) return res.status(404).json({ error: 'Jabatan tidak ditemukan' });
+  }
 
   try {
     const jenis = await prisma.certificationType.create({
@@ -299,6 +346,11 @@ export const createCertificationType = async (req: Request, res: Response) => {
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       return res.status(409).json({ error: `Kode sertifikasi "${input.code}" sudah dipakai` });
+    }
+    // Rujukan yang hilang di antara pemeriksaan dan penyimpanan tetap 404,
+    // bukan galat server.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+      return res.status(404).json({ error: 'Jabatan atau program pelatihan yang dirujuk tidak ditemukan' });
     }
     throw error;
   }
@@ -345,12 +397,16 @@ const certSelect = {
 
 export const createCertification = async (req: Request, res: Response) => {
   const input = req.body as CreateCertificationInput;
+  const actor = req.user!;
 
   const karyawan = await prisma.employee.findUnique({
     where: { id: input.employeeId },
-    select: { id: true },
+    select: { id: true, departmentId: true },
   });
   if (!karyawan) return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+  if (!dalamLingkup(actor, karyawan)) {
+    return res.status(403).json({ error: 'Anda hanya bisa mencatat sertifikat karyawan di departemen sendiri' });
+  }
 
   let nama = input.certificationName;
   let penerbit = input.issuingOrganization;
@@ -391,12 +447,16 @@ export const createCertification = async (req: Request, res: Response) => {
 
 export const revokeCertification = async (req: Request, res: Response) => {
   const { reason } = req.body as RevokeCertificationInput;
+  const actor = req.user!;
 
   const sertifikat = await prisma.certificationRecord.findUnique({
     where: { id: req.params.id },
-    select: { id: true, revokedAt: true },
+    select: { id: true, revokedAt: true, employee: { select: { id: true, departmentId: true } } },
   });
   if (!sertifikat) return res.status(404).json({ error: 'Sertifikat tidak ditemukan' });
+  if (!dalamLingkup(actor, sertifikat.employee)) {
+    return res.status(403).json({ error: 'Anda hanya bisa mencabut sertifikat karyawan di departemen sendiri' });
+  }
 
   if (sertifikat.revokedAt) {
     return res.status(409).json({ error: 'Sertifikat ini sudah dicabut' });
@@ -419,8 +479,16 @@ export const getAllCertifications = async (req: Request, res: Response) => {
     ...(query.certificationTypeId ? { certificationTypeId: query.certificationTypeId } : {}),
   };
 
-  // Yang bukan HR hanya melihat sertifikatnya sendiri.
-  where.employeeId = isHr(actor.role) ? (query.employeeId ?? undefined) : actor.id;
+  // Pengelola kompetensi melihat sertifikat dalam lingkup datanya (HR semua
+  // karyawan, manajer departemennya, selain itu dirinya); yang lain hanya
+  // sertifikat sendiri — izin kompetensi.lihat saja berarti "sertifikat sendiri".
+  if (bolehKelolaKompetensi(actor)) {
+    if (query.employeeId) where.employeeId = query.employeeId;
+    const lingkup = saringanLingkup(actor) ?? { id: actor.id };
+    if (Object.keys(lingkup).length > 0) where.OR = [{ employeeId: actor.id }, { employee: lingkup }];
+  } else {
+    where.employeeId = actor.id;
+  }
 
   const rows = await prisma.certificationRecord.findMany({
     where,
@@ -461,4 +529,94 @@ export const getAllCertifications = async (req: Request, res: Response) => {
       totalPages: Math.ceil(tersaring.length / query.limit) || 1,
     },
   });
+};
+
+// ============ Kepatuhan sertifikat wajib ============
+
+type StatusKepatuhan = 'valid' | 'expiring_soon' | 'expired' | 'missing';
+
+/** Status mana yang "lebih baik": sertifikat terbaik yang dipegang menentukan status karyawan. */
+const PERINGKAT_STATUS: Record<Exclude<CertificationState, 'revoked'>, number> = {
+  valid: 0,
+  expiring_soon: 1,
+  expired: 2,
+};
+
+/**
+ * Siapa yang belum punya, atau sertifikat wajibnya kedaluwarsa / akan mati.
+ * Kewajiban hanya dinilai bagi karyawan aktif yang memang disasar jenisnya
+ * (jabatan tertentu, atau semua bila tidak dibatasi). Sertifikat yang dicabut
+ * dianggap tidak ada.
+ */
+export const getCertificationCompliance = async (req: Request, res: Response) => {
+  const query = req.query as unknown as CertificationComplianceQuery;
+
+  const lingkup = saringanLingkup(req.user!, query.departmentId);
+  if (!lingkup) return res.status(403).json({ error: 'Anda hanya bisa melihat departemen sendiri' });
+
+  const jenis = await prisma.certificationType.findMany({
+    where: {
+      isMandatory: true,
+      isActive: true,
+      ...(query.certificationTypeId ? { id: query.certificationTypeId } : {}),
+    },
+    select: { id: true, code: true, name: true, validityMonths: true, targetPositionId: true },
+    orderBy: { name: 'asc' },
+  });
+  if (jenis.length === 0) return res.json({ warningDays: query.warningDays, types: [] });
+
+  const employees = await prisma.employee.findMany({
+    where: { status: { notIn: STATUS_NONAKTIF }, ...lingkup },
+    select: { id: true, nik: true, name: true, departmentId: true, positionId: true },
+    orderBy: { name: 'asc' },
+  });
+
+  const records = await prisma.certificationRecord.findMany({
+    where: {
+      employeeId: { in: employees.map((e) => e.id) },
+      certificationTypeId: { in: jenis.map((j) => j.id) },
+      revokedAt: null,
+    },
+    select: { id: true, employeeId: true, certificationTypeId: true, expiryDate: true, revokedAt: true },
+  });
+
+  const now = new Date();
+
+  const types = jenis.map((j) => {
+    const wajibBagi = employees.filter((e) => (j.targetPositionId ? e.positionId === j.targetPositionId : true));
+
+    const baris = wajibBagi.map((karyawan) => {
+      const miliknya = records
+        .filter((r) => r.employeeId === karyawan.id && r.certificationTypeId === j.id)
+        .map((r) => ({ r, state: certificationState(r, now, query.warningDays) }))
+        .filter((x): x is { r: (typeof records)[number]; state: Exclude<CertificationState, 'revoked'> } => x.state !== 'revoked')
+        .sort((a, b) => PERINGKAT_STATUS[a.state] - PERINGKAT_STATUS[b.state]);
+      const terbaik = miliknya[0];
+      const state: StatusKepatuhan = terbaik ? terbaik.state : 'missing';
+      return {
+        employee: karyawan,
+        state,
+        expiryDate: terbaik?.r.expiryDate ?? null,
+        certificationId: terbaik?.r.id ?? null,
+      };
+    });
+
+    const hitung = (state: StatusKepatuhan) => baris.filter((b) => b.state === state).length;
+
+    return {
+      type: j,
+      requiredFor: wajibBagi.length,
+      summary: {
+        valid: hitung('valid'),
+        expiringSoon: hitung('expiring_soon'),
+        expired: hitung('expired'),
+        missing: hitung('missing'),
+      },
+      // Yang sudah berlaku tidak perlu ditindaklanjuti; hanya yang bermasalah
+      // yang dirinci, supaya daftarnya bisa langsung dikerjakan.
+      needsAction: baris.filter((b) => b.state !== 'valid'),
+    };
+  });
+
+  res.json({ warningDays: query.warningDays, types });
 };

@@ -14,9 +14,9 @@ import { Save, X } from "lucide-react";
 type Nilai = { employeeId: string; certificationTypeId: string; certificationName: string; issuingOrganization: string; issueDate: string; expiryDate: string; certificateUrl: string; note: string };
 
 /** Mencatat sertifikat karyawan — dari daftar resmi (masa berlaku otomatis) atau di luar daftar. */
-export const FormSertifikat = ({ onClose, karyawan, jenis, employeeIdAwal }: { onClose: () => void; karyawan: Karyawan[]; jenis: JenisSertifikasi[]; employeeIdAwal?: string }) => {
+export const FormSertifikat = ({ onClose, karyawan, jenis, employeeIdAwal, jenisIdAwal }: { onClose: () => void; karyawan: Karyawan[]; jenis: JenisSertifikasi[]; employeeIdAwal?: string; jenisIdAwal?: string }) => {
   const qc = useQueryClient();
-  const f = useForm<Nilai>({ defaultValues: { employeeId: employeeIdAwal ?? "", certificationTypeId: "", certificationName: "", issuingOrganization: "", issueDate: "", expiryDate: "", certificateUrl: "", note: "" } });
+  const f = useForm<Nilai>({ defaultValues: { employeeId: employeeIdAwal ?? "", certificationTypeId: jenisIdAwal ?? "", certificationName: "", issuingOrganization: "", issueDate: "", expiryDate: "", certificateUrl: "", note: "" } });
   const tipeId = useWatch({ control: f.control, name: "certificationTypeId" });
   const tipe = jenis.find((j) => j.id === tipeId);
   const simpan = useMutation({
@@ -29,7 +29,7 @@ export const FormSertifikat = ({ onClose, karyawan, jenis, employeeIdAwal }: { o
       ...(v.certificateUrl ? { certificateUrl: v.certificateUrl } : {}),
       ...(v.note ? { note: v.note } : {}),
     })).data,
-    onSuccess: (s) => { qc.invalidateQueries({ queryKey: ["sertifikat"] }); notifikasi.sukses("Sertifikat dicatat", `${s.certificationName} · ${s.employee.name}${s.expiryDate ? ` · berlaku sampai ${formatTanggal(s.expiryDate)}` : " · tanpa kedaluwarsa"}`); onClose(); },
+    onSuccess: (s) => { qc.invalidateQueries({ queryKey: ["sertifikat"] }); qc.invalidateQueries({ queryKey: ["kepatuhan-sertifikat"] }); notifikasi.sukses("Sertifikat dicatat", `${s.certificationName} · ${s.employee.name}${s.expiryDate ? ` · berlaku sampai ${formatTanggal(s.expiryDate)}` : " · tanpa kedaluwarsa"}`); onClose(); },
     onError: (e) => notifikasi.galat(e, "Sertifikat gagal dicatat"),
   });
 
@@ -43,7 +43,7 @@ export const FormSertifikat = ({ onClose, karyawan, jenis, employeeIdAwal }: { o
         <Field label={tipe ? "Penerbit (opsional)" : "Penerbit"} error={f.formState.errors.issuingOrganization?.message}><Input {...f.register("issuingOrganization", { validate: (v, x) => Boolean(x.certificationTypeId) || Boolean(v.trim()) || "Wajib bila di luar daftar resmi" })} placeholder={tipe?.issuingOrganization ?? "Dinas Kesehatan"} /></Field>
         <Field label="Tanggal terbit" error={f.formState.errors.issueDate?.message}><Input type="date" {...f.register("issueDate", { required: "Wajib diisi" })} /></Field>
         <Field label="Kedaluwarsa" hint={tipe?.validityMonths ? `kosongkan = ${tipe.validityMonths} bulan sejak terbit` : tipe ? "jenis ini tidak kedaluwarsa" : "kosongkan bila tidak kedaluwarsa"} error={f.formState.errors.expiryDate?.message}><Input type="date" {...f.register("expiryDate", { validate: (v, x) => !v || !x.issueDate || v >= x.issueDate || "Tidak boleh sebelum tanggal terbit" })} /></Field>
-        <Field label="Tautan berkas (opsional)" className="sm:col-span-2" error={f.formState.errors.certificateUrl?.message}><Input type="url" placeholder="https://…" {...f.register("certificateUrl", { pattern: { value: /^https?:\/\/.+/, message: "Harus berupa URL" } })} /></Field>
+        <Field label="Tautan berkas (opsional)" className="sm:col-span-2" error={f.formState.errors.certificateUrl?.message}><Input type="url" placeholder="https://…" {...f.register("certificateUrl", { pattern: { value: /^https?:\/\/.+/, message: "Harus berupa URL http(s)" } })} /></Field>
         <Field label="Catatan" className="sm:col-span-2"><Textarea rows={2} {...f.register("note")} /></Field>
       </form>
     </Modal>
