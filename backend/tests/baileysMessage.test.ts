@@ -12,6 +12,7 @@ import {
 } from '../src/services/whatsapp/baileysMessage';
 import {
   putuskanReconnect,
+  rincianPutus,
   ALASAN_PUTUS,
   MAKS_PUTARAN_QR,
   PERCOBAAN_JEDA_LAMA,
@@ -535,5 +536,30 @@ describe('Kebijakan QR yang tidak dipindai', () => {
 
     expect(k.sambungUlang).toBe(true);
     expect(k.tahapQr).toBe(false);
+  });
+});
+
+describe('Sebab putus dari WhatsApp', () => {
+  it('membedakan perangkat yang dikeluarkan, sesi yang diambil alih, dan creds yang ditolak', () => {
+    expect(rincianPutus({ data: { tag: 'conflict', attrs: { type: 'device_removed' } } })).toBe('conflict device_removed');
+    expect(rincianPutus({ data: { tag: 'conflict', attrs: { type: 'replaced' } } })).toBe('conflict replaced');
+    expect(rincianPutus({ data: { reason: '401', location: 'frc' } })).toBe('failure 401 frc');
+    expect(rincianPutus({ data: { reason: 401 } })).toBe('failure 401');
+    expect(rincianPutus({ data: { tag: 'stream:error', attrs: { code: '515' } } })).toBe('stream:error');
+  });
+
+  it('memakai pesan galat bila tidak ada node dari WhatsApp', () => {
+    expect(rincianPutus({ message: 'Intentional Logout' })).toBe('Intentional Logout');
+    expect(rincianPutus({ message: 'Stream Errored (conflict)', data: undefined })).toBe('Stream Errored (conflict)');
+    expect(rincianPutus(undefined)).toBeNull();
+    expect(rincianPutus({})).toBeNull();
+  });
+
+  it('tidak mencatat isi lain dari galat, hanya kata pendek', () => {
+    // Isi node yang tidak terduga (teks panjang, JID, objek) tidak boleh
+    // bocor ke catatan yang dilihat HR dan pemegang nomor.
+    expect(rincianPutus({ data: { tag: 'conflict', attrs: { type: 'nomor 6281234567890@s.whatsapp.net dihapus' } } })).toBe('conflict');
+    expect(rincianPutus({ data: { tag: { bukan: 'teks' } }, message: 'Connection Closed' })).toBe('Connection Closed');
+    expect(rincianPutus({ message: 'gagal mendekripsi pesan dari 6281234567890@s.whatsapp.net: "halo, apa kabar?"' })).toBeNull();
   });
 });

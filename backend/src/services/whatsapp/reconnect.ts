@@ -139,3 +139,45 @@ export const putuskanReconnect = (
     tahapQr: false,
   };
 };
+
+/** Bagian galat putus dari Baileys (Boom) yang dibaca di sini. */
+export interface GalatPutus {
+  message?: string;
+  output?: { statusCode?: number };
+  /** Node galat dari WhatsApp: `<stream:error>` (anaknya) atau atribut `<failure>`. */
+  data?: unknown;
+}
+
+const kataAman = (nilai: unknown): string | null => {
+  if (typeof nilai !== 'string' && typeof nilai !== 'number') return null;
+  const teks = String(nilai);
+  return /^[\w.:-]{1,40}$/.test(teks) ? teks : null;
+};
+
+/**
+ * Sebab putus dari sisi WhatsApp, mis. "conflict device_removed" (perangkat
+ * dikeluarkan dari Perangkat Tertaut), "conflict replaced" (sesi dibuka di
+ * tempat lain), atau "failure 401" (creds ditolak saat masuk). Kode 401 saja
+ * tidak membedakan ketiganya.
+ *
+ * Hanya nama node dan atributnya yang dipakai, dan hanya bila berbentuk kata
+ * pendek: isi node galat tidak pernah ikut tercatat.
+ */
+export const rincianPutus = (galat: GalatPutus | undefined): string | null => {
+  const data = galat?.data;
+  if (data && typeof data === 'object') {
+    const node = data as { tag?: unknown; attrs?: { type?: unknown }; reason?: unknown; location?: unknown };
+    const tag = kataAman(node.tag);
+    if (tag) {
+      const jenis = kataAman(node.attrs?.type);
+      return jenis ? `${tag} ${jenis}` : tag;
+    }
+    const alasan = kataAman(node.reason);
+    if (alasan) {
+      const lokasi = kataAman(node.location);
+      return lokasi ? `failure ${alasan} ${lokasi}` : `failure ${alasan}`;
+    }
+  }
+  const pesan = galat?.message;
+  return typeof pesan === 'string' && /^[\w ().:-]{1,60}$/.test(pesan) ? pesan : null;
+};

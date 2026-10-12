@@ -33,7 +33,7 @@ import {
   type PasanganLid,
 } from './baileysMessage';
 import { normalizePhoneNumber } from '../../utils/whatsappRules';
-import { putuskanReconnect } from './reconnect';
+import { putuskanReconnect, rincianPutus, type GalatPutus } from './reconnect';
 import { hapusKredensialTersimpan } from './authStore';
 import { petaLidDari, simpanPemetaanLid, type SumberLid } from './lidMap';
 import { simpanKontak, type EntriKontak } from './kontak';
@@ -69,8 +69,11 @@ export interface SoketWhatsApp {
    * Mengunduh berkas media sebuah pesan. Kuncinya ada di dalam pesan itu
    * sendiri, jadi hanya pemegang soket yang bisa melakukannya — dan hanya
    * selama kuncinya masih berlaku di server WhatsApp.
+   *
+   * `mintaUnggahUlang`: bila berkasnya sudah dihapus dari server WhatsApp,
+   * minta ponsel pemegang nomor mengunggahnya lagi. Bawaan true.
    */
-  unduhMedia?: (pesan: unknown) => Promise<Buffer>;
+  unduhMedia?: (pesan: unknown, opsi?: { mintaUnggahUlang?: boolean }) => Promise<Buffer>;
   /**
    * Meminta WhatsApp mengirimkan pesan yang LEBIH LAMA dari sebuah pesan yang
    * sudah dikenal. Jawabannya tidak datang seketika: WhatsApp mengirimkannya
@@ -135,6 +138,13 @@ interface Sesi {
   /** Kejadian "terputus" dari rangkaian gangguan yang sedang berjalan; pemberitahuannya ditunda. */
   kejadianPutusId: string | null;
   timerBeritahu: NodeJS.Timeout | null;
+  /**
+   * Pembatasan akun yang dilaporkan WhatsApp (reachout timelock) dan belum
+   * dicabut. WhatsApp bisa mengeluarkan semua perangkat tertaut dari akun
+   * yang sedang dibatasi; bila sesi lalu di-logout, ini ikut dicatat sebagai
+   * sebabnya.
+   */
+  pembatasan: { jenis: string | null; sampai: Date | null; sejak: Date } | null;
 }
 
 /**
@@ -155,6 +165,15 @@ export const WAKTU = {
 
 /** Jeda minimum antar-pengambilan daftar grup per sesi. */
 const JEDA_SINKRON_GRUP_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Berkas pesan riwayat yang lebih tua dari ini tidak diunduh: WhatsApp sudah
+ * menghapusnya dari servernya. Terukur di produksi (Okt 2026): berkas berumur
+ * di bawah 14 hari 96–99% berhasil, 21–30 hari 39%, di atas 30 hari 18 dari
+ * ±47 ribu. Setiap kegagalan dulu juga mengirim permintaan unggah ulang ke
+ * ponsel pemegang nomor.
+ */
+export const BATAS_UMUR_MEDIA_RIWAYAT_MS = 30 * 24 * 60 * 60 * 1000;
 
 const sesiAktif = new Map<string, Sesi>();
 
@@ -208,6 +227,16 @@ const bersihkanTimerBeritahu = (sesi: Sesi) => {
   if (sesi.timerBeritahu) {
     clearTimeout(sesi.timerBeritahu);
     sesi.timerBeritahu = null;
+  }
+};
+
+/** Menutup soket tanpa menunggu. `end` milik Baileys asinkron; gagalnya tidak berarti apa-apa. */
+const tutupSoket = (sock: SoketWhatsApp) => {
+  try {
+    const hasil = sock.end() as unknown;
+    if (hasil instanceof Promise) hasil.catch(() => {});
+  } catch {
+    // Soket yang memang sudah tertutup.
   }
 };
 
@@ -303,16 +332,28 @@ const namaGrupUntuk = async (sesi: Sesi, jid: string): Promise<string | null> =>
 const unduhBerkas = async (
   sesi: Sesi,
   mentah: PesanBaileys,
-  keterangan: { mimeType: string | null; fileName: string | null }
+  keterangan: { mimeType: string | null; fileName: string | null },
+  opsi: { live: boolean; waktu: Date }
 ): Promise<BerkasMedia> => {
   const dasar = { mimeType: keterangan.mimeType, fileName: keterangan.fileName };
+
+  // Pesan live baru saja tiba, apa pun stempel waktunya; yang bisa jauh lebih
+  // tua hanya riwayat dan susulan.
+  if (!opsi.live && Date.now() - opsi.waktu.getTime() > BATAS_UMUR_MEDIA_RIWAYAT_MS) {
+    return { ...dasar, path: null, sizeBytes: null, status: 'kedaluwarsa' };
+  }
 
   if (!sesi.sock?.unduhMedia) {
     return { ...dasar, path: null, sizeBytes: null, status: 'tidak_didukung' };
   }
 
   try {
-    const buffer = await sesi.sock.unduhMedia(mentah);
+    // Hanya pesan yang baru tiba yang boleh meminta ponsel mengunggah ulang
+    // berkasnya. Riwayat yang tersinkron saat penautan membawa ribuan berkas
+    // lama: meminta semuanya berarti ribuan permintaan ke ponsel dalam
+    // semenit, pola yang mendahului beberapa logout perangkat tepat setelah
+    // ditautkan (Okt 2026).
+    const buffer = await sesi.sock.unduhMedia(mentah, { mintaUnggahUlang: opsi.live });
     if (buffer.byteLength > env.WHATSAPP_MEDIA_MAX_BYTES) {
       // Pesannya tetap diarsipkan: yang hilang hanya berkasnya, dan itu
       // harus terlihat sebagai keputusan sistem, bukan sebagai kegagalan.
@@ -533,7 +574,10 @@ const arsipkanPesan = async (sesi: Sesi, messages: PesanBaileys[], opsi: { live:
     }
 
     const lama = sudahAda.has(pesan.externalMessageId);
-    const berkas = pesan.media && !lama ? await unduhBerkas(sesi, mentah, pesan.media) : undefined;
+    const berkas =
+      pesan.media && !lama
+        ? await unduhBerkas(sesi, mentah, pesan.media, { live: opsi.live, waktu: pesan.timestamp })
+        : undefined;
 
     // Tiap pesan berdiri sendiri. Tanpa ini, satu kegagalan database di
     // tengah batch akan membuang seluruh pesan sesudahnya tanpa jejak —
@@ -633,12 +677,52 @@ const tanganiGrup = async (sesi: Sesi, muatan: unknown) => {
   await pelajariGrup(sesi, Array.isArray(muatan) ? muatan : [muatan]);
 };
 
-const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
+/**
+ * Pembatasan akun dari WhatsApp ("reachout timelock", mis. karena terlalu
+ * banyak menghubungi orang baru). WhatsApp bisa mengeluarkan perangkat
+ * tertaut dari akun yang sedang dibatasi; tanpa catatan ini logout semacam
+ * itu tidak bisa dibedakan dari perangkat yang dihapus pemiliknya.
+ */
+const catatPembatasan = (
+  sesi: Sesi,
+  laporan: { isActive?: unknown; enforcementType?: unknown; timeEnforcementEnds?: unknown }
+) => {
+  const label = sesi.phoneNumber ?? sesi.accountId;
+  if (!laporan.isActive) {
+    if (sesi.pembatasan) catat(`pembatasan WhatsApp pada ${label} dicabut`);
+    sesi.pembatasan = null;
+    return;
+  }
+  const jenis = typeof laporan.enforcementType === 'string' ? laporan.enforcementType : null;
+  const sampai = laporan.timeEnforcementEnds instanceof Date ? laporan.timeEnforcementEnds : null;
+  sesi.pembatasan = { jenis, sampai, sejak: sesi.pembatasan?.sejak ?? new Date() };
+  catat(`${label} dibatasi WhatsApp (${jenis ?? 'jenis tidak disebut'}) sampai ${sampai?.toISOString() ?? 'waktu tidak disebut'}`);
+};
+
+/** Catatan untuk sesi yang berhenti, ditambah sebab teknisnya dari WhatsApp. */
+const catatanBerhenti = (catatan: string, rincian: string | null, pembatasan: Sesi['pembatasan']) => {
+  const masihDibatasi = pembatasan && (!pembatasan.sampai || pembatasan.sampai.getTime() > Date.now());
+  const sebab = [
+    rincian,
+    masihDibatasi ? `akun sedang dibatasi WhatsApp${pembatasan.jenis ? `: ${pembatasan.jenis}` : ''}` : null,
+  ].filter(Boolean);
+  return sebab.length > 0 ? `${catatan} (${sebab.join('; ')})` : catatan;
+};
+
+/**
+ * @param milik benar selama `sock` masih soket sesi yang berlaku. Diperiksa
+ *   lagi sesudah setiap penantian database: selama menunggu, sesi bisa sudah
+ *   dibuka ulang atau ditutup HR, dan keputusan soket ini tidak berlaku lagi.
+ */
+const tanganiPerubahanKoneksi = async (sesi: Sesi, sock: SoketWhatsApp, milik: () => boolean, muatan: unknown) => {
   const pembaruan = (muatan ?? {}) as {
     connection?: string;
     qr?: string;
-    lastDisconnect?: { error?: { output?: { statusCode?: number } } };
+    lastDisconnect?: { error?: GalatPutus };
+    reachoutTimeLock?: { isActive?: unknown; enforcementType?: unknown; timeEnforcementEnds?: unknown };
   };
+
+  if (pembaruan.reachoutTimeLock) catatPembatasan(sesi, pembaruan.reachoutTimeLock);
 
   if (pembaruan.qr) {
     const pertamaKali = sesi.qr === null;
@@ -662,10 +746,11 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     // WhatsApp melaporkan nomor yang benar-benar tertaut. Untuk nomor pribadi
     // inilah saat nomornya diketahui; untuk nomor perusahaan ini pemeriksaan
     // bahwa yang memindai memang ponsel nomor itu.
-    const idPengguna = sesi.sock?.user?.id;
+    const idPengguna = sock.user?.id;
     const nomorTertaut = idPengguna ? nomorDariJid(idPengguna) : null;
     if (nomorTertaut) {
       const klaim = await claimPhoneNumber(sesi.accountId, nomorTertaut);
+      if (!milik()) return;
       if (klaim.status === 'konflik' || klaim.status === 'salah_nomor') {
         const catatan =
           klaim.status === 'konflik'
@@ -687,6 +772,7 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     sesi.kejadianPutusId = null;
     await applySessionEvent({ accountId: sesi.accountId, status: 'connected' });
     catat(`${sesi.phoneNumber ?? sesi.accountId} tersambung`);
+    if (!milik()) return;
 
     // Di latar: satu permintaan untuk semua grup, paling sering sekali per
     // 6 jam per sesi, dan kegagalannya tidak memengaruhi sambungan.
@@ -710,11 +796,50 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     return;
   }
 
-  const kode = pembaruan.lastDisconnect?.error?.output?.statusCode;
+  const galat = pembaruan.lastDisconnect?.error;
+  const kode = galat?.output?.statusCode;
   const keputusan = putuskanReconnect(kode, sesi.percobaan, {
     menungguScan: sesi.status === 'pending_scan',
   });
-  sesi.catatanTerakhir = keputusan.catatan;
+  // Sebab teknis hanya dicantumkan bila sesi berhenti. Gangguan yang pulih
+  // sendiri cukup dengan kodenya.
+  const catatan = keputusan.sambungUlang
+    ? keputusan.catatan
+    : catatanBerhenti(keputusan.catatan, rincianPutus(galat), sesi.pembatasan);
+  sesi.catatanTerakhir = catatan;
+
+  // QR yang kedaluwarsa bukan sesi yang putus. Mencatatnya sebagai kejadian
+  // memberi tahu pemegang nomor bahwa sesinya terputus, belasan kali, untuk
+  // nomor yang belum pernah tertaut.
+  //
+  // Satu rangkaian gangguan dicatat sebagai SATU kejadian, pada putus
+  // pertamanya; percobaan-percobaan berikutnya hanya memperbarui catatan di
+  // memori. Dulu tiap percobaan jadi satu kejadian dan satu push ke pemegang
+  // nomor: hampir seratus "sesi terputus" sehari untuk gangguan tiga detik.
+  const rangkaianBaru = sesi.percobaan === 0 || !keputusan.sambungUlang || keputusan.perluScanUlang;
+
+  // Keadaan di memori diperbarui sekarang, sebelum menunggu database: pengawas
+  // sesi membaca 'connected' tanpa soket sebagai sesi macet, dan bila sempat
+  // berjalan di sela penantian itu ia membuka soket kedua.
+  if (keputusan.sambungUlang) {
+    // Saat QR diganti, halaman tetap menampilkan tempat QR, bukan "menyambung
+    // ulang": dari sisi orang yang memindai, tidak ada yang putus.
+    sesi.status = keputusan.tahapQr ? 'pending_scan' : 'connecting';
+    // Rangkaian sambung ulang dimulai di sini; pengawas baru menganggapnya
+    // macet bila tidak ada soket maupun timer selama batasnya.
+    sesi.terakhirDicoba = Date.now();
+  } else {
+    // Tidak ada percobaan berikutnya: timer sisa percobaan sebelumnya dibuang
+    // supaya state sesi tidak menyisakan jejak yang membingungkan.
+    bersihkanTimer(sesi);
+    bersihkanTimerBeritahu(sesi);
+    sesi.kejadianPutusId = null;
+    sesi.status = keputusan.perluScanUlang ? 'pending_scan' : 'disconnected';
+    if (keputusan.perluScanUlang) {
+      sesi.qr = null;
+      sesi.qrDibuatPada = null;
+    }
+  }
 
   if (keputusan.perluScanUlang) {
     // Kredensial yang sudah tidak sah dibuang. Kalau disisakan, sambungan
@@ -728,47 +853,29 @@ const tanganiPerubahanKoneksi = async (sesi: Sesi, muatan: unknown) => {
     }
   }
 
-  // QR yang kedaluwarsa bukan sesi yang putus. Mencatatnya sebagai kejadian
-  // memberi tahu pemegang nomor bahwa sesinya terputus, belasan kali, untuk
-  // nomor yang belum pernah tertaut.
-  //
-  // Satu rangkaian gangguan dicatat sebagai SATU kejadian, pada putus
-  // pertamanya; percobaan-percobaan berikutnya hanya memperbarui catatan di
-  // memori. Dulu tiap percobaan jadi satu kejadian dan satu push ke pemegang
-  // nomor: hampir seratus "sesi terputus" sehari untuk gangguan tiga detik.
-  const rangkaianBaru = sesi.percobaan === 0 || !keputusan.sambungUlang || keputusan.perluScanUlang;
   if (!keputusan.tahapQr && rangkaianBaru) {
     const pulihSendiri = keputusan.sambungUlang && !keputusan.perluScanUlang;
     const hasil = await applySessionEvent({
       accountId: sesi.accountId,
       status: keputusan.perluScanUlang ? 'scan_required' : 'disconnected',
-      note: keputusan.catatan,
+      note: catatan,
       tundaPemberitahuan: pulihSendiri,
     });
-    if (pulihSendiri && hasil.status === 'tercatat') {
+    if (pulihSendiri && hasil.status === 'tercatat' && milik()) {
       sesi.kejadianPutusId = hasil.eventId;
       jadwalkanPemberitahuanPutus(sesi);
     }
   }
 
   if (!keputusan.sambungUlang) {
-    // Tidak ada percobaan berikutnya: timer sisa percobaan sebelumnya dibuang
-    // supaya state sesi tidak menyisakan jejak yang membingungkan.
-    bersihkanTimer(sesi);
-    bersihkanTimerBeritahu(sesi);
-    sesi.kejadianPutusId = null;
-    sesi.status = keputusan.perluScanUlang ? 'pending_scan' : 'disconnected';
-    if (keputusan.perluScanUlang) {
-      sesi.qr = null;
-      sesi.qrDibuatPada = null;
-    }
-    catat(`${sesi.phoneNumber ?? sesi.accountId} berhenti: ${keputusan.catatan}`);
+    catat(`${sesi.phoneNumber ?? sesi.accountId} berhenti: ${catatan}`);
     return;
   }
 
-  // Saat QR diganti, halaman tetap menampilkan tempat QR, bukan "menyambung
-  // ulang": dari sisi orang yang memindai, tidak ada yang putus.
-  sesi.status = keputusan.tahapQr ? 'pending_scan' : 'connecting';
+  // Selama menunggu database sesi sudah dibuka ulang (tombol Sambungkan,
+  // pengawas) atau ditutup HR: jadwal dari soket yang sudah selesai ini tidak
+  // berlaku lagi.
+  if (!milik()) return;
   sesi.percobaan += 1;
   jadwalkanSambungUlang(sesi, keputusan.jedaMs);
 };
@@ -868,13 +975,15 @@ const bukaSoket = async (sesi: Sesi) => {
 
   const generasi = ++sesi.generasi;
   sesi.terakhirDicoba = Date.now();
-  const tutupTerlambat = (dibuat: SesiDibuat) => {
-    try {
-      dibuat.sock.end();
-    } catch {
-      // Soket yang tidak jadi dipakai; gagal menutupnya tidak berarti apa-apa.
-    }
-  };
+  // Satu nomor, satu soket. Dua soket berkredensial sama saling menendang
+  // (kode 440), dan WhatsApp lalu mengeluarkan perangkatnya (401): pemegang
+  // nomor harus memindai ulang tanpa pernah menekan apa pun. Soket yang masih
+  // dipegang ditutup dulu; event darinya sesudah ini diabaikan (`milik`).
+  const lama = sesi.sock;
+  sesi.sock = null;
+  if (lama) tutupSoket(lama);
+
+  const tutupTerlambat = (dibuat: SesiDibuat) => tutupSoket(dibuat.sock);
   const { sock, simpanKredensial } = await denganBatasWaktu(
     pembuat({ accountId: sesi.accountId }),
     WAKTU.batasBukaSoketMs,
@@ -890,12 +999,26 @@ const bukaSoket = async (sesi: Sesi) => {
   }
 
   sesi.sock = sock;
+  /** Soket ini masih soket sesi yang berlaku. */
+  const milik = () => sesi.generasi === generasi;
 
   sock.ev.on('creds.update', () => {
+    // Creds disimpan utuh dari salinan milik soket ini sendiri. Soket yang
+    // sudah digantikan membawa salinan yang lebih tua — atau milik QR yang
+    // tidak jadi dipindai — dan akan menimpa creds soket yang sekarang.
+    if (!milik()) return;
     amanDijalankan('creds.update', simpanKredensial);
   });
   sock.ev.on('connection.update', (muatan) => {
-    amanDijalankan('connection.update', () => tanganiPerubahanKoneksi(sesi, muatan));
+    if (!milik()) {
+      // Soket yang sudah digantikan tidak ikut menentukan keadaan sesi. Dulu
+      // tutupnya (440) mengosongkan soket pengganti, pengawas lalu membuka
+      // soket ketiga, dan begitu terus tiap menit. Bila ternyata ia masih
+      // sempat tersambung, ditutup.
+      if ((muatan as { connection?: unknown } | null)?.connection === 'open') tutupSoket(sock);
+      return;
+    }
+    amanDijalankan('connection.update', () => tanganiPerubahanKoneksi(sesi, sock, milik, muatan));
   });
   sock.ev.on('messages.upsert', (muatan) => {
     amanDijalankan('messages.upsert', () => tanganiPesanMasuk(sesi, muatan));
@@ -962,6 +1085,14 @@ export const connectAccount = async (
 ): Promise<RingkasanSesi> => {
   const adaSebelumnya = sesiAktif.get(accountId);
   if (adaSebelumnya && adaSebelumnya.status === 'connected') return ringkas(adaSebelumnya);
+  if (adaSebelumnya && adaSebelumnya.status === 'pending_scan' && adaSebelumnya.sock && !adaSebelumnya.ditutupSengaja) {
+    // QR masih hidup: tombol Tautkan yang ditekan lagi memakai QR yang sama.
+    // Dulu soket QR kedua dibuka di samping yang pertama; setelah salah satu
+    // dipindai, yang lain terus memancarkan QR dan membuka sambungan dengan
+    // creds hasil pindaian, keduanya saling menendang (440), lalu WhatsApp
+    // mengeluarkan perangkatnya (401) — semua dalam dua menit.
+    return ringkas(adaSebelumnya);
+  }
   if (adaSebelumnya && adaSebelumnya.status === 'connecting') {
     // Sedang menunggu jeda sambung ulang (bisa sampai 5 menit): HR yang
     // menekan "Sambungkan" tidak perlu ikut menunggu — dicoba sekarang.
@@ -990,6 +1121,7 @@ export const connectAccount = async (
     timerAktif: false,
     kejadianPutusId: null,
     timerBeritahu: null,
+    pembatasan: null,
   };
   sesi.phoneNumber = phoneNumber;
   sesi.status = 'connecting';

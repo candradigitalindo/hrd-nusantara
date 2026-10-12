@@ -921,7 +921,9 @@ export const getConversationMedia = async (req: Request, res: Response) => {
         ? 'Berkas melewati batas ukuran, jadi tidak ikut disimpan'
         : pesan.mediaStatus === 'gagal'
           ? 'Berkas gagal diunduh dari WhatsApp saat pesan ini tiba'
-          : 'Pesan ini tidak punya berkas media';
+          : pesan.mediaStatus === 'kedaluwarsa'
+            ? 'Berkas riwayat ini sudah lebih dari 30 hari saat tersinkron, jadi tidak lagi tersedia di WhatsApp dan tidak diunduh'
+            : 'Pesan ini tidak punya berkas media';
     return res.status(404).json({ error: alasan, mediaStatus: pesan.mediaStatus });
   }
 

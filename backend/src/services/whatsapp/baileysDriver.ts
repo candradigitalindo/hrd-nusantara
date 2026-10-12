@@ -21,6 +21,25 @@ const UMUR_CACHE_VERSI_MS = 6 * 60 * 60 * 1000;
 const BATAS_AMBIL_VERSI_MS = 10_000;
 let versiTersimpan: { version: unknown; pada: number } | null = null;
 
+/** Batas menunggu ponsel mengunggah ulang satu berkas media. */
+const BATAS_UNGGAH_ULANG_MS = 30_000;
+
+const denganBatasWaktu = <T>(janji: Promise<T>, ms: number, apa: string): Promise<T> =>
+  new Promise<T>((selesai, gagal) => {
+    const t = setTimeout(() => gagal(new Error(`${apa} lebih dari ${Math.round(ms / 1000)} detik`)), ms);
+    t.unref?.();
+    janji.then(
+      (hasil) => {
+        clearTimeout(t);
+        selesai(hasil);
+      },
+      (error) => {
+        clearTimeout(t);
+        gagal(error);
+      }
+    );
+  });
+
 const versiProtokol = async (ambilVersi: () => Promise<{ version: unknown }>): Promise<unknown | undefined> => {
   if (versiTersimpan && Date.now() - versiTersimpan.pada < UMUR_CACHE_VERSI_MS) return versiTersimpan.version;
 
@@ -110,22 +129,29 @@ export const buatPembuatSoketBaileys = (): PembuatSoket => async ({ accountId })
   // Gambar, video, dan pesan suara tidak punya teks: tanpa berkasnya arsip
   // tidak memuat isi pesan sama sekali. Kuncinya ada di dalam pesan, jadi
   // pengunduhannya hanya bisa dilakukan dari sini.
-  soket.unduhMedia = async (pesan: unknown) => {
+  soket.unduhMedia = async (pesan: unknown, opsi: { mintaUnggahUlang?: boolean } = {}) => {
+    const mintaUlang = opsi.mintaUnggahUlang === false ? undefined : soket.updateMediaMessage?.bind(soket);
     const isi = await (downloadMediaMessage as (
       pesan: unknown,
       jenis: 'buffer',
       opsi: Record<string, unknown>,
-      konteks: Record<string, unknown>
+      konteks?: Record<string, unknown>
     ) => Promise<Buffer>)(
       pesan,
       'buffer',
       {},
-      {
-        logger,
-        // Berkas yang kedaluwarsa di server WhatsApp diminta ulang lewat
-        // ponsel pemegang nomor; tanpa ini media lama gagal diunduh.
-        reuploadRequest: soket.updateMediaMessage?.bind(soket),
-      }
+      // Tanpa konteks, berkas yang sudah dihapus dari server WhatsApp langsung
+      // gagal diunduh tanpa melibatkan ponsel.
+      mintaUlang
+        ? {
+            logger,
+            // Berkas yang kedaluwarsa di server WhatsApp diminta ulang lewat
+            // ponsel pemegang nomor. Baileys menunggu jawabannya tanpa batas
+            // waktu, dan ponsel yang tidak menjawab menahan arsip pesan
+            // sesudahnya.
+            reuploadRequest: (p: unknown) => denganBatasWaktu(mintaUlang(p), BATAS_UNGGAH_ULANG_MS, 'permintaan unggah ulang media'),
+          }
+        : undefined
     );
     return isi;
   };

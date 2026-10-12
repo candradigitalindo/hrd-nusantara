@@ -12,6 +12,7 @@ const ALASAN_TANPA_BERKAS: Record<string, string> = {
   terlalu_besar: "Berkas melewati batas ukuran, tidak ikut disimpan",
   gagal: "Berkas sudah tidak bisa diunduh dari WhatsApp saat pesan ini tiba",
   tidak_didukung: "Driver WhatsApp saat itu belum bisa mengunduh berkas",
+  kedaluwarsa: "Berkas riwayat lebih dari 30 hari saat tersinkron — sudah tidak tersedia di WhatsApp, jadi tidak diunduh",
 };
 
 /**

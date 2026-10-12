@@ -27,7 +27,8 @@ export interface BerkasMedia {
   mimeType: string | null;
   sizeBytes: number | null;
   fileName: string | null;
-  status: 'tersimpan' | 'terlalu_besar' | 'gagal' | 'tidak_didukung';
+  /** kedaluwarsa: berkas pesan riwayat yang sudah terlalu tua untuk masih ada di server WhatsApp, tidak dicoba diunduh. */
+  status: 'tersimpan' | 'terlalu_besar' | 'gagal' | 'tidak_didukung' | 'kedaluwarsa';
 }
 
 /** Keterangan grup asal pesan. */

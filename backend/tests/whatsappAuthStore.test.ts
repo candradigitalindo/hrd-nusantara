@@ -171,6 +171,22 @@ describe('Kredensial sesi WhatsApp di database', () => {
   });
 });
 
+describe('Creds hasil pemindaian QR', () => {
+  it('terbaca oleh soket berikutnya walau simpanannya masih mengantre', async () => {
+    const id = await buatAkun();
+    const pemindai = await muatAuthState(id, alat);
+    (pemindai.state.creds as Creds).me = { id: '628111111111:7@s.whatsapp.net' };
+
+    // Setelah QR dipindai, WhatsApp langsung meminta restart (515) dan soket
+    // berikutnya dibuka tanpa menunggu simpanan creds selesai.
+    const simpan = pemindai.saveCreds();
+    const berikutnya = await muatAuthState(id, alat);
+    await simpan;
+
+    expect((berikutnya.state.creds as Creds).me?.id).toBe('628111111111:7@s.whatsapp.net');
+  });
+});
+
 describe('Membuang kredensial yang tidak sah lagi', () => {
   it('menghapus creds dan seluruh kunci akun itu saja', async () => {
     const id = await buatAkun();

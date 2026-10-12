@@ -158,7 +158,14 @@ export const muatAuthState = async (accountId: string, alat: AlatBaileys): Promi
   const keTeks = (nilai: unknown) => JSON.stringify(nilai, alat.BufferJSON.replacer);
   const dariTeks = (teks: string): unknown => JSON.parse(teks, alat.BufferJSON.reviver);
 
-  const tersimpan = (await bacaBaris(accountId, KATEGORI_CREDS, [ID_CREDS])).get(ID_CREDS);
+  // Dibaca lewat antrean tulis akun ini. Setelah QR dipindai, WhatsApp
+  // menutup soket pemindai (515) dan soket berikutnya langsung dibuka; tanpa
+  // menunggu, creds hasil pemasangan yang masih mengantre bisa belum tertulis
+  // dan soket baru masuk dengan creds lama.
+  let tersimpan: string | undefined;
+  await berurutan(accountId, async () => {
+    tersimpan = (await bacaBaris(accountId, KATEGORI_CREDS, [ID_CREDS])).get(ID_CREDS);
+  });
   const creds = tersimpan ? dariTeks(tersimpan) : alat.initAuthCreds();
 
   return {

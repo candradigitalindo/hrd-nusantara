@@ -57,12 +57,17 @@ class SoketPalsu {
   /** Berkas yang akan dikembalikan unduhMedia; null = driver tanpa dukungan. */
   isiMedia: Buffer | null = null;
   mediaDiminta = 0;
+  /** Opsi tiap permintaan unduh, untuk memeriksa kapan ponsel boleh diminta mengunggah ulang. */
+  opsiMedia: unknown[] = [];
+  /** Berapa kali creds soket ini disimpan. */
+  credsDisimpan = 0;
   namaGrup = 'Tim Outlet Kemang';
 
   groupMetadata = async (jid: string) => ({ id: jid, subject: this.namaGrup });
 
-  unduhMedia = async () => {
+  unduhMedia = async (_pesan?: unknown, opsi?: { mintaUnggahUlang?: boolean }) => {
     this.mediaDiminta += 1;
+    this.opsiMedia.push(opsi);
     if (!this.isiMedia) throw new Error('media kedaluwarsa di server WhatsApp');
     return this.isiMedia;
   };
@@ -88,8 +93,14 @@ let sitiToken: string;
 
 const pasangSoketPalsu = () => {
   setPembuatSoket(async (): Promise<SesiDibuat> => {
-    soketTerakhir = new SoketPalsu();
-    return { sock: soketTerakhir, simpanKredensial: async () => {} };
+    const soket = new SoketPalsu();
+    soketTerakhir = soket;
+    return {
+      sock: soket,
+      simpanKredensial: async () => {
+        soket.credsDisimpan += 1;
+      },
+    };
   });
 };
 
@@ -953,6 +964,207 @@ describe('Pesan masuk lewat Baileys', () => {
 
     const semua = await prisma.whatsAppConversation.findMany({ select: { externalMessageId: true } });
     expect(semua.map((s) => s.externalMessageId)).toEqual(['WA-3']);
+  });
+});
+
+describe('Berkas media riwayat', () => {
+  const detikLalu = (hari: number) => Math.floor((Date.now() - hari * 24 * 60 * 60_000) / 1000);
+  const gambar = (id: string, messageTimestamp: number) => ({
+    key: { remoteJid: '628222222222@s.whatsapp.net', fromMe: false, id },
+    message: { imageMessage: { mimetype: 'image/jpeg' } },
+    messageTimestamp,
+  });
+
+  const siapkanTersambung = async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    soketTerakhir!.isiMedia = Buffer.from('isi-foto');
+    return id;
+  };
+
+  const statusMedia = async (externalMessageId: string) =>
+    (await prisma.whatsAppConversation.findFirstOrThrow({ where: { externalMessageId } })).mediaStatus;
+
+  it('berkas riwayat lebih dari 30 hari tidak diunduh, yang lebih muda diunduh tanpa meminta ponsel mengunggah ulang', async () => {
+    await siapkanTersambung();
+
+    // Riwayat yang tersinkron saat penautan bisa membawa ribuan berkas lama.
+    // Dulu tiap berkas yang sudah dihapus server memicu satu permintaan
+    // unggah ulang ke ponsel: ±3.700 dalam 80 detik pada satu nomor, lalu
+    // perangkatnya di-logout.
+    soketTerakhir!.pancarkan('messaging-history.set', { messages: [gambar('R-LAMA', detikLalu(45)), gambar('R-BARU', detikLalu(2))] });
+    await tungguEventSelesai();
+
+    expect(await statusMedia('R-LAMA')).toBe('kedaluwarsa');
+    expect(await statusMedia('R-BARU')).toBe('tersimpan');
+    expect(soketTerakhir!.opsiMedia).toEqual([{ mintaUnggahUlang: false }]);
+  });
+
+  it('pesan yang baru tiba tetap boleh meminta ponsel mengunggah ulang berkasnya, apa pun stempel waktunya', async () => {
+    await siapkanTersambung();
+
+    soketTerakhir!.pancarkan('messages.upsert', { type: 'notify', messages: [gambar('L-1', detikLalu(45))] });
+    await tungguEventSelesai();
+
+    expect(await statusMedia('L-1')).toBe('tersimpan');
+    expect(soketTerakhir!.opsiMedia).toEqual([{ mintaUnggahUlang: true }]);
+  });
+});
+
+describe('Satu nomor, satu soket', () => {
+  const putus = (soket: SoketPalsu, kode: number) =>
+    soket.pancarkan('connection.update', { connection: 'close', lastDisconnect: { error: { output: { statusCode: kode } } } });
+
+  beforeEach(() => {
+    WAKTU.skalaJeda = 0.00001;
+  });
+  afterEach(() => {
+    WAKTU.skalaJeda = 1;
+  });
+
+  it('Tautkan yang ditekan lagi selagi QR hidup memakai QR yang sama, bukan membuka soket kedua', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const pertama = soketTerakhir!;
+    pertama.pancarkan('connection.update', { qr: 'QR-1' });
+    await tungguEventSelesai();
+
+    // 5 Okt 2026: Tautkan ditekan dua kali dalam semenit. Dua soket QR hidup
+    // berdampingan, yang tidak dipindai terus memancarkan QR dan membuka
+    // sambungan dengan creds hasil pindaian, keduanya saling menendang (440),
+    // lalu perangkatnya di-logout (401) — semua dalam dua menit.
+    const sesi = await sambungkan(id);
+
+    expect(soketTerakhir).toBe(pertama);
+    expect(pertama.endDipanggil).toBe(0);
+    expect(sesi.qrTersedia).toBe(true);
+  });
+
+  it('event terlambat dari soket yang sudah digantikan tidak mengubah keadaan sesi', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const lama = soketTerakhir!;
+    lama.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    putus(lama, ALASAN_PUTUS.connectionClosed);
+    await tungguSambungUlang();
+    const baru = soketTerakhir!;
+    expect(baru).not.toBe(lama);
+
+    // Soket lama ditendang (440) dan memancarkan QR basi, lalu soket baru tersambung.
+    putus(lama, ALASAN_PUTUS.connectionReplaced);
+    lama.pancarkan('connection.update', { qr: 'QR-BASI' });
+    baru.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    expect(getSession(id)?.status).toBe('connected');
+    expect(getSession(id)?.qrTersedia).toBe(false);
+    // Dulu: 440 soket lama mengosongkan soket pengganti, pengawas melihat
+    // 'connected' tanpa soket dan membuka soket ketiga, yang menendang soket
+    // kedua — tiap menit, 101 kali dalam 1 jam 40 menit pada satu nomor.
+    expect(await periksaSesiMacet()).toEqual([]);
+    expect(soketTerakhir).toBe(baru);
+    const catatan = (await prisma.whatsAppSessionEvent.findMany({ where: { accountId: id } })).map((k) => k.note);
+    expect(catatan).not.toContain('Sesi diambil alih perangkat lain.');
+    expect(catatan).not.toContain('Menunggu scan QR untuk menyambungkan nomor.');
+  });
+
+  it('creds dari soket yang sudah digantikan tidak ikut disimpan', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const lama = soketTerakhir!;
+    lama.pancarkan('connection.update', { connection: 'open' });
+    lama.pancarkan('creds.update', {});
+    await tungguEventSelesai();
+    expect(lama.credsDisimpan).toBe(1);
+
+    putus(lama, ALASAN_PUTUS.connectionClosed);
+    await tungguSambungUlang();
+    const baru = soketTerakhir!;
+
+    // Tiap soket menyimpan salinan creds-nya sendiri secara utuh: salinan
+    // soket lama yang lebih tua akan menimpa creds soket yang sekarang.
+    lama.pancarkan('creds.update', {});
+    baru.pancarkan('creds.update', {});
+    await tungguEventSelesai();
+    expect(lama.credsDisimpan).toBe(1);
+    expect(baru.credsDisimpan).toBe(1);
+  });
+
+  it('soket yang sudah digantikan tapi masih sempat tersambung langsung ditutup', async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    const lama = soketTerakhir!;
+    putus(lama, ALASAN_PUTUS.timedOut);
+    await tungguSambungUlang();
+    expect(soketTerakhir).not.toBe(lama);
+
+    lama.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+
+    expect(lama.endDipanggil).toBe(1);
+    expect(getSession(id)?.status).toBe('connecting');
+  });
+});
+
+describe('Sebab sesi berhenti', () => {
+  const logout = (soket: SoketPalsu, data: unknown) =>
+    soket.pancarkan('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { message: 'Stream Errored (conflict)', output: { statusCode: ALASAN_PUTUS.loggedOut }, data } },
+    });
+
+  const siapkanTersambung = async () => {
+    const id = await buatAkun();
+    await sambungkan(id);
+    soketTerakhir!.pancarkan('connection.update', { connection: 'open' });
+    await tungguEventSelesai();
+    return id;
+  };
+
+  const catatanScanUlang = async (id: string) =>
+    (await prisma.whatsAppSessionEvent.findFirstOrThrow({ where: { accountId: id, eventType: 'scan_required' } })).note;
+
+  it('mencatat sebab dari WhatsApp: perangkat dikeluarkan, ditambah pembatasan akun yang sedang berlaku', async () => {
+    const id = await siapkanTersambung();
+    soketTerakhir!.pancarkan('connection.update', {
+      reachoutTimeLock: { isActive: true, enforcementType: 'DEFAULT', timeEnforcementEnds: new Date(Date.now() + 60 * 60_000) },
+    });
+    logout(soketTerakhir!, { tag: 'conflict', attrs: { type: 'device_removed' } });
+    await tungguEventSelesai();
+
+    const catatan = await catatanScanUlang(id);
+    expect(catatan).toBe(
+      'Sesi di-logout dari perangkat. Perlu scan QR ulang. (conflict device_removed; akun sedang dibatasi WhatsApp: DEFAULT)'
+    );
+    // Pemegang nomor melihat catatan yang sama di aplikasinya.
+    expect(getSession(id)?.catatan).toBe(catatan);
+  });
+
+  it('pembatasan yang sudah dicabut atau sudah lewat tidak ikut disebut', async () => {
+    const id = await siapkanTersambung();
+    const soket = soketTerakhir!;
+    soket.pancarkan('connection.update', { reachoutTimeLock: { isActive: true, enforcementType: 'DEFAULT' } });
+    soket.pancarkan('connection.update', { reachoutTimeLock: { isActive: false } });
+    await tungguEventSelesai();
+    logout(soket, { tag: 'conflict', attrs: { type: 'device_removed' } });
+    await tungguEventSelesai();
+    expect(await catatanScanUlang(id)).toBe('Sesi di-logout dari perangkat. Perlu scan QR ulang. (conflict device_removed)');
+
+    const id2 = await buatAkun({ phoneNumber: '08133333333', label: 'Kasir' });
+    await sambungkan(id2);
+    const soket2 = soketTerakhir!;
+    soket2.pancarkan('connection.update', { connection: 'open' });
+    soket2.pancarkan('connection.update', {
+      reachoutTimeLock: { isActive: true, enforcementType: 'DEFAULT', timeEnforcementEnds: new Date(Date.now() - 60_000) },
+    });
+    await tungguEventSelesai();
+    logout(soket2, { reason: '401', location: 'frc' });
+    await tungguEventSelesai();
+    expect(await catatanScanUlang(id2)).toBe('Sesi di-logout dari perangkat. Perlu scan QR ulang. (failure 401 frc)');
   });
 });
 

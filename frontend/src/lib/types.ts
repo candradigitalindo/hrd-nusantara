@@ -297,7 +297,7 @@ export interface Percakapan {
   mediaMimeType: string | null;
   mediaSizeBytes: number | null;
   mediaFileName: string | null;
-  /** tersimpan | terlalu_besar | gagal | tidak_didukung */
+  /** tersimpan | terlalu_besar | gagal | tidak_didukung | kedaluwarsa */
   mediaStatus: string | null;
 }
 
