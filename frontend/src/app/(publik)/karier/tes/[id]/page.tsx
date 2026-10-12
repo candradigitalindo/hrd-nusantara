@@ -27,8 +27,8 @@ export default function HalamanTesPelamar() {
 
   const alat: ApiUjian = React.useMemo(
     () => ({
-      simpan: async (jawaban) => (await api.put<{ dikirimOtomatis?: boolean }>(`/karier/tes/${id}/jawaban`, { jawaban })).data,
-      kirim: async () => (await api.post<HasilKirimCbt>(`/karier/tes/${id}/kirim`)).data,
+      simpan: async (jawaban) => (await api.put<{ dikirimOtomatis?: boolean; hasil?: HasilKirimCbt | null }>(`/karier/tes/${id}/jawaban`, { jawaban })).data,
+      kirim: async (isi) => (await api.post<HasilKirimCbt>(`/karier/tes/${id}/kirim`, isi)).data,
       kejadian: async (type, detail) => {
         await api.post(`/karier/tes/${id}/kejadian`, { type, ...(detail ? { detail } : {}) });
       },

@@ -46,18 +46,30 @@ const soalDasar = {
  * ada, baru ketahuan saat peserta sudah mengerjakan — dan saat itu nilainya
  * sudah terlanjur salah. Karena itu ditolak di gerbang masuk.
  */
-const periksaBentukSoal = (d: {
+export interface MasalahBentukSoal {
+  path: 'options' | 'answerKey';
+  message: string;
+}
+
+/**
+ * Pemeriksaan bentuk soal terhadap tipenya: pilihan, kunci, dan nilai skala.
+ * Fungsi murni supaya dipakai bersama oleh skema buat soal dan oleh
+ * penyuntingan (yang harus memeriksa gabungan isian baru dengan soal lama).
+ */
+export const masalahBentukSoal = (d: {
   type: string;
-  options?: { kode: string; teks: string; nilai?: number }[];
-  answerKey: string[];
-}, ctx: z.RefinementCtx) => {
+  options?: readonly { kode: string; teks: string; nilai?: number }[] | null;
+  answerKey: readonly string[];
+}): MasalahBentukSoal[] => {
+  const masalah: MasalahBentukSoal[] = [];
+  const ctx = { addIssue: (m: { code: 'custom'; path: [MasalahBentukSoal['path']]; message: string }) => masalah.push({ path: m.path[0], message: m.message }) };
   const objektifBerpilihan = d.type === 'pilihan_ganda' || d.type === 'banyak_jawaban' || d.type === 'benar_salah';
 
   if (d.type === 'skala') {
     const opsi = d.options ?? [];
     if (opsi.length < 2) {
       ctx.addIssue({ code: 'custom', path: ['options'], message: 'Butir skala butuh minimal 2 pilihan' });
-      return;
+      return masalah;
     }
     const kode = opsi.map((o) => o.kode);
     if (new Set(kode).size !== kode.length) {
@@ -72,14 +84,14 @@ const periksaBentukSoal = (d: {
     if (d.answerKey.length > 0) {
       ctx.addIssue({ code: 'custom', path: ['answerKey'], message: 'Butir skala tidak punya kunci jawaban' });
     }
-    return;
+    return masalah;
   }
 
   if (objektifBerpilihan) {
     const opsi = d.options ?? [];
     if (opsi.length < 2) {
       ctx.addIssue({ code: 'custom', path: ['options'], message: 'Soal berpilihan butuh minimal 2 pilihan jawaban' });
-      return;
+      return masalah;
     }
     const kode = opsi.map((o) => o.kode);
     if (new Set(kode).size !== kode.length) {
@@ -103,6 +115,11 @@ const periksaBentukSoal = (d: {
   if (d.type === 'esai' && d.answerKey.length > 0) {
     ctx.addIssue({ code: 'custom', path: ['answerKey'], message: 'Soal esai tidak punya kunci jawaban; pakai rubrik' });
   }
+  return masalah;
+};
+
+const periksaBentukSoal = (d: Parameters<typeof masalahBentukSoal>[0], ctx: z.RefinementCtx) => {
+  for (const m of masalahBentukSoal(d)) ctx.addIssue({ code: 'custom', path: [m.path], message: m.message });
 };
 
 export const createQuestionSchema = z.object(soalDasar).strict().superRefine(periksaBentukSoal);
@@ -132,7 +149,8 @@ export const listQuestionQuerySchema = z
     type: z.enum(TIPE_SOAL).optional(),
     difficulty: z.enum(TINGKAT_SOAL).optional(),
     search: z.string().trim().max(200).optional(),
-    includeInactive: z.coerce.boolean().default(false),
+    // Bukan z.coerce.boolean(): string "false" dikonversi menjadi true.
+    includeInactive: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
   })
   .strict();
 
@@ -224,6 +242,12 @@ export const createAssignmentSchema = z
   .refine((d) => !d.availableFrom || !d.availableUntil || d.availableUntil > d.availableFrom, {
     path: ['availableUntil'],
     message: 'Batas akhir harus setelah waktu mulai',
+  })
+  // Penugasan yang batasnya sudah lewat tidak pernah bisa dikerjakan: peserta
+  // hanya mendapati tombol yang ditolak dan statusnya berubah kedaluwarsa.
+  .refine((d) => !d.availableUntil || d.availableUntil > new Date(), {
+    path: ['availableUntil'],
+    message: 'Batas akhir sudah lewat',
   });
 
 export const listAssignmentQuerySchema = z
@@ -243,20 +267,33 @@ export const listAssignmentQuerySchema = z
  * yang menyimpan tiap ketukan akan menabrak batas laju permintaan, apalagi
  * bila seluruh peserta berada di balik satu alamat IP kantor.
  */
+const butirJawabanSchema = z
+  .object({
+    questionId: ulidField,
+    chosen: z.array(z.string().trim().min(1).max(8)).max(10).default([]),
+    text: z.string().max(10000).nullable().optional(),
+  })
+  .strict();
+
 export const saveAnswersSchema = z
   .object({
-    jawaban: z
-      .array(
-        z
-          .object({
-            questionId: ulidField,
-            chosen: z.array(z.string().trim().min(1).max(8)).max(10).default([]),
-            text: z.string().max(10000).nullable().optional(),
-          })
-          .strict()
-      )
-      .min(1)
-      .max(200),
+    jawaban: z.array(butirJawabanSchema).min(1).max(200),
+  })
+  .strict();
+
+/**
+ * Permintaan kirim boleh membawa jawaban terakhir yang belum sempat tersimpan
+ * (simpan-otomatis gagal atau masih berjalan saat tombol Kirim ditekan).
+ * Jawaban yang datang setelah batas waktu tetap diabaikan server.
+ */
+export const submitAttemptSchema = z
+  .object({
+    // Seluruh jawaban di layar, bukan hanya yang kotor: batasnya mengikuti
+    // jumlah soal paket yang wajar, bukan ukuran satu kiriman simpan-otomatis.
+    jawaban: z.array(butirJawabanSchema).max(1000).optional(),
+    // Dikirim pengatur waktu di layar peserta: menandai "waktu habis" walau
+    // kirimannya tiba sesaat sebelum bel. Hanya penanda, tidak mengubah nilai.
+    otomatis: z.boolean().optional(),
   })
   .strict();
 
@@ -300,5 +337,6 @@ export type SetTestQuestionsInput = z.infer<typeof setTestQuestionsSchema>;
 export type CreateAssignmentInput = z.infer<typeof createAssignmentSchema>;
 export type ListAssignmentQuery = z.infer<typeof listAssignmentQuerySchema>;
 export type SaveAnswersInput = z.infer<typeof saveAnswersSchema>;
+export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
 export type ProctorEventInput = z.infer<typeof proctorEventSchema>;
 export type GradeAttemptInput = z.infer<typeof gradeAttemptSchema>;

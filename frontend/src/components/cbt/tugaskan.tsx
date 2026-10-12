@@ -19,8 +19,14 @@ interface HasilTugas {
   tautan: { assignmentId: string; nama: string; token: string }[];
 }
 
+/** Waktu sekarang dalam format input datetime-local (zona waktu perangkat). */
+const sekarangLokal = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+};
+
 /** Tautan pengerjaan untuk pelamar; hanya bisa dilihat sekali, di sini. */
-const DaftarTautan = ({ tautan }: { tautan: HasilTugas["tautan"] }) => {
+export const DaftarTautan = ({ tautan }: { tautan: HasilTugas["tautan"] }) => {
   const [disalin, setDisalin] = React.useState<string | null>(null);
   const alamat = (token: string) => `${window.location.origin}/tes/${token}`;
 
@@ -130,10 +136,10 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Bisa dikerjakan mulai" hint="Kosongkan bila boleh langsung dikerjakan">
-              <Input type="datetime-local" value={mulai} onChange={(e) => setMulai(e.target.value)} />
+              <Input type="datetime-local" value={mulai} min={sekarangLokal()} onChange={(e) => setMulai(e.target.value)} />
             </Field>
             <Field label="Batas akhir" hint="Setelah lewat, tes tidak bisa dimulai">
-              <Input type="datetime-local" value={sampai} onChange={(e) => setSampai(e.target.value)} />
+              <Input type="datetime-local" value={sampai} min={mulai || sekarangLokal()} onChange={(e) => setSampai(e.target.value)} />
             </Field>
           </div>
           <Field label="Catatan untuk peserta (opsional)">

@@ -175,6 +175,85 @@ export const hitungNilai = (
   };
 };
 
+/** Satu butir pengerjaan sebagai bahan ringkasan per kategori. */
+export interface ButirRingkas {
+  kategori: string;
+  tipe: string;
+  /** Bobot butir di paket. */
+  maksimal: number;
+  /** Poin yang diperoleh; null = esai belum dinilai penguji. */
+  poin: number | null;
+  dipilih: readonly string[];
+  /** Pilihan beserta nilainya (dipakai butir skala). */
+  pilihan: readonly PilihanSoal[];
+}
+
+export interface RingkasanKategori {
+  kategori: string;
+  maksimal: number;
+  /** Jumlah nilai terendah butir skala (butir lain 0). */
+  minimal: number;
+  diperoleh: number;
+  persen: number;
+  /**
+   * Posisi pada rentang skala, 0–100, dihitung dari butir skala yang DIJAWAB.
+   * null bila kategori ini tidak punya butir skala yang dijawab.
+   */
+  persenSkala: number | null;
+  /** Butir skala yang dilewati. */
+  dilewati: number;
+  /** Cukup banyak butir skala dijawab untuk ditafsirkan (lihat AMBANG_CUKUP_SKALA). */
+  cukup: boolean;
+  /** Esai yang belum dinilai penguji; selama itu nilainya dihitung 0. */
+  menunggu: number;
+}
+
+/**
+ * Bagian minimal butir skala yang harus dijawab agar skor dimensi layak
+ * ditafsirkan. Skor dari 7 dari 10 pernyataan masih dihitung dan ditampilkan,
+ * tetapi tidak diberi tafsiran perilaku.
+ */
+export const AMBANG_CUKUP_SKALA = 0.8;
+
+/**
+ * Ringkasan nilai per kategori.
+ *
+ * Butir skala yang dilewati bernilai 0 — di bawah nilai terendah skala (mis. 1
+ * dari 1–5). Kalau ikut masuk rentang, satu pernyataan terlewat sudah
+ * menggeser responden netral ke arah "rendah", lebih berat daripada menjawab
+ * pilihan paling ekstrem. Jadi persenSkala dihitung dari butir yang dijawab
+ * saja, dan jumlah yang dilewati dilaporkan terpisah. Butir non-skala tetap
+ * dihitung 0 bila dilewati — itu benar untuk tes pengetahuan.
+ */
+export const ringkasKategori = (butir: readonly ButirRingkas[]): RingkasanKategori[] => {
+  const bulat = (n: number) => Math.round(n * 100) / 100;
+  return [...new Set(butir.map((b) => b.kategori))].map((kategori) => {
+    const isi = butir.filter((b) => b.kategori === kategori);
+    const maksimal = isi.reduce((n, b) => n + b.maksimal, 0);
+    const minimal = isi.reduce((n, b) => n + (b.tipe === 'skala' ? rentangSkala(b.pilihan).min : 0), 0);
+    const diperoleh = isi.reduce((n, b) => n + (b.poin ?? 0), 0);
+
+    const skala = isi.filter((b) => b.tipe === 'skala');
+    const dijawab = skala.filter((b) => b.dipilih.length > 0 && petaNilaiSkala(b.pilihan)[b.dipilih[0]] !== undefined);
+    const rentang = dijawab.map((b) => rentangSkala(b.pilihan));
+    const minDijawab = rentang.reduce((n, r) => n + r.min, 0);
+    const lebar = rentang.reduce((n, r) => n + r.max, 0) - minDijawab;
+    const dapatDijawab = dijawab.reduce((n, b) => n + (b.poin ?? 0), 0);
+
+    return {
+      kategori,
+      maksimal: bulat(maksimal),
+      minimal: bulat(minimal),
+      diperoleh: bulat(diperoleh),
+      persen: maksimal > 0 ? bulat((diperoleh / maksimal) * 100) : 0,
+      persenSkala: dijawab.length === 0 ? null : lebar > 0 ? bulat((Math.max(0, dapatDijawab - minDijawab) / lebar) * 100) : 0,
+      dilewati: skala.length - dijawab.length,
+      cukup: skala.length > 0 && dijawab.length / skala.length >= AMBANG_CUKUP_SKALA,
+      menunggu: isi.filter((b) => !dinilaiOtomatis(b.tipe) && b.poin === null).length,
+    };
+  });
+};
+
 /**
  * Pengacakan Fisher-Yates. Urutan hasilnya disimpan di basis data supaya
  * pengerjaan yang terputus bisa dilanjutkan dengan urutan yang sama.

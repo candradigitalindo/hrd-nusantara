@@ -47,6 +47,7 @@ import {
   proctorEventSchema,
   proctorPhotoSchema,
   saveAnswersSchema,
+  submitAttemptSchema,
   setTestQuestionsSchema,
   updateQuestionSchema,
   updateTestSchema,
@@ -88,7 +89,7 @@ router.put(
   validate(saveAnswersSchema),
   asyncHandler(saveMyAnswers)
 );
-router.post('/cbt/saya/:id/kirim', batasPengerjaan, requirePermission('cbt.lihat'), validate(idParamSchema, 'params'), asyncHandler(submitMyAttempt));
+router.post('/cbt/saya/:id/kirim', batasPengerjaan, requirePermission('cbt.lihat'), validate(idParamSchema, 'params'), validate(submitAttemptSchema), asyncHandler(submitMyAttempt));
 router.post(
   '/cbt/saya/:id/kejadian',
   batasPengerjaan,
@@ -118,11 +119,16 @@ router.delete('/cbt/soal/:id', requirePermission('cbt_soal.hapus'), validate(idP
 router.get('/cbt/soal/:id/gambar', requirePermission('cbt.lihat', 'cbt_soal.lihat'), validate(idParamSchema, 'params'), asyncHandler(getQuestionImage));
 
 // --- Paket tes ---
-router.get('/cbt/tes', requirePermission('cbt.lihat', 'cbt.buat', 'cbt.ubah'), asyncHandler(getTests));
+// Daftar paket (termasuk draf, ambang lulus, dan setelan pengawasan) hanya
+// untuk pengelola dan pembaca hasil; peserta cukup melihat penugasannya di
+// /cbt/saya.
+router.get('/cbt/tes', requirePermission('cbt.buat', 'cbt.ubah', 'cbt.hapus', 'cbt_hasil.lihat'), asyncHandler(getTests));
 router.get('/cbt/tes/:id', requirePermission('cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getTestById));
 router.post('/cbt/tes', requirePermission('cbt.buat'), validate(createTestSchema), asyncHandler(createTest));
 // Paket standar inventori kepribadian Big Five (IPIP-50): dibuat sekali, siap ditugaskan.
-router.post('/cbt/tes/standar/kepribadian-big5', requirePermission('cbt.buat'), asyncHandler(createStandardPersonalityTest));
+// Membuat paket SEKALIGUS menulis 50 butir ke bank soal: butuh kedua izin
+// (requirePermission dengan beberapa kunci bersifat ATAU, jadi dipasang dua kali).
+router.post('/cbt/tes/standar/kepribadian-big5', requirePermission('cbt.buat'), requirePermission('cbt_soal.buat'), asyncHandler(createStandardPersonalityTest));
 router.put('/cbt/tes/:id', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(updateTestSchema), asyncHandler(updateTest));
 router.put('/cbt/tes/:id/soal', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(setTestQuestionsSchema), asyncHandler(setTestQuestions));
 router.delete('/cbt/tes/:id', requirePermission('cbt.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteTest));

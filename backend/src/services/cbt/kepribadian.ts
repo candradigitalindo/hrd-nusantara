@@ -156,16 +156,32 @@ const LABEL_TINGKAT: Record<TingkatDimensi, string> = { rendah: 'Rendah', sedang
 
 export interface InterpretasiDimensi {
   kategori: string;
-  tingkat: TingkatDimensi;
+  /** null bila tidak satu pun butir dimensi ini dijawab: tidak ada yang bisa ditafsirkan. */
+  tingkat: TingkatDimensi | null;
   labelTingkat: string;
   /** null bila kategorinya bukan dimensi yang dikenal (paket buatan HR). */
   keterangan: string | null;
   singkat: string | null;
 }
 
-export const interpretasiDimensi = (kategori: string, persen: number): InterpretasiDimensi => {
-  const tingkat = tingkatDimensi(persen);
+/**
+ * Tafsiran satu dimensi. Tanpa jawaban (persen null) atau dengan terlalu
+ * banyak pernyataan dilewati (cukup = false), dimensi tidak diberi tingkat
+ * maupun keterangan perilaku: menafsirkan data yang tidak ada lebih
+ * menyesatkan daripada mengakuinya.
+ */
+export const interpretasiDimensi = (kategori: string, persen: number | null, cukup = true): InterpretasiDimensi => {
   const dimensi = DIMENSI_BIG5.find((d) => d.kategori === kategori);
+  if (persen === null || !cukup) {
+    return {
+      kategori,
+      tingkat: null,
+      labelTingkat: persen === null ? 'Tidak terjawab' : 'Data kurang',
+      keterangan: null,
+      singkat: dimensi?.singkat ?? null,
+    };
+  }
+  const tingkat = tingkatDimensi(persen);
   return {
     kategori,
     tingkat,
@@ -184,54 +200,89 @@ export const DESKRIPSI_PAKET_BIG5 =
 /**
  * Membuat paket standar sekali; pemanggilan berikutnya mengembalikan paket
  * yang sudah ada tanpa membuat soal ganda.
+ *
+ * Butir di bank soal dipakai ulang bila sudah ada (paket lamanya dihapus,
+ * atau kodenya diganti): tanpa ini setiap klik ulang menambah 50 butir
+ * kembar, dan kategori dimensi menjadi 20 butir. Dua klik bersamaan tidak
+ * menghasilkan galat server: yang kalah mengembalikan paket pemenang.
  */
-export const buatPaketKepribadianBig5 = async (createdById: string): Promise<{ id: string; dibuat: boolean }> => {
+export const buatPaketKepribadianBig5 = async (
+  createdById: string
+): Promise<{ id: string; dibuat: boolean; butirBaru: number }> => {
   const ada = await prisma.cbtTest.findUnique({ where: { code: KODE_PAKET_BIG5 }, select: { id: true } });
-  if (ada) return { id: ada.id, dibuat: false };
+  if (ada) return { id: ada.id, dibuat: false, butirBaru: 0 };
 
   const testId = generateULID();
-  await prisma.$transaction(async (tx) => {
-    const soal = BUTIR_BIG5.map((b) => ({
-      id: generateULID(),
-      category: b.kategori,
-      difficulty: 'sedang',
-      type: 'skala',
-      text: b.teks,
-      textHtml: null,
-      imagePath: null,
-      options: pilihanSkalaLima(b.terbalik) as unknown as Prisma.InputJsonValue,
-      answerKey: [] as string[],
-      rubric: null,
-      points: SKALA_5.length,
-      explanation: null,
-      isActive: true,
-      createdById,
-    }));
-    await tx.cbtQuestion.createMany({ data: soal });
-    await tx.cbtTest.create({
-      data: {
-        id: testId,
-        code: KODE_PAKET_BIG5,
-        title: 'Inventori Kepribadian Big Five (IPIP-50)',
-        description: DESKRIPSI_PAKET_BIG5,
-        descriptionHtml: null,
-        audience: 'keduanya',
-        durationMinutes: 25,
-        passingScore: null,
-        shuffleQuestions: true,
-        // Skala 1–5 harus tetap berurutan di layar peserta.
-        shuffleOptions: false,
-        showResultToTaker: false,
-        recordProctorEvents: false,
-        proctorPhotos: false,
-        status: 'published',
-        createdById,
-      },
-    });
-    await tx.cbtTestQuestion.createMany({
-      data: soal.map((s, i) => ({ id: generateULID(), testId, questionId: s.id, sortOrder: i, points: null })),
-    });
-  });
+  try {
+    const butirBaru = await prisma.$transaction(async (tx) => {
+      const lama = await tx.cbtQuestion.findMany({
+        where: { type: 'skala', isActive: true, text: { in: BUTIR_BIG5.map((b) => b.teks) } },
+        select: { id: true, text: true, category: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      const petaLama = new Map<string, string>();
+      for (const q of lama) {
+        const kunci = `${q.category}|${q.text}`;
+        if (!petaLama.has(kunci)) petaLama.set(kunci, q.id);
+      }
 
-  return { id: testId, dibuat: true };
+      const baru = BUTIR_BIG5.filter((b) => !petaLama.has(`${b.kategori}|${b.teks}`)).map((b) => ({
+        id: generateULID(),
+        category: b.kategori,
+        difficulty: 'sedang',
+        type: 'skala',
+        text: b.teks,
+        textHtml: null,
+        imagePath: null,
+        options: pilihanSkalaLima(b.terbalik) as unknown as Prisma.InputJsonValue,
+        answerKey: [] as string[],
+        rubric: null,
+        points: SKALA_5.length,
+        explanation: null,
+        isActive: true,
+        createdById,
+      }));
+      if (baru.length > 0) await tx.cbtQuestion.createMany({ data: baru });
+      for (const b of baru) petaLama.set(`${b.category}|${b.text}`, b.id);
+
+      await tx.cbtTest.create({
+        data: {
+          id: testId,
+          code: KODE_PAKET_BIG5,
+          title: 'Inventori Kepribadian Big Five (IPIP-50)',
+          description: DESKRIPSI_PAKET_BIG5,
+          descriptionHtml: null,
+          audience: 'keduanya',
+          durationMinutes: 25,
+          passingScore: null,
+          shuffleQuestions: true,
+          // Skala 1–5 harus tetap berurutan di layar peserta.
+          shuffleOptions: false,
+          showResultToTaker: false,
+          recordProctorEvents: false,
+          proctorPhotos: false,
+          status: 'published',
+          createdById,
+        },
+      });
+      await tx.cbtTestQuestion.createMany({
+        data: BUTIR_BIG5.map((b, i) => ({
+          id: generateULID(),
+          testId,
+          questionId: petaLama.get(`${b.kategori}|${b.teks}`)!,
+          sortOrder: i,
+          points: null,
+        })),
+      });
+      return baru.length;
+    });
+    return { id: testId, dibuat: true, butirBaru };
+  } catch (e) {
+    // Klik bersamaan: kode paket unik, yang kalah memakai paket pemenang.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      const pemenang = await prisma.cbtTest.findUnique({ where: { code: KODE_PAKET_BIG5 }, select: { id: true } });
+      if (pemenang) return { id: pemenang.id, dibuat: false, butirBaru: 0 };
+    }
+    throw e;
+  }
 };

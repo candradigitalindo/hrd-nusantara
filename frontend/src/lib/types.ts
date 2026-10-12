@@ -1567,9 +1567,12 @@ export interface HasilKirimCbt {
 /** Satu dimensi profil kepribadian, dari /cbt/hasil/:id untuk paket kepribadian. */
 export interface DimensiProfilCbt {
   kategori: string;
-  persen: number;
-  tingkat: "rendah" | "sedang" | "tinggi";
+  /** null bila tidak satu pun pernyataan dimensi ini dijawab. */
+  persen: number | null;
+  tingkat: "rendah" | "sedang" | "tinggi" | null;
   labelTingkat: string;
+  /** Pernyataan yang dilewati; skor dihitung dari yang dijawab saja. */
+  dilewati?: number;
   singkat: string | null;
   keterangan: string | null;
 }
@@ -1614,7 +1617,7 @@ export interface HasilCbtRinci {
     gradedBy: Ref | null;
   };
   butir: ButirHasilCbt[];
-  perKategori: { kategori: string; maksimal: number; minimal?: number; diperoleh: number; persen: number; persenSkala?: number }[];
+  perKategori: { kategori: string; maksimal: number; minimal?: number; diperoleh: number; persen: number; persenSkala?: number | null; dilewati?: number; cukup?: boolean; menunggu?: number }[];
   jenis?: JenisPaketCbt;
   profil?: DimensiProfilCbt[];
 }

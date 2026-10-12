@@ -239,8 +239,10 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
                           <p className="text-xs text-muted">{t.availableUntil ? `Berlaku sampai ${formatTanggal(t.availableUntil, "d MMM yyyy HH:mm")}` : `Ditugaskan ${formatTanggal(t.createdAt, "d MMM yyyy")}`}</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          {t.attempt?.percent != null && <span className="tabular-nums text-muted">{t.attempt.percent}%</span>}
-                          {t.attempt?.passed != null ? (
+                          {/* Persen sebelum esai dinilai hanyalah nilai objektif sementara; inventori kepribadian tidak punya nilai maupun kelulusan. */}
+                          {t.test.kind === "kepribadian" && (t.status === "submitted" || t.status === "graded") && <span className="text-xs text-muted">Profil kepribadian</span>}
+                          {t.status === "graded" && t.test.kind !== "kepribadian" && t.attempt?.percent != null && <span className="tabular-nums text-muted">{t.attempt.percent}%</span>}
+                          {t.attempt?.passed != null && t.test.kind !== "kepribadian" ? (
                             <Badge tone={t.attempt.passed ? "success" : "danger"} dot>{t.attempt.passed ? "Lulus" : "Tidak lulus"}</Badge>
                           ) : (
                             <Badge tone={nadaStatus(t.status)} dot>{LABEL_STATUS_TES[t.status] ?? t.status}</Badge>

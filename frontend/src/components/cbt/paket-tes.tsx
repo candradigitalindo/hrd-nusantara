@@ -4,7 +4,8 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { Archive, Brain, Camera, Clock, Eye, ListChecks, Megaphone, MonitorCheck, Pencil, Plus, Save, Send, Trash2, Users, X } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ambilSemua } from "@/lib/api";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button, TombolAksi } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -16,8 +17,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Alert } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { DialogTugaskan } from "./tugaskan";
+import { DialogPesertaPaket } from "./peserta-paket";
 import { LABEL_TIPE_SOAL } from "./bank-soal";
-import type { AudiensCbt, Halaman, PaketCbt, PaketCbtRinci, SoalCbt } from "@/lib/types";
+import type { AudiensCbt, PaketCbt, PaketCbtRinci, SoalCbt } from "@/lib/types";
 import { EditorTeks } from "@/components/ui/editor-teks";
 
 const LABEL_AUDIENS: Record<AudiensCbt, string> = { karyawan: "Karyawan", pelamar: "Pelamar", keduanya: "Karyawan & pelamar" };
@@ -68,7 +70,9 @@ const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () =>
   });
   const soal = useQuery({
     queryKey: ["cbt", "soal", "semua", kategori],
-    queryFn: async () => (await api.get<Halaman<SoalCbt>>(`/cbt/soal?limit=100${kategori ? `&category=${encodeURIComponent(kategori)}` : ""}`)).data.data,
+    // Seluruh bank soal aktif, bukan 100 pertama: paket Big Five saja sudah
+    // 50 butir, dan soal di luar halaman pertama tidak bisa dipilih.
+    queryFn: async () => ambilSemua<SoalCbt>("/cbt/soal", kategori ? { category: kategori } : {}),
   });
   const kategoriTersedia = useQuery({
     queryKey: ["cbt", "soal", "kategori"],
@@ -85,10 +89,18 @@ const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () =>
     onError: (e) => notifikasi.galat(e, "Gagal menyimpan susunan"),
   });
 
-  const terpilih = pilihanBaru ?? rinci.data?.questions.map((q) => q.question.id) ?? [];
+  // Soal yang sudah dinonaktifkan dikeluarkan dari susunan awal: server menolak
+  // menyimpannya, dan dulu dialog ini buntu karena soal itu tidak tampil di
+  // daftar sehingga tidak bisa dihapus centangnya.
+  const tersimpan = rinci.data?.questions ?? [];
+  const nonaktif = tersimpan.filter((q) => !q.question.isActive);
+  const terpilih = pilihanBaru ?? tersimpan.filter((q) => q.question.isActive).map((q) => q.question.id);
   const setTerpilih = (ubah: (t: string[]) => string[]) => setPilihanBaru(ubah(terpilih));
   const daftar = soal.data ?? [];
-  const totalPoin = daftar.filter((s) => terpilih.includes(s.id)).reduce((n, s) => n + s.points, 0);
+  // Poin dari isi paket dan bank soal sekaligus: soal terpilih dari kategori
+  // lain tidak ada di daftar yang sedang disaring.
+  const poin = new Map<string, number>([...tersimpan.map((q) => [q.question.id, q.question.points] as const), ...daftar.map((s) => [s.id, s.points] as const)]);
+  const totalPoin = terpilih.reduce((n, id) => n + (poin.get(id) ?? 0), 0);
 
   return (
     <Modal
@@ -107,6 +119,11 @@ const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () =>
       }
     >
       <div className="space-y-3">
+        {nonaktif.length > 0 && (
+          <Alert tone="warning" title={`${nonaktif.length} soal nonaktif dikeluarkan`}>
+            Soal yang sudah dinonaktifkan di bank soal tidak ikut susunan ini. Simpan agar paket bisa ditayangkan dan ditugaskan.
+          </Alert>
+        )}
         <Select value={kategori} onChange={(e) => setKategori(e.target.value)} aria-label="Saring kategori">
           <option value="">Semua kategori</option>
           {(kategoriTersedia.data ?? []).map((k) => <option key={k.category} value={k.category}>{k.category} ({k.jumlah})</option>)}
@@ -144,10 +161,14 @@ const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () =>
 /** Daftar paket tes beserta pengelolaannya. */
 export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: boolean; bolehUbah: boolean; bolehHapus: boolean }) => {
   const qc = useQueryClient();
+  // Paket standar Big Five juga menulis 50 butir ke bank soal.
+  const { data: saya } = useSesi();
+  const bolehSoal = punyaIzin(saya, "cbt_soal.buat");
   const [form, setForm] = React.useState<{ open: boolean; item: PaketCbt | null }>({ open: false, item: null });
   const [susun, setSusun] = React.useState<PaketCbt | null>(null);
   const [tugas, setTugas] = React.useState<PaketCbt | null>(null);
   const [hapus, setHapus] = React.useState<PaketCbt | null>(null);
+  const [peserta, setPeserta] = React.useState<PaketCbt | null>(null);
 
   const paket = useQuery({
     queryKey: ["cbt", "paket"],
@@ -196,12 +217,23 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         showResultToTaker: v.showResultToTaker,
         recordProctorEvents: v.recordProctorEvents,
         proctorPhotos: v.proctorPhotos,
-        proctorPhotoIntervalSec: Number(v.proctorPhotoIntervalSec),
+        // Isian jeda yang dikosongkan lalu disembunyikan (foto dimatikan)
+        // bernilai NaN; mengirimnya membuat seluruh simpanan ditolak.
+        ...(Number.isFinite(Number(v.proctorPhotoIntervalSec)) ? { proctorPhotoIntervalSec: Number(v.proctorPhotoIntervalSec) } : {}),
       };
       // Paket yang sudah ditugaskan menolak perubahan aturan main; yang dikirim
-      // saat menyunting hanya yang memang masih boleh berubah.
+      // saat menyunting hanya yang memang masih boleh berubah — termasuk
+      // pengawasan, yang dulu tampak bisa diubah tetapi dibuang diam-diam.
       const bodySunting = form.item?._count.assignments
-        ? { title: body.title, descriptionHtml: body.descriptionHtml, audience: body.audience, showResultToTaker: body.showResultToTaker }
+        ? {
+            title: body.title,
+            descriptionHtml: body.descriptionHtml,
+            audience: body.audience,
+            showResultToTaker: body.showResultToTaker,
+            recordProctorEvents: body.recordProctorEvents,
+            proctorPhotos: body.proctorPhotos,
+            ...(body.proctorPhotos && body.proctorPhotoIntervalSec !== undefined ? { proctorPhotoIntervalSec: body.proctorPhotoIntervalSec } : {}),
+          }
         : body;
       return form.item ? api.put(`/cbt/tes/${form.item.id}`, bodySunting) : api.post("/cbt/tes", body);
     },
@@ -222,6 +254,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
     onSuccess: (p) => {
       segarkan();
       if (p.dibuat) notifikasi.sukses("Paket kepribadian dibuat", `${p.title} · 50 butir skala dalam 5 dimensi, siap ditugaskan.`);
+      else if (p.status === "archived") notifikasi.info("Paket kepribadian sudah ada, tetapi diarsipkan", `Tayangkan lagi ${p.title} dari daftar untuk menugaskannya.`);
       else notifikasi.info("Paket kepribadian sudah ada", `${p.title} sudah tersedia di daftar.`);
     },
     onError: (e) => notifikasi.galat(e, "Paket kepribadian belum dibuat"),
@@ -237,9 +270,9 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
     <>
       {bolehBuat && (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={() => buatStandar.mutate()} loading={buatStandar.isPending} title="Inventori Big Five berbasis IPIP-50 (domain publik): 50 pernyataan skala 1–5, hasilnya profil per dimensi">
+          {bolehSoal && <Button variant="outline" onClick={() => buatStandar.mutate()} loading={buatStandar.isPending} title="Inventori Big Five berbasis IPIP-50 (domain publik): 50 pernyataan skala 1–5, hasilnya profil per dimensi">
             {!buatStandar.isPending && <Brain className="h-4 w-4" aria-hidden />} Paket Kepribadian Big Five
-          </Button>
+          </Button>}
           <Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Paket Tes</Button>
         </div>
       )}
@@ -278,8 +311,12 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                   {p.proctorPhotos && <span className="inline-flex items-center gap-1 text-warning"><Camera className="h-3.5 w-3.5" aria-hidden /> Foto pengawasan</span>}
                   {p.showResultToTaker && <span className="inline-flex items-center gap-1"><Eye className="h-3.5 w-3.5" aria-hidden /> Nilai dibuka</span>}
                 </p>
-                {bolehUbah && (
+                {(bolehUbah || ((bolehBuat || bolehUbah) && p._count.assignments > 0)) && (
                   <div className="flex flex-wrap gap-2 pt-1">
+                    {(bolehBuat || bolehUbah) && p._count.assignments > 0 && (
+                      <Button size="sm" variant="outline" onClick={() => setPeserta(p)}><Users className="h-4 w-4" aria-hidden /> Peserta</Button>
+                    )}
+                    {bolehUbah && (<>
                     {p._count.assignments === 0 && (
                       <Button size="sm" variant="outline" onClick={() => setSusun(p)}><ListChecks className="h-4 w-4" aria-hidden /> Susun soal</Button>
                     )}
@@ -294,6 +331,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                         <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ p, status: "archived" })}><Archive className="h-4 w-4" aria-hidden /> Arsipkan</Button>
                       </>
                     )}
+                    </>)}
                   </div>
                 )}
               </CardContent>
@@ -318,7 +356,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         <form id="form-paket" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-4" noValidate>
           {form.item && form.item._count.assignments > 0 && (
             <Alert tone="info" title="Sebagian setelan terkunci">
-              {form.item._count.assignments} peserta sudah ditugaskan. Yang masih bisa diubah: judul, keterangan, sasaran peserta, dan pembukaan nilai.
+              {form.item._count.assignments} peserta sudah ditugaskan. Yang masih bisa diubah: judul, keterangan, sasaran peserta, pembukaan nilai, dan pengawasan.
             </Alert>
           )}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -373,6 +411,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
       {/* Keduanya dipasang hanya saat dibuka: satu kali pakai, keadaannya
           selalu mulai dari nol tanpa perlu effect pereset. */}
       {susun && <DialogSusunSoal paketId={susun.id} onClose={() => setSusun(null)} />}
+      {peserta && <DialogPesertaPaket paket={peserta} onClose={() => setPeserta(null)} />}
       {tugas && <DialogTugaskan paket={tugas} onClose={() => setTugas(null)} />}
 
       <ConfirmDialog

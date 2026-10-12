@@ -18,7 +18,8 @@ import { decodeBase64Document, InvalidDocumentError, resolveDocumentPath, saveDo
 import { decodeBase64Image, InvalidImageError, saveImage } from '../utils/imageUpload';
 import { encryptBytes } from '../utils/fieldCrypto';
 import { buatTokenPelamar } from '../middleware/authPelamar';
-import { GalatCbt, kirimJawaban, mulaiAtauLanjutkan, penugasanLengkap, pengerjaanBerjalan, simpanJawaban } from '../services/cbt/attempt';
+import { GalatCbt, kirimJawaban, mulaiAtauLanjutkan, penugasanLengkap, pengerjaanBerjalan, ringkasUntukPeserta, simpanJawaban } from '../services/cbt/attempt';
+import type { SubmitAttemptInput } from '../schemas/cbtSchema';
 import type {
   DaftarPelamarInput,
   GantiSandiPelamarInput,
@@ -394,14 +395,14 @@ export const simpanJawabanTes = async (req: Request, res: Response) => {
 };
 
 export const kirimTes = async (req: Request, res: Response) => {
+  const { jawaban, otomatis } = (req.body ?? {}) as SubmitAttemptInput;
   try {
     const penugasan = await penugasanPelamar(req.params.id, req.pelamar!.id);
-    const hasil = await kirimJawaban(penugasan);
-    res.json({
-      status: hasil.status,
-      menungguPenilaian: hasil.nilai.menungguPenilaian,
-      nilai: penugasan.test.showResultToTaker && !hasil.nilai.menungguPenilaian ? hasil.nilai : null,
-    });
+    // Sama dengan pintu karyawan dan tautan: jawaban di layar ikut dikirim.
+    const hasil = await kirimJawaban(penugasan, { jawabanAkhir: jawaban, otomatis });
+    // Bentuk yang sama dengan pintu karyawan dan tautan: membawa jenis paket,
+    // dan inventori kepribadian tidak pernah dibuka sebagai nilai.
+    res.json(ringkasUntukPeserta(hasil, penugasan.test.showResultToTaker));
   } catch (e) {
     galatCbt(e, res);
   }

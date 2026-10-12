@@ -234,3 +234,28 @@ describe('Melamar dari portal', () => {
     expectStatus(await request(app).get(`/api/karier/lamaran/${pelamar.id}`).set(auth(token)), 200);
   });
 });
+
+describe('Tes CBT lewat portal karier', () => {
+  it('inventori kepribadian: respons kirim membawa jenisnya dan tidak membuka nilai', async () => {
+    const lowonganId = await buatLowongan();
+    const token = (await daftarPelamar()).body.token as string;
+    expectStatus(await request(app).post('/api/karier/lamar').set(auth(token)).send({ jobPostingId: lowonganId }), 201);
+    const pelamar = await prisma.candidate.findFirstOrThrow();
+
+    const paket = await request(app).post('/api/cbt/tes/standar/kepribadian-big5').set(auth(hr));
+    expectStatus(paket, 201);
+    // Walau HR membuka nilai untuk peserta, inventori kepribadian tidak punya nilai.
+    expectStatus(await request(app).put(`/api/cbt/tes/${paket.body.id}`).set(auth(hr)).send({ showResultToTaker: true }), 200);
+    expectStatus(await request(app).post('/api/cbt/penugasan').set(auth(hr)).send({ testId: paket.body.id, candidateIds: [pelamar.id] }), 201);
+    const penugasan = await prisma.cbtAssignment.findFirstOrThrow();
+
+    const ruang = await request(app).post(`/api/karier/tes/${penugasan.id}/mulai`).set(auth(token));
+    expectStatus(ruang, 200);
+    const jawaban = ruang.body.questions.map((q: { id: string }) => ({ questionId: q.id, chosen: ['4'] }));
+    const kirim = await request(app).post(`/api/karier/tes/${penugasan.id}/kirim`).set(auth(token)).send({ jawaban });
+    expectStatus(kirim, 200);
+    expect(kirim.body).toMatchObject({ status: 'graded', jenis: 'kepribadian', menungguPenilaian: false, nilai: null });
+    // Jawaban yang dibawa kiriman ikut tersimpan dan dinilai.
+    expect(await prisma.cbtAnswer.count({ where: { chosen: { has: '4' } } })).toBe(50);
+  });
+});

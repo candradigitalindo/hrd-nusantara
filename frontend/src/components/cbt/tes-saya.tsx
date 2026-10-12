@@ -34,11 +34,15 @@ export const TesSayaPanel = () => {
       {daftar.data.map((t) => {
         const bisaDikerjakan = t.status === "assigned" || t.status === "in_progress";
         const belumWaktunya = t.availableFrom ? new Date(t.availableFrom) > new Date() : false;
+        // Status di server baru berubah "expired" saat ada yang mencoba memulai;
+        // tombol yang pasti ditolak tidak ditawarkan.
+        const sudahLewat = t.status === "assigned" && t.availableUntil ? new Date(t.availableUntil) < new Date() : false;
+        const statusTampil = sudahLewat ? "expired" : t.status;
         return (
           <Card key={t.id} className="animate-fade-up flex flex-col p-5">
             <div className="flex items-start justify-between gap-2">
               <p className="font-semibold">{t.test.title}</p>
-              <Badge tone={nadaStatus(t.status)} dot>{LABEL_STATUS_TES[t.status] ?? t.status}</Badge>
+              <Badge tone={nadaStatus(statusTampil)} dot>{LABEL_STATUS_TES[statusTampil] ?? statusTampil}</Badge>
             </div>
             {t.test.description && <p className="mt-1 line-clamp-2 text-sm text-muted">{t.test.description}</p>}
 
@@ -59,7 +63,7 @@ export const TesSayaPanel = () => {
             )}
 
             <div className="mt-auto pt-4">
-              {bisaDikerjakan && !belumWaktunya ? (
+              {bisaDikerjakan && !belumWaktunya && !sudahLewat ? (
                 <Link href={`/cbt/kerjakan/${t.id}`}>
                   <Button className="w-full">
                     <Play className="h-4 w-4" aria-hidden /> {t.status === "in_progress" ? "Lanjutkan" : "Mulai kerjakan"}

@@ -20,10 +20,12 @@ import {
   mulaiAtauLanjutkan,
   penugasanLengkap,
   pengerjaanBerjalan,
+  ringkasUntukPeserta,
   simpanJawaban,
+  tutupPengerjaanKedaluwarsa,
 } from '../services/cbt/attempt';
 import { jenisPaket, type JenisPaket } from '../utils/cbt';
-import type { ProctorEventInput, SaveAnswersInput } from '../schemas/cbtSchema';
+import type { ProctorEventInput, SaveAnswersInput, SubmitAttemptInput } from '../schemas/cbtSchema';
 
 const galat = (e: unknown, res: Response) => {
   if (e instanceof GalatCbt) return res.status(e.status).json({ error: e.message });
@@ -53,6 +55,10 @@ const punyaToken = async (token: string): Promise<PenugasanLengkap> => {
 
 /** Tes yang ditugaskan kepada saya. */
 export const getMyAssignments = async (req: Request, res: Response) => {
+  // Pengerjaan saya yang ditinggalkan setelah batas waktu ditutup lebih dulu,
+  // supaya daftar ini tidak memperlihatkan "sedang dikerjakan" yang abadi.
+  await tutupPengerjaanKedaluwarsa({ assignment: { employeeId: req.user!.id } });
+
   const data = await prisma.cbtAssignment.findMany({
     where: { employeeId: req.user!.id },
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
@@ -107,9 +113,10 @@ export const saveMyAnswers = async (req: Request, res: Response) => {
 };
 
 export const submitMyAttempt = async (req: Request, res: Response) => {
+  const { jawaban, otomatis } = (req.body ?? {}) as SubmitAttemptInput;
   try {
     const penugasan = await punyaKaryawan(req.params.id, req.user!.id);
-    const hasil = await kirimJawaban(penugasan);
+    const hasil = await kirimJawaban(penugasan, { jawabanAkhir: jawaban, otomatis });
     res.locals.audit = {
       action: 'cbt.kirim',
       entity: 'CbtAssignment',
@@ -150,11 +157,17 @@ export const getMyResult = async (req: Request, res: Response) => {
     if (!penugasan.test.showResultToTaker) {
       return res.status(403).json({ error: 'Hasil tes ini hanya dibuka untuk HR' });
     }
+    const jenis = jenisPaketDari(penugasan);
     res.json({
-      test: { title: penugasan.test.title, passingScore: penugasan.test.passingScore },
+      test: { title: penugasan.test.title, passingScore: jenis === 'kepribadian' ? null : penugasan.test.passingScore },
+      jenis,
       submittedAt: attempt.submittedAt,
       menungguPenilaian: penugasan.status === 'submitted',
-      nilai: penugasan.status === 'graded' ? { total: attempt.scoreTotal, maksimal: attempt.maxScore, persen: attempt.percent, lulus: attempt.passed } : null,
+      // Inventori kepribadian tidak punya nilai atau kelulusan untuk dibuka.
+      nilai:
+        penugasan.status === 'graded' && jenis !== 'kepribadian'
+          ? { total: attempt.scoreTotal, maksimal: attempt.maxScore, persen: attempt.percent, lulus: attempt.passed }
+          : null,
     });
   } catch (e) {
     galat(e, res);
@@ -166,7 +179,14 @@ export const getMyResult = async (req: Request, res: Response) => {
 /** Informasi ringkas sebelum tes dimulai — tanpa soal. */
 export const publicInfo = async (req: Request, res: Response) => {
   try {
-    const penugasan = await punyaToken(req.params.token);
+    let penugasan = await punyaToken(req.params.token);
+    // Pengerjaan yang ditinggalkan setelah batas waktu ditutup di sini, supaya
+    // halaman tautan langsung berkata "sudah dikerjakan", bukan menawarkan
+    // tombol Lanjutkan yang pasti ditolak. Tenggangnya sama dengan penyapu.
+    if (penugasan.attempt && !penugasan.attempt.submittedAt) {
+      const ditutup = await tutupPengerjaanKedaluwarsa({ id: penugasan.attempt.id });
+      if (ditutup > 0) penugasan = await punyaToken(req.params.token);
+    }
     res.json({
       peserta: penugasan.candidate?.name ?? 'Peserta',
       status: penugasan.status,
@@ -206,9 +226,10 @@ export const publicSaveAnswers = async (req: Request, res: Response) => {
 };
 
 export const publicSubmit = async (req: Request, res: Response) => {
+  const { jawaban, otomatis } = (req.body ?? {}) as SubmitAttemptInput;
   try {
     const penugasan = await punyaToken(req.params.token);
-    const hasil = await kirimJawaban(penugasan);
+    const hasil = await kirimJawaban(penugasan, { jawabanAkhir: jawaban, otomatis });
     res.json(ringkasUntukPeserta(hasil, penugasan.test.showResultToTaker));
   } catch (e) {
     galat(e, res);
@@ -249,21 +270,6 @@ export const publicQuestionImage = async (req: Request, res: Response) => {
 
 // ============ Bagian bersama ============
 
-/**
- * Nilai hanya dikembalikan bila paket memang membukanya untuk peserta.
- * Untuk seleksi pelamar, mengetahui nilainya seketika sama saja membocorkan
- * ambang kelulusan perusahaan.
- */
-const ringkasUntukPeserta = (
-  hasil: { status: string; jenis: JenisPaket; nilai: { total: number; maksimal: number; persen: number; lulus: boolean | null; menungguPenilaian: boolean } },
-  boleh: boolean
-) => ({
-  status: hasil.status,
-  jenis: hasil.jenis,
-  menungguPenilaian: hasil.nilai.menungguPenilaian,
-  // Inventori kepribadian tidak punya "nilai"; profilnya dibaca HR.
-  nilai: boleh && !hasil.nilai.menungguPenilaian && hasil.jenis !== 'kepribadian' ? hasil.nilai : null,
-});
 
 const catatKejadian = async (penugasan: PenugasanLengkap, isi: ProctorEventInput) => {
   if (!penugasan.test.recordProctorEvents) return;

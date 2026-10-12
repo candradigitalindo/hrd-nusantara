@@ -8,16 +8,23 @@ import { Textarea, Input } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { notifikasi } from "@/hooks/use-notifikasi";
+import { ambilGalat } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TeksKaya } from "@/components/ui/editor-teks";
 import type { HasilKirimCbt, RuangUjian } from "@/lib/types";
 
 /** Jawaban yang sedang dipegang layar, sebelum dan sesudah tersimpan di server. */
 type Jawaban = { chosen: string[]; text: string | null };
+type JawabanKirim = { questionId: string; chosen: string[]; text: string | null };
 
 export interface ApiUjian {
-  simpan: (jawaban: { questionId: string; chosen: string[]; text: string | null }[]) => Promise<{ dikirimOtomatis?: boolean }>;
-  kirim: () => Promise<HasilKirimCbt>;
+  /** `hasil` terisi bila server menutup tes saat menyimpan (waktu habis). */
+  simpan: (jawaban: JawabanKirim[]) => Promise<{ dikirimOtomatis?: boolean; hasil?: HasilKirimCbt | null }>;
+  /**
+   * Menutup pengerjaan; membawa seluruh jawaban di layar sebagai kesempatan
+   * terakhir bagi yang belum tersimpan. `otomatis` = dipicu pengatur waktu.
+   */
+  kirim: (isi: { jawaban: JawabanKirim[]; otomatis: boolean }) => Promise<HasilKirimCbt>;
   kejadian: (type: string, detail?: string) => Promise<void>;
   foto: (dataUrl: string) => Promise<void>;
   gambarSoal: (questionId: string) => string;
@@ -55,6 +62,14 @@ export const RuangUjianCbt = ({
 
   const kotor = React.useRef<Set<string>>(new Set());
   const sudahKirim = React.useRef(false);
+  const sedangKirim = React.useRef(false);
+  /**
+   * Simpan yang sedang berjalan. Simpan berikutnya dan pengiriman akhir
+   * menunggunya: tanpa ini, tombol Kirim yang ditekan saat simpan-otomatis
+   * masih di jalan menembak /kirim lebih dulu, lalu simpan itu ditolak
+   * ("sudah dikirim") dan jawabannya hilang.
+   */
+  const simpanBerjalan = React.useRef<Promise<boolean> | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   // Jawaban terbaru dibaca lewat ref supaya simpanKotor tidak berganti
   // identitas tiap ketukan: dulu ia bergantung pada state `jawaban`, sehingga
@@ -74,6 +89,9 @@ export const RuangUjianCbt = ({
   // menyimpan berbarengan.
   /** Mengirim jawaban yang belum tersimpan. Mengembalikan false bila gagal, supaya pengiriman akhir tidak berjalan tanpa jawabannya. */
   const simpanKotor = React.useCallback(async (): Promise<boolean> => {
+    // Satu simpan pada satu waktu, supaya urutan tiba di server sama dengan
+    // urutan jawaban dan pengiriman akhir tahu kapan semuanya sudah sampai.
+    while (simpanBerjalan.current) await simpanBerjalan.current;
     if (sudahKirim.current) return true;
     if (kotor.current.size === 0) return true;
     const terkini = jawabanRef.current;
@@ -83,25 +101,49 @@ export const RuangUjianCbt = ({
       text: terkini[id]?.text ?? null,
     }));
     kotor.current.clear();
-    try {
-      const hasil = await api.simpan(daftar);
-      setTersimpanPada(new Date());
-      if (hasil.dikirimOtomatis) {
-        sudahKirim.current = true;
-        notifikasi.peringatan("Waktu habis", "Jawaban yang sudah tersimpan dikirim otomatis.");
-        onSelesai({ status: "submitted", menungguPenilaian: true, nilai: null });
+    const jalan = (async () => {
+      try {
+        const hasil = await api.simpan(daftar);
+        setTersimpanPada(new Date());
+        if (hasil.dikirimOtomatis) {
+          sudahKirim.current = true;
+          notifikasi.peringatan("Waktu habis", "Jawaban yang sudah tersimpan dikirim otomatis.");
+          // Ringkasan dari server (jenis paket, nilai bila dibuka); dulu dipaksa
+          // "menunggu penilaian" sehingga inventori kepribadian dan tes tanpa
+          // esai mendapat pesan yang salah.
+          onSelesai(hasil.hasil ?? { status: "submitted", jenis: ruang.test.jenis, menungguPenilaian: false, nilai: null });
+        }
+        return true;
+      } catch (e) {
+        if (sudahKirim.current) return true;
+        if (ambilGalat(e).status === 409) {
+          // Ditutup di server (tab lain, atau ditutup otomatis setelah waktu
+          // habis): ruang ujian ini tidak bisa menyimpan apa pun lagi.
+          sudahKirim.current = true;
+          notifikasi.peringatan("Tes sudah ditutup", ambilGalat(e).pesan);
+          onSelesai({ status: "submitted", jenis: ruang.test.jenis, menungguPenilaian: false, nilai: null });
+          return true;
+        }
+        // Jawaban tetap ditandai kotor supaya dicoba lagi pada siklus berikutnya.
+        daftar.forEach((j) => kotor.current.add(j.questionId));
+        notifikasi.galat(e, "Jawaban belum tersimpan");
+        return false;
       }
-      return true;
-    } catch (e) {
-      // Jawaban tetap ditandai kotor supaya dicoba lagi pada siklus berikutnya.
-      daftar.forEach((j) => kotor.current.add(j.questionId));
-      notifikasi.galat(e, "Jawaban belum tersimpan");
-      return false;
+    })();
+    simpanBerjalan.current = jalan;
+    try {
+      return await jalan;
+    } finally {
+      if (simpanBerjalan.current === jalan) simpanBerjalan.current = null;
     }
-  }, [api, onSelesai]);
+  }, [api, onSelesai, ruang.test.jenis]);
 
   React.useEffect(() => {
-    const t = setInterval(simpanKotor, 4000);
+    // Simpan berikutnya menunggu giliran; interval tidak menumpuk antrean
+    // selagi satu simpan masih di jalan (koneksi lambat).
+    const t = setInterval(() => {
+      if (!simpanBerjalan.current) void simpanKotor();
+    }, 4000);
     return () => clearInterval(t);
   }, [simpanKotor]);
 
@@ -113,30 +155,38 @@ export const RuangUjianCbt = ({
   // --- Hitung mundur -------------------------------------------------------
   const kirim = React.useCallback(
     async (otomatis = false) => {
-      if (sudahKirim.current) return;
+      if (sudahKirim.current || sedangKirim.current) return;
+      sedangKirim.current = true;
       setMengirim(true);
       try {
-        // Jawaban yang masih kotor dikirim DULU, selagi sudahKirim masih
-        // false — dulu urutannya terbalik sehingga simpanKotor langsung
-        // berhenti dan jawaban terakhir sebelum tombol Kirim hilang.
-        const tersimpan = await simpanKotor();
-        if (!tersimpan && !otomatis) {
-          notifikasi.peringatan("Jawaban belum tersimpan", "Periksa koneksi, lalu tekan Kirim lagi.");
-          return;
-        }
+        // Simpan yang masih di jalan ditunggu, lalu sisa jawaban kotor
+        // disimpan — selagi sudahKirim masih false.
+        await simpanKotor();
         if (sudahKirim.current) return; // sudah dikirim otomatis oleh server saat menyimpan
         sudahKirim.current = true;
-        const hasil = await api.kirim();
+        // Seluruh jawaban di layar ikut dikirim: yang simpan-otomatisnya gagal
+        // (koneksi putus) tetap sampai, dan jawaban yang dikosongkan ikut
+        // tercatat kosong. Server mengabaikannya bila batas waktu sudah lewat.
+        const semua = Object.entries(jawabanRef.current).map(([questionId, j]) => ({ questionId, chosen: j.chosen, text: j.text }));
+        const hasil = await api.kirim({ jawaban: semua, otomatis });
         if (otomatis) notifikasi.peringatan("Waktu habis", "Jawaban Anda dikirim otomatis.");
         onSelesai(hasil);
       } catch (e) {
+        if (ambilGalat(e).status === 409) {
+          // Sudah ditutup di server (dikirim dari tab lain, atau ditutup otomatis
+          // setelah waktu habis): tidak ada lagi yang bisa dikirim dari layar ini.
+          notifikasi.peringatan("Tes sudah ditutup", ambilGalat(e).pesan);
+          onSelesai({ status: "submitted", jenis: ruang.test.jenis, menungguPenilaian: false, nilai: null });
+          return;
+        }
         sudahKirim.current = false;
         notifikasi.galat(e, "Gagal mengirim jawaban");
       } finally {
+        sedangKirim.current = false;
         setMengirim(false);
       }
     },
-    [api, onSelesai, simpanKotor]
+    [api, onSelesai, simpanKotor, ruang.test.jenis]
   );
 
   React.useEffect(() => {
@@ -302,7 +352,8 @@ export const RuangUjianCbt = ({
             <img src={api.gambarSoal(soal.id)} alt="Gambar pendukung soal" className="mt-4 max-h-80 rounded-xl border border-border object-contain" />
           )}
 
-          <div className="mt-5 space-y-2">
+          {/* Dikunci selama mengirim: jawaban yang diubah setelah kiriman berangkat tidak akan ikut. */}
+          <fieldset disabled={mengirim} className="mt-5 space-y-2 disabled:opacity-70">
             {(soal.type === "pilihan_ganda" || soal.type === "benar_salah") &&
               soal.options.map((o) => (
                 <label
@@ -387,7 +438,7 @@ export const RuangUjianCbt = ({
                 ))}
               </div>
             )}
-          </div>
+          </fieldset>
 
           <div className="mt-6 flex items-center justify-between gap-2">
             <Button variant="outline" onClick={() => setIndeks((i) => Math.max(0, i - 1))} disabled={indeks === 0}>

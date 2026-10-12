@@ -12,9 +12,10 @@ import { pasanganTeks } from '../utils/richText';
 import { decodeBase64Image, InvalidImageError, saveImage } from '../utils/imageUpload';
 import { resolveDocumentPath } from '../utils/documentUpload';
 import { decryptBytes } from '../utils/fieldCrypto';
-import { bacaPilihan, dinilaiOtomatis, jenisPaket, rentangSkala, type JenisPaket } from '../utils/cbt';
-import { GalatCbt, hashToken, hitungUlangNilai } from '../services/cbt/attempt';
+import { bacaPilihan, dinilaiOtomatis, jenisPaket, rentangSkala, ringkasKategori, type JenisPaket } from '../utils/cbt';
+import { GalatCbt, hashToken, hitungUlangNilai, tutupPengerjaanKedaluwarsa } from '../services/cbt/attempt';
 import { buatPaketKepribadianBig5, interpretasiDimensi } from '../services/cbt/kepribadian';
+import { masalahBentukSoal } from '../schemas/cbtSchema';
 import type {
   CreateAssignmentInput,
   CreateQuestionInput,
@@ -174,6 +175,21 @@ export const updateQuestion = async (req: Request, res: Response) => {
     });
   }
 
+  // Bentuk soal diperiksa seperti saat dibuat, terhadap gabungan isian baru
+  // dan soal lama: tanpa ini soal pilihan ganda bisa tersimpan tanpa kunci
+  // (selalu dinilai salah), atau kuncinya menunjuk pilihan yang tidak ada.
+  // Hanya bila bentuknya disentuh, supaya perbaikan teks soal lama tetap bisa.
+  if (input.type !== undefined || input.options !== undefined || input.answerKey !== undefined) {
+    const masalah = masalahBentukSoal({
+      type: input.type ?? lama.type,
+      options: input.options !== undefined ? input.options : bacaPilihan(lama.options),
+      answerKey: input.answerKey ?? lama.answerKey,
+    });
+    if (masalah.length > 0) {
+      return res.status(400).json({ error: 'Validasi gagal', details: masalah.map((m) => ({ field: m.path, message: m.message })) });
+    }
+  }
+
   let imagePath: string | null | undefined;
   try {
     imagePath = await simpanGambar(input.image);
@@ -229,7 +245,11 @@ export const deleteQuestion = async (req: Request, res: Response) => {
       entityId: soal.id,
       summary: `Menonaktifkan soal ${soal.category} (sudah dipakai)`,
     };
-    return res.json({ message: 'Soal dinonaktifkan karena sudah dipakai paket atau sudah pernah dijawab', question: { ...soal, isActive: false } });
+    return res.json({
+      message:
+        'Soal dinonaktifkan karena sudah dipakai paket atau sudah pernah dijawab. Paket yang belum ditugaskan harus disusun ulang tanpa soal ini sebelum ditayangkan atau ditugaskan; paket yang sudah ditugaskan tetap memakainya demi keadilan penilaian.',
+      question: { ...soal, isActive: false },
+    });
   }
 
   await prisma.cbtQuestion.delete({ where: { id: soal.id } });
@@ -288,6 +308,10 @@ const paketSelect = {
   _count: { select: { questions: true, assignments: true } },
 } satisfies Prisma.CbtTestSelect;
 
+/** Jumlah butir paket yang soalnya sudah dinonaktifkan di bank soal. */
+const soalNonaktifDiPaket = (testId: string) =>
+  prisma.cbtTestQuestion.count({ where: { testId, question: { isActive: false } } });
+
 export const getTests = async (req: Request, res: Response) => {
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
   const daftar = await prisma.cbtTest.findMany({
@@ -305,10 +329,15 @@ export const getTests = async (req: Request, res: Response) => {
  * ke pelamar atau karyawan; hasilnya profil per dimensi, bukan kelulusan.
  */
 export const createStandardPersonalityTest = async (req: Request, res: Response) => {
-  const { id, dibuat } = await buatPaketKepribadianBig5(req.user!.id);
+  const { id, dibuat, butirBaru } = await buatPaketKepribadianBig5(req.user!.id);
   const paket = await prisma.cbtTest.findUniqueOrThrow({ where: { id }, select: paketSelect });
   if (dibuat) {
-    res.locals.audit = { action: 'cbt.tes.buat', entity: 'CbtTest', entityId: id, summary: `Membuat paket standar ${paket.title}` };
+    res.locals.audit = {
+      action: 'cbt.tes.buat',
+      entity: 'CbtTest',
+      entityId: id,
+      summary: `Membuat paket standar ${paket.title} (${butirBaru} butir baru di bank soal)`,
+    };
   }
   res.status(dibuat ? 201 : 200).json({ ...paket, kind: 'kepribadian' as JenisPaket, dibuat });
 };
@@ -375,8 +404,13 @@ export const updateTest = async (req: Request, res: Response) => {
 
   // Aturan main yang berubah di tengah jalan akan membuat dua peserta
   // dinilai dengan ukuran berbeda pada tes yang sama.
+  // Pengacakan pilihan ikut terkunci: mengubahnya di tengah jalan membuat
+  // urutan pilihan peserta yang sedang mengerjakan berubah saat dimuat ulang.
   const menyentuhAturan =
-    input.durationMinutes !== undefined || input.passingScore !== undefined || input.shuffleQuestions !== undefined;
+    input.durationMinutes !== undefined ||
+    input.passingScore !== undefined ||
+    input.shuffleQuestions !== undefined ||
+    input.shuffleOptions !== undefined;
   if (lama._count.assignments > 0 && menyentuhAturan) {
     return res.status(409).json({
       error: 'Paket ini sudah ditugaskan. Durasi, ambang lulus, dan pengacakan tidak bisa diubah lagi — arsipkan lalu buat paket baru.',
@@ -384,6 +418,17 @@ export const updateTest = async (req: Request, res: Response) => {
   }
   if (input.status === 'published' && lama._count.questions === 0) {
     return res.status(409).json({ error: 'Paket tanpa soal tidak bisa ditayangkan' });
+  }
+  if (input.status === 'published' && lama.status !== 'published') {
+    const nonaktif = await soalNonaktifDiPaket(lama.id);
+    if (nonaktif > 0) {
+      return res.status(409).json({
+        error:
+          lama._count.assignments > 0
+            ? `Paket ini memuat ${nonaktif} soal yang sudah dinonaktifkan dan isinya terkunci karena sudah ditugaskan. Buat paket baru tanpa soal itu.`
+            : `Paket ini memuat ${nonaktif} soal yang sudah dinonaktifkan. Keluarkan lewat "Susun soal" sebelum ditayangkan.`,
+      });
+    }
   }
 
   try {
@@ -453,10 +498,25 @@ export const setTestQuestions = async (req: Request, res: Response) => {
   const id = questions.map((q) => q.questionId);
   if (new Set(id).size !== id.length) return res.status(400).json({ error: 'Ada soal yang dimasukkan dua kali' });
 
-  const ada = await prisma.cbtQuestion.findMany({ where: { id: { in: id } }, select: { id: true, isActive: true } });
+  const ada = await prisma.cbtQuestion.findMany({ where: { id: { in: id } }, select: { id: true, isActive: true, type: true } });
   if (ada.length !== id.length) return res.status(400).json({ error: 'Ada soal yang tidak ditemukan' });
   const nonaktif = ada.filter((s) => !s.isActive);
   if (nonaktif.length > 0) return res.status(400).json({ error: 'Soal nonaktif tidak bisa dimasukkan ke paket' });
+
+  // Butir skala tidak punya benar/salah: dicampur dengan soal berkunci, nilai
+  // Likert-nya ikut ke skor dan kelulusan tes pengetahuan, sementara peserta
+  // tidak diberi tahu bahwa butir itu tanpa jawaban benar.
+  const skala = new Set(ada.filter((s) => s.type === 'skala').map((s) => s.id));
+  if (skala.size > 0 && skala.size < ada.length) {
+    return res.status(400).json({
+      error: 'Butir skala (inventori kepribadian) tidak bisa dicampur dengan soal berkunci dalam satu paket. Buat paket terpisah.',
+    });
+  }
+  // Bobot butir skala = nilai tertinggi pilihannya; bobot khusus paket akan
+  // membuat persen melewati 100 atau rentang profilnya runtuh.
+  if (questions.some((q) => skala.has(q.questionId) && q.points !== undefined && q.points !== null)) {
+    return res.status(400).json({ error: 'Bobot butir skala mengikuti nilai tertinggi pilihannya dan tidak bisa diatur per paket.' });
+  }
 
   await prisma.$transaction([
     prisma.cbtTestQuestion.deleteMany({ where: { testId: paket.id } }),
@@ -512,6 +572,9 @@ const penugasanSelect = {
 
 export const getAssignments = async (req: Request, res: Response) => {
   const { page, limit, testId, employeeId, candidateId, status } = req.query as unknown as ListAssignmentQuery;
+  // Pengerjaan yang ditinggalkan setelah batas waktu ditutup dulu, supaya
+  // daftar ini tidak memuat "sedang dikerjakan" yang sebenarnya sudah habis.
+  await tutupPengerjaanKedaluwarsa(testId ? { assignment: { testId } } : {});
   const where: Prisma.CbtAssignmentWhereInput = {
     ...(testId && { testId }),
     ...(employeeId && { employeeId }),
@@ -530,7 +593,13 @@ export const getAssignments = async (req: Request, res: Response) => {
     }),
   ]);
 
-  res.json({ data, pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 } });
+  // Jenis paket ikut dikirim: panel pelamar tidak boleh menampilkan "persen"
+  // inventori kepribadian seolah nilai.
+  const jenis = await jenisPaketBanyak([...new Set(data.map((a) => a.testId))]);
+  res.json({
+    data: data.map((a) => ({ ...a, test: { ...a.test, kind: jenis.get(a.testId) ?? 'pengetahuan' } })),
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) || 1 },
+  });
 };
 
 /** Token tautan ujian: 32 byte acak, base64url — 43 karakter. */
@@ -544,6 +613,16 @@ export const createAssignments = async (req: Request, res: Response) => {
   if (!paket) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
   if (paket.status !== 'published') return res.status(409).json({ error: 'Hanya paket yang sudah ditayangkan yang bisa ditugaskan' });
   if (paket._count.questions === 0) return res.status(409).json({ error: 'Paket ini belum punya soal' });
+  // Soal yang dinonaktifkan tidak boleh diujikan ke peserta baru.
+  const nonaktif = await soalNonaktifDiPaket(paket.id);
+  if (nonaktif > 0) {
+    return res.status(409).json({
+      error:
+        paket._count.assignments > 0
+          ? `Paket ini memuat ${nonaktif} soal yang sudah dinonaktifkan dan isinya terkunci karena sudah ditugaskan. Buat paket baru tanpa soal itu.`
+          : `Paket ini memuat ${nonaktif} soal yang sudah dinonaktifkan. Keluarkan lewat "Susun soal" sebelum menugaskan.`,
+    });
+  }
   if (input.employeeIds.length > 0 && paket.audience === 'pelamar') {
     return res.status(400).json({ error: 'Paket ini hanya untuk pelamar' });
   }
@@ -658,11 +737,15 @@ export const regenerateAssignmentToken = async (req: Request, res: Response) => 
 export const deleteAssignment = async (req: Request, res: Response) => {
   const penugasan = await prisma.cbtAssignment.findUnique({
     where: { id: req.params.id },
-    select: { id: true, status: true, test: { select: { title: true } } },
+    select: { id: true, status: true, test: { select: { title: true } }, attempt: { select: { id: true } } },
   });
   if (!penugasan) return res.status(404).json({ error: 'Penugasan tidak ditemukan' });
-  if (penugasan.status !== 'assigned') {
-    return res.status(409).json({ error: 'Penugasan yang sudah dikerjakan tidak bisa dibatalkan; hasilnya bagian dari riwayat.' });
+  // Dijaga dari keberadaan pengerjaan, bukan nama status: menghapus penugasan
+  // ikut menghapus pengerjaannya (cascade), jadi yang sudah dimulai tidak
+  // boleh terhapus apa pun statusnya. Yang belum pernah dimulai — termasuk
+  // yang kedaluwarsa — aman dibatalkan.
+  if (penugasan.attempt) {
+    return res.status(409).json({ error: 'Penugasan yang sudah dimulai atau dikerjakan tidak bisa dibatalkan; hasilnya bagian dari riwayat.' });
   }
 
   await prisma.cbtAssignment.delete({ where: { id: penugasan.id } });
@@ -679,6 +762,9 @@ export const deleteAssignment = async (req: Request, res: Response) => {
 
 export const getResults = async (req: Request, res: Response) => {
   const { page, limit, testId, employeeId, candidateId, status } = req.query as unknown as ListAssignmentQuery;
+  // Pengerjaan yang ditinggalkan setelah batas waktu ikut ditutup dan dinilai,
+  // supaya hasilnya muncul di sini tanpa menunggu penyapu berkala.
+  await tutupPengerjaanKedaluwarsa(testId ? { assignment: { testId } } : {});
   const where: Prisma.CbtAssignmentWhereInput = {
     status: status ?? { in: ['submitted', 'graded'] },
     ...(testId && { testId }),
@@ -749,30 +835,17 @@ export const getResultDetail = async (req: Request, res: Response) => {
   });
 
   // Rincian per kategori menjawab pertanyaan yang sebenarnya ditanyakan HR:
-  // lemahnya di mana, bukan sekadar berapa nilainya.
-  //
-  // Butir skala punya nilai terendah yang bukan nol (mis. 1 dari 1–5), jadi
-  // profil kepribadian memakai persenSkala: posisi antara nilai terendah dan
-  // tertinggi yang mungkin, bukan sekadar diperoleh/maksimal.
-  const bulat2 = (n: number) => Math.round(n * 100) / 100;
-  const perKategori = [...new Set(butir.map((b) => b.category))].map((kategori) => {
-    const isi = butir.filter((b) => b.category === kategori);
-    const maks = isi.reduce((n, b) => n + b.maxPoints, 0);
-    const minimal = isi.reduce((n, b) => n + (b.type === 'skala' ? rentangSkala(bacaPilihan(b.options)).min : 0), 0);
-    const dapat = isi.reduce((n, b) => n + (b.points ?? 0), 0);
-    const rentang = maks - minimal;
-    return {
-      kategori,
-      maksimal: maks,
-      minimal,
-      diperoleh: bulat2(dapat),
-      persen: maks > 0 ? bulat2((dapat / maks) * 100) : 0,
-      persenSkala: rentang > 0 ? bulat2((Math.max(0, dapat - minimal) / rentang) * 100) : 0,
-    };
-  });
+  // lemahnya di mana, bukan sekadar berapa nilainya. Untuk butir skala,
+  // persenSkala dihitung dari pernyataan yang dijawab — lihat ringkasKategori.
+  const perKategori = ringkasKategori(
+    butir.map((b) => ({ kategori: b.category, tipe: b.type, maksimal: b.maxPoints, poin: b.points, dipilih: b.chosen, pilihan: b.options }))
+  );
 
   const jenis = jenisPaket(butir.map((b) => b.type));
-  const profil = jenis === 'kepribadian' ? perKategori.map((k) => ({ ...interpretasiDimensi(k.kategori, k.persenSkala), persen: k.persenSkala })) : [];
+  const profil =
+    jenis === 'kepribadian'
+      ? perKategori.map((k) => ({ ...interpretasiDimensi(k.kategori, k.persenSkala, k.cukup), persen: k.persenSkala, dilewati: k.dilewati }))
+      : [];
 
   res.json({ attempt: { ...attempt, answers: undefined }, butir, perKategori, jenis, profil });
 };

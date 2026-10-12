@@ -1,4 +1,5 @@
-import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, jenisPaket, nilaiButir, petaNilaiSkala, pilihanTanpaNilai, rentangSkala, sisaDetik } from '../src/utils/cbt';
+import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, jenisPaket, nilaiButir, petaNilaiSkala, pilihanTanpaNilai, rentangSkala, ringkasKategori, sisaDetik, type ButirRingkas } from '../src/utils/cbt';
+import { interpretasiDimensi, pilihanSkalaLima } from '../src/services/cbt/kepribadian';
 
 describe('Penilaian butir soal', () => {
   const pg = { tipe: 'pilihan_ganda', kunci: ['b'], poin: 2 };
@@ -127,5 +128,51 @@ describe('Butir skala (inventori kepribadian)', () => {
     expect(jenisPaket(['skala', 'skala'])).toBe('kepribadian');
     expect(jenisPaket(['skala', 'pilihan_ganda'])).toBe('pengetahuan');
     expect(jenisPaket([])).toBe('pengetahuan');
+  });
+});
+
+describe('Ringkasan per kategori', () => {
+  const lurus = pilihanSkalaLima(false);
+  /** Butir skala 1–5; nilai = poin yang diperoleh, null = dilewati. */
+  const skala = (kategori: string, nilai: number | null): ButirRingkas => ({
+    kategori,
+    tipe: 'skala',
+    maksimal: 5,
+    poin: nilai ?? 0,
+    dipilih: nilai === null ? [] : [String(nilai)],
+    pilihan: lurus,
+  });
+
+  it('skor dimensi dihitung dari pernyataan yang dijawab saja', () => {
+    // Sembilan "Netral" dan satu dilewati: tetap tepat di tengah.
+    const [k] = ringkasKategori([...Array.from({ length: 9 }, () => skala('Keterbukaan', 3)), skala('Keterbukaan', null)]);
+    expect(k).toMatchObject({ persenSkala: 50, dilewati: 1, cukup: true, minimal: 10, maksimal: 50, diperoleh: 27 });
+  });
+
+  it('melewati pernyataan tidak lebih buruk daripada menjawab paling ekstrem', () => {
+    const [lewat] = ringkasKategori([skala('A', 3), skala('A', 3), skala('A', 3), skala('A', null)]);
+    const [ekstrem] = ringkasKategori([skala('A', 3), skala('A', 3), skala('A', 3), skala('A', 1)]);
+    expect(lewat.persenSkala!).toBeGreaterThan(ekstrem.persenSkala!);
+  });
+
+  it('terlalu banyak yang dilewati: skor tetap dihitung tetapi ditandai belum cukup', () => {
+    const [k] = ringkasKategori([...Array.from({ length: 7 }, () => skala('A', 4)), skala('A', null), skala('A', null), skala('A', null)]);
+    expect(k).toMatchObject({ persenSkala: 75, dilewati: 3, cukup: false });
+    expect(interpretasiDimensi('Ekstraversi', k.persenSkala, k.cukup)).toMatchObject({ tingkat: null, labelTingkat: 'Data kurang', keterangan: null });
+  });
+
+  it('dimensi tanpa satu pun jawaban tidak ditafsirkan', () => {
+    const [k] = ringkasKategori([skala('A', null), skala('A', null)]);
+    expect(k).toMatchObject({ persenSkala: null, dilewati: 2, cukup: false });
+    expect(interpretasiDimensi('Ekstraversi', k.persenSkala, k.cukup)).toMatchObject({ tingkat: null, labelTingkat: 'Tidak terjawab' });
+  });
+
+  it('tes pengetahuan: soal dilewati tetap nol, esai yang belum dinilai dihitung', () => {
+    const [k] = ringkasKategori([
+      { kategori: 'Higiene', tipe: 'pilihan_ganda', maksimal: 2, poin: 2, dipilih: ['b'], pilihan: [] },
+      { kategori: 'Higiene', tipe: 'pilihan_ganda', maksimal: 2, poin: 0, dipilih: [], pilihan: [] },
+      { kategori: 'Higiene', tipe: 'esai', maksimal: 6, poin: null, dipilih: [], pilihan: [] },
+    ]);
+    expect(k).toMatchObject({ maksimal: 10, diperoleh: 2, persen: 20, persenSkala: null, dilewati: 0, menunggu: 1 });
   });
 });

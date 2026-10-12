@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "@tanstack/react-query";
 import { Clock, ListChecks, Play, ShieldAlert } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ambilGalat } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,8 +40,8 @@ export default function HalamanTesPublik() {
 
   const alat: ApiUjian = React.useMemo(
     () => ({
-      simpan: async (jawaban) => (await api.put<{ dikirimOtomatis?: boolean }>(`/cbt/publik/${token}/jawaban`, { jawaban })).data,
-      kirim: async () => (await api.post<HasilKirimCbt>(`/cbt/publik/${token}/kirim`)).data,
+      simpan: async (jawaban) => (await api.put<{ dikirimOtomatis?: boolean; hasil?: HasilKirimCbt | null }>(`/cbt/publik/${token}/jawaban`, { jawaban })).data,
+      kirim: async (isi) => (await api.post<HasilKirimCbt>(`/cbt/publik/${token}/kirim`, isi)).data,
       kejadian: async (type, detail) => {
         await api.post(`/cbt/publik/${token}/kejadian`, { type, ...(detail ? { detail } : {}) });
       },
@@ -55,6 +55,14 @@ export default function HalamanTesPublik() {
 
   if (selesai) return <SelesaiUjian hasil={selesai} />;
   if (ruang) return <RuangUjianCbt ruang={ruang} api={alat} onSelesai={setSelesai} />;
+
+  // Jendela pengerjaan dibaca di sini supaya pelamar tidak disodori tombol
+  // Mulai yang pasti ditolak server.
+  const sekarang = new Date();
+  const belumDibuka = Boolean(info.data?.availableFrom && new Date(info.data.availableFrom) > sekarang);
+  const sudahLewat =
+    info.data?.status === "expired" ||
+    Boolean(info.data && !info.data.sudahDikirim && info.data.status === "assigned" && info.data.availableUntil && new Date(info.data.availableUntil) < sekarang);
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-background p-4">
@@ -74,6 +82,10 @@ export default function HalamanTesPublik() {
           ) : info.data.sudahDikirim ? (
             <Alert tone="info" title="Tes sudah dikerjakan">
               Jawaban Anda sudah terkirim. Hasilnya disampaikan HR.
+            </Alert>
+          ) : sudahLewat ? (
+            <Alert tone="warning" title="Masa pengerjaan sudah lewat">
+              Batas akhir tes ini {info.data.availableUntil ? formatTanggal(info.data.availableUntil, "d MMM yyyy HH:mm") : "sudah terlewati"}. Hubungi HR bila Anda masih perlu mengerjakannya.
             </Alert>
           ) : (
             <>
@@ -105,11 +117,17 @@ export default function HalamanTesPublik() {
                 Menutup tab tidak menghentikan hitung mundur. Pastikan koneksi dan perangkat Anda siap.
               </Alert>
 
-              {mulai.isError && <Alert tone="danger" title="Tidak bisa memulai">{(mulai.error as Error).message}</Alert>}
+              {mulai.isError && <Alert tone="danger" title="Tidak bisa memulai">{ambilGalat(mulai.error).pesan}</Alert>}
 
-              <Button className="w-full" onClick={() => mulai.mutate()} loading={mulai.isPending}>
-                {!mulai.isPending && <Play className="h-4 w-4" aria-hidden />} Mulai kerjakan
-              </Button>
+              {belumDibuka ? (
+                <Alert tone="info" title="Tes belum dibuka">
+                  Tes ini bisa dimulai {formatTanggal(info.data.availableFrom, "d MMM yyyy HH:mm")}. Buka kembali tautan ini pada waktunya.
+                </Alert>
+              ) : (
+                <Button className="w-full" onClick={() => mulai.mutate()} loading={mulai.isPending}>
+                  {!mulai.isPending && <Play className="h-4 w-4" aria-hidden />} {info.data.status === "in_progress" ? "Lanjutkan" : "Mulai kerjakan"}
+                </Button>
+              )}
             </>
           )}
         </Card>

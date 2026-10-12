@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ambilGalat } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,8 +30,8 @@ export default function HalamanKerjakanCbt() {
 
   const alat: ApiUjian = React.useMemo(
     () => ({
-      simpan: async (jawaban) => (await api.put<{ dikirimOtomatis?: boolean }>(`/cbt/saya/${id}/jawaban`, { jawaban })).data,
-      kirim: async () => (await api.post<HasilKirimCbt>(`/cbt/saya/${id}/kirim`)).data,
+      simpan: async (jawaban) => (await api.put<{ dikirimOtomatis?: boolean; hasil?: HasilKirimCbt | null }>(`/cbt/saya/${id}/jawaban`, { jawaban })).data,
+      kirim: async (isi) => (await api.post<HasilKirimCbt>(`/cbt/saya/${id}/kirim`, isi)).data,
       kejadian: async (type, detail) => {
         await api.post(`/cbt/saya/${id}/kejadian`, { type, ...(detail ? { detail } : {}) });
       },
@@ -56,7 +56,8 @@ export default function HalamanKerjakanCbt() {
     return (
       <div className="mx-auto max-w-lg p-6">
         <Card className="space-y-4 p-6">
-          <Alert tone="danger" title="Tes tidak bisa dibuka">{(ruang.error as Error)?.message ?? "Coba lagi nanti."}</Alert>
+          {/* Alasan dari server (lewat masa pengerjaan, belum dibuka, sudah dikirim), bukan "Request failed with status code 403". */}
+          <Alert tone="danger" title="Tes tidak bisa dibuka">{ruang.error ? ambilGalat(ruang.error).pesan : "Coba lagi nanti."}</Alert>
           {kembali}
         </Card>
       </div>

@@ -36,7 +36,7 @@ import {
   ubahProfilPelamarSchema,
   unggahCvSchema,
 } from '../schemas/karierSchema';
-import { proctorEventSchema, proctorPhotoSchema, saveAnswersSchema } from '../schemas/cbtSchema';
+import { proctorEventSchema, proctorPhotoSchema, saveAnswersSchema, submitAttemptSchema } from '../schemas/cbtSchema';
 
 const router = express.Router();
 
@@ -98,7 +98,7 @@ router.get('/lamaran/:id', authPelamar, validate(idParamSchema, 'params'), async
 // --- Tes CBT dari portal ---
 router.post('/tes/:id/mulai', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), asyncHandler(mulaiTes));
 router.put('/tes/:id/jawaban', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), validate(saveAnswersSchema), asyncHandler(simpanJawabanTes));
-router.post('/tes/:id/kirim', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), asyncHandler(kirimTes));
+router.post('/tes/:id/kirim', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), validate(submitAttemptSchema), asyncHandler(kirimTes));
 router.post('/tes/:id/kejadian', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), validate(proctorEventSchema), asyncHandler(kejadianTes));
 router.post('/tes/:id/foto', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), validate(proctorPhotoSchema), asyncHandler(fotoTes));
 

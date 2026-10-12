@@ -20,7 +20,7 @@ import {
 } from '../controllers/cbtAttemptController';
 import { asyncHandler } from '../middleware/auth';
 import { validate } from '../middleware/validate';
-import { proctorEventSchema, proctorPhotoSchema, saveAnswersSchema, tokenParamSchema } from '../schemas/cbtSchema';
+import { proctorEventSchema, proctorPhotoSchema, saveAnswersSchema, submitAttemptSchema, tokenParamSchema } from '../schemas/cbtSchema';
 
 const router = express.Router();
 
@@ -47,7 +47,7 @@ const batasPeserta = rateLimit({
 router.get('/:token', batasPeserta, validate(tokenParamSchema, 'params'), asyncHandler(publicInfo));
 router.post('/:token/mulai', batasPeserta, validate(tokenParamSchema, 'params'), asyncHandler(publicStart));
 router.put('/:token/jawaban', batasPeserta, validate(tokenParamSchema, 'params'), validate(saveAnswersSchema), asyncHandler(publicSaveAnswers));
-router.post('/:token/kirim', batasPeserta, validate(tokenParamSchema, 'params'), asyncHandler(publicSubmit));
+router.post('/:token/kirim', batasPeserta, validate(tokenParamSchema, 'params'), validate(submitAttemptSchema), asyncHandler(publicSubmit));
 router.post('/:token/kejadian', batasPeserta, validate(tokenParamSchema, 'params'), validate(proctorEventSchema), asyncHandler(publicEvent));
 router.post('/:token/foto', batasPeserta, validate(tokenParamSchema, 'params'), validate(proctorPhotoSchema), asyncHandler(publicPhoto));
 router.get('/:token/soal/:questionId/gambar', batasPeserta, asyncHandler(publicQuestionImage));

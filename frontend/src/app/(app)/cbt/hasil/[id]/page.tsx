@@ -80,6 +80,9 @@ export default function HalamanHasilCbt() {
   const esai = butir.filter((b) => !b.otomatis);
   const belumDinilai = esai.filter((b) => b.points === null).length;
   const NADA_TINGKAT = { rendah: "neutral", sedang: "info", tinggi: "primary" } as const;
+  // Persen baru final setelah seluruh esai dinilai; sebelum itu esai dihitung
+  // nol dan angkanya hanya nilai objektif sementara.
+  const selesaiDinilai = attempt.assignment.status === "graded";
 
   return (
     <>
@@ -93,13 +96,20 @@ export default function HalamanHasilCbt() {
         actions={
           kepribadian ? (
             <Badge tone="info">Profil kepribadian</Badge>
-          ) : attempt.percent !== null ? (
+          ) : selesaiDinilai && attempt.percent !== null ? (
             <div className="text-right">
               <p className="text-2xl font-bold tabular-nums">{attempt.percent}%</p>
               <p className="text-xs text-muted">{attempt.scoreTotal} dari {attempt.maxScore} poin</p>
             </div>
+          ) : !attempt.submittedAt ? (
+            <Badge tone="info" dot>Belum dikirim</Badge>
           ) : (
-            <Badge tone="warning" dot>Menunggu penilaian</Badge>
+            <div className="text-right">
+              <Badge tone="warning" dot>Menunggu penilaian</Badge>
+              {attempt.scoreObjective !== null && (
+                <p className="mt-1 text-xs text-muted">Sementara {attempt.scoreObjective} dari {attempt.maxScore} poin · esai belum dinilai</p>
+              )}
+            </div>
           )
         }
       />
@@ -126,11 +136,18 @@ export default function HalamanHasilCbt() {
                 <li key={d.kategori}>
                   <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
                     <span className="font-medium">{d.kategori}{d.singkat && <span className="font-normal text-muted"> · {d.singkat}</span>}</span>
-                    <span className="flex items-center gap-2 tabular-nums text-muted">{d.persen}<Badge tone={NADA_TINGKAT[d.tingkat]}>{d.labelTingkat}</Badge></span>
+                    <span className="flex items-center gap-2 tabular-nums text-muted">{d.persen ?? "—"}<Badge tone={d.tingkat ? NADA_TINGKAT[d.tingkat] : "warning"}>{d.labelTingkat}</Badge></span>
                   </div>
-                  <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2" role="meter" aria-valuenow={d.persen} aria-valuemin={0} aria-valuemax={100} aria-label={`${d.kategori} ${d.persen}`}>
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, d.persen)}%` }} />
-                  </div>
+                  {d.persen !== null && (
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2" role="meter" aria-valuenow={d.persen} aria-valuemin={0} aria-valuemax={100} aria-label={`${d.kategori} ${d.persen}`}>
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, d.persen)}%` }} />
+                    </div>
+                  )}
+                  {(d.dilewati ?? 0) > 0 && (
+                    <p className="mt-1 text-xs text-warning">
+                      {d.persen === null ? "Tidak satu pun pernyataan dimensi ini dijawab." : `${d.dilewati} pernyataan dilewati; skor dihitung dari yang dijawab saja.`}
+                    </p>
+                  )}
                   {d.keterangan && <p className="mt-1.5 text-xs text-muted">{d.keterangan}</p>}
                 </li>
               ))}
@@ -141,7 +158,7 @@ export default function HalamanHasilCbt() {
               <li key={k.kategori}>
                 <div className="flex items-baseline justify-between text-sm">
                   <span>{k.kategori}</span>
-                  <span className="tabular-nums text-muted">{k.diperoleh}/{k.maksimal} · {k.persen}%</span>
+                  <span className="tabular-nums text-muted">{k.diperoleh}/{k.maksimal} · {k.persen}%{(k.menunggu ?? 0) > 0 && <span className="text-warning"> · {k.menunggu} esai belum dinilai</span>}</span>
                 </div>
                 <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-2">
                   <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, k.persen)}%` }} />

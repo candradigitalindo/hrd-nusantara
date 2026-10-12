@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, Controller } from "react-hook-form";
-import { ListChecks, Pencil, Plus, Search, Trash2, X, Save } from "lucide-react";
+import { ListChecks, Pencil, Plus, RotateCcw, Search, Trash2, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button, TombolAksi } from "@/components/ui/button";
@@ -101,6 +101,10 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
 
   const f = useForm<FormSoal>({ defaultValues: kosong });
   const [tipeDipilih, terbalik] = useWatch({ control: f.control, name: ["type", "terbalik"] });
+  // Soal yang sudah dijawab: tipe, pilihan, kunci, dan bobot terkunci (hasil
+  // lama dihitung dengannya). Teks, kategori, tingkat, rubrik, dan pembahasan
+  // tetap boleh diperbaiki.
+  const terkunci = Boolean(form.item && form.item._count.answers > 0);
   const berpilihan = tipeDipilih === "pilihan_ganda" || tipeDipilih === "banyak_jawaban" || tipeDipilih === "benar_salah";
 
   React.useEffect(() => {
@@ -141,6 +145,17 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         ? [{ kode: "a", teks: "Benar" }, { kode: "b", teks: "Salah" }]
         : v.pilihan.map((teks, i) => ({ kode: KODE[i], teks: teks.trim() })).filter((o) => o.teks.length > 0);
 
+      if (form.item && terkunci) {
+        // Hanya bagian yang tidak menyentuh penilaian; mengirim kunci/bobot
+        // ikut membuat server menolak seluruh suntingan.
+        return api.put(`/cbt/soal/${form.item.id}`, {
+          category: v.category,
+          difficulty: v.difficulty,
+          textHtml: v.text,
+          rubric: form.item.type === "esai" ? v.rubric || null : null,
+          explanation: v.explanation || null,
+        });
+      }
       const body = {
         category: v.category,
         difficulty: v.difficulty,
@@ -169,6 +184,15 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
       setForm({ open: false, item: null });
     },
     onError: (e) => notifikasi.galat(e, "Gagal menyimpan soal"),
+  });
+
+  // Soal nonaktif bisa dipakai lagi: tanpa ini paket yang memuatnya (mis.
+  // paket standar Big Five, yang tidak bisa dibuat ulang) tidak bisa
+  // ditugaskan lagi setelah satu butirnya terhapus tidak sengaja.
+  const aktifkan = useMutation({
+    mutationFn: async (s: SoalCbt) => api.put(`/cbt/soal/${s.id}`, { isActive: true }),
+    onSuccess: () => { segarkan(); notifikasi.sukses("Soal diaktifkan lagi"); },
+    onError: (e) => notifikasi.galat(e, "Gagal mengaktifkan soal"),
   });
 
   const buang = useMutation({
@@ -215,8 +239,9 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                     <p className="mt-1 line-clamp-2 text-sm">{s.text}</p>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
+                    {bolehUbah && !s.isActive && <TombolAksi icon={RotateCcw} label={`Aktifkan lagi soal ${s.category}`} onClick={() => aktifkan.mutate(s)} />}
                     {bolehUbah && <TombolAksi icon={Pencil} label={`Sunting soal ${s.category}`} onClick={() => setForm({ open: true, item: s })} />}
-                    {bolehHapus && <TombolAksi icon={Trash2} label={`Hapus soal ${s.category}`} tone="bahaya" onClick={() => setHapus(s)} />}
+                    {bolehHapus && s.isActive && <TombolAksi icon={Trash2} label={`Hapus soal ${s.category}`} tone="bahaya" onClick={() => setHapus(s)} />}
                   </div>
                 </li>
               ))}
@@ -231,7 +256,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         onClose={() => setForm({ open: false, item: null })}
         size="lg"
         title={form.item ? "Sunting Soal" : "Soal Baru"}
-        description={form.item && form.item._count.answers > 0 ? "Soal ini sudah pernah dijawab: kunci, pilihan, tipe, dan bobotnya terkunci." : "Kunci jawaban tidak pernah dikirim ke peserta."}
+        description={terkunci ? "Soal ini sudah pernah dijawab: tipe, pilihan, kunci, dan bobotnya terkunci. Teks, kategori, tingkat, rubrik, dan pembahasan masih bisa diperbaiki." : "Kunci jawaban tidak pernah dikirim ke peserta."}
         footer={
           <>
             <Button variant="outline" onClick={() => setForm({ open: false, item: null })} disabled={simpan.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
@@ -248,7 +273,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
               </datalist>
             </Field>
             <Field label="Tipe soal">
-              <Select {...f.register("type")} disabled={Boolean(form.item && form.item._count.answers > 0)}>
+              <Select {...f.register("type")} disabled={terkunci}>
                 {Object.entries(LABEL_TIPE_SOAL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </Select>
             </Field>
@@ -269,7 +294,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
           </Field>
 
           {berpilihan && tipeDipilih !== "benar_salah" && (
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-2" disabled={terkunci}>
               <legend className="text-sm font-medium">Pilihan jawaban</legend>
               <p className="text-xs text-muted">Centang yang benar. Pilihan yang dikosongkan tidak ikut disimpan.</p>
               {KODE.map((kode, i) => (
@@ -290,7 +315,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
 
           {tipeDipilih === "benar_salah" && (
             <Field label="Jawaban benar">
-              <Select {...f.register("kunci.0" as const)}>
+              <Select {...f.register("kunci.0" as const)} disabled={terkunci}>
                 <option value="a">Benar</option>
                 <option value="b">Salah</option>
               </Select>
@@ -299,7 +324,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
 
           {tipeDipilih === "isian" && (
             <Field label="Jawaban yang diterima" hint="Satu per baris. Besar-kecil huruf dan spasi berlebih diabaikan.">
-              <Textarea rows={3} {...f.register("kunciIsian")} placeholder={"HACCP\nHazard Analysis Critical Control Point"} />
+              <Textarea rows={3} {...f.register("kunciIsian")} disabled={terkunci} placeholder={"HACCP\nHazard Analysis Critical Control Point"} />
             </Field>
           )}
 
@@ -310,7 +335,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
           )}
 
           {tipeDipilih === "skala" && (
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-2" disabled={terkunci}>
               <legend className="text-sm font-medium">Skala jawaban</legend>
               <p className="text-xs text-muted">
                 Peserta memilih seberapa sesuai pernyataan dengan dirinya. Nilai tiap jenjang dijumlahkan per kategori menjadi profil; tidak ada jawaban benar atau salah, dan urutan jenjang tidak pernah diacak.
@@ -330,7 +355,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
 
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Bobot nilai" hint={tipeDipilih === "skala" ? "Butir skala: otomatis nilai jenjang tertinggi" : undefined}>
-              <Input type="number" step="0.5" min="0.5" {...f.register("points", { valueAsNumber: true })} disabled={Boolean(form.item && form.item._count.answers > 0) || tipeDipilih === "skala"} />
+              <Input type="number" step="0.5" min="0.5" {...f.register("points", { valueAsNumber: true })} disabled={terkunci || tipeDipilih === "skala"} />
             </Field>
             <Field label="Pembahasan (opsional)" hint="Hanya tampil bila paket membuka hasil untuk peserta.">
               <Input {...f.register("explanation")} />
