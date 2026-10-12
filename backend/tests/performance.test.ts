@@ -416,7 +416,7 @@ describe('Akses dan pengakuan', () => {
     expect(tutup.body.status).toBe('closed');
 
     const daftar = await request(app)
-      .get(`/api/performance/reviews?cycleId=${cycleId}`)
+      .get(`/api/performance/reviews?cycleId=${cycleId}&scope=semua`)
       .set(auth(hrToken));
     const status = Object.fromEntries(
       daftar.body.data.map((r: { reviewerType: string; status: string }) => [r.reviewerType, r.status])
@@ -665,7 +665,32 @@ describe('Perbaikan audit Pengembangan (kinerja)', () => {
       .set(auth(hrToken))
       .send({ cycleId, revieweeId: budi.id, reviewerId: siti.id, reviewerType: 'peer', formTemplateId: templateId });
     expect(peer.status).toBe(409);
-    expect(peer.body.error).toMatch(/manager/);
+    expect(peer.body.error).toMatch(/sebagai Atasan/);
+  });
+
+  it('penugasan yang belum diisi bisa dihapus; yang sudah dikirim tetap riwayat', async () => {
+    const { cycleId, templateId, reviewId, criteria } = await siapkanPenugasan('peer');
+    // Bukan pengelola kinerja: tidak bisa menghapus, walau ia penilainya.
+    expectStatus(await request(app).delete(`/api/performance/reviews/${reviewId}`).set(auth(sitiToken)), 403);
+    expectStatus(await request(app).delete(`/api/performance/reviews/${reviewId}`).set(auth(hrToken)), 204);
+    expectStatus(await request(app).get(`/api/performance/reviews/${reviewId}`).set(auth(hrToken)), 404);
+
+    // Hubungan yang keliru dikoreksi: penilai yang sama kini bisa ditugaskan ulang sebagai atasan.
+    const ulang = await request(app)
+      .post('/api/performance/reviews')
+      .set(auth(hrToken))
+      .send({ cycleId, revieweeId: budi.id, reviewerId: siti.id, reviewerType: 'manager', formTemplateId: templateId });
+    expectStatus(ulang, 201);
+    expectStatus(
+      await request(app)
+        .post(`/api/performance/reviews/${ulang.body.id}/submit`)
+        .set(auth(sitiToken))
+        .send({ scores: criteria.map((c) => ({ criterionId: c.id, score: 4 })) }),
+      200
+    );
+    const hapus = await request(app).delete(`/api/performance/reviews/${ulang.body.id}`).set(auth(hrToken));
+    expectStatus(hapus, 409);
+    expect(hapus.body.error).toMatch(/belum diisi/);
   });
 
   it('penilaian diri langsung berstatus diakui saat dikirim, tanpa "baca & akui" oleh penulisnya', async () => {
@@ -738,7 +763,12 @@ describe('Lingkup data kinerja bagi peran kustom', () => {
     expectStatus(milikBawahan, 201);
     expectStatus(milikLuar, 201);
 
-    const daftar = await request(app).get('/api/performance/reviews').set(auth(kepalaToken));
+    // Tanpa scope: hanya penilaian yang melibatkan dirinya (kontrak APK), walau ia pembaca kinerja.
+    const milikSaya = await request(app).get('/api/performance/reviews').set(auth(kepalaToken));
+    expectStatus(milikSaya, 200);
+    expect(milikSaya.body.data).toEqual([]);
+
+    const daftar = await request(app).get('/api/performance/reviews?scope=semua').set(auth(kepalaToken));
     expectStatus(daftar, 200);
     expect(daftar.body.data.map((r: { id: string }) => r.id)).toEqual([milikBawahan.body.id]);
 
@@ -748,8 +778,9 @@ describe('Lingkup data kinerja bagi peran kustom', () => {
 
     expectStatus(await request(app).get(`/api/performance/summary/${cycleId}/${bawahan.id}`).set(auth(kepalaToken)), 200);
     expectStatus(await request(app).get(`/api/performance/summary/${cycleId}/${luar.id}`).set(auth(kepalaToken)), 403);
-    // HR tetap seluruh perusahaan.
-    expect((await request(app).get('/api/performance/reviews').set(auth(hrToken))).body.pagination.total).toBe(2);
+    // HR tetap seluruh perusahaan lewat scope=semua; tanpa scope hanya miliknya sendiri.
+    expect((await request(app).get('/api/performance/reviews?scope=semua').set(auth(hrToken))).body.pagination.total).toBe(2);
+    expect((await request(app).get('/api/performance/reviews').set(auth(hrToken))).body.pagination.total).toBe(0);
   });
 
   it('umpan balik orang di luar departemennya tidak bisa dibaca', async () => {
