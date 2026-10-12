@@ -4,7 +4,7 @@ import * as React from "react";
 import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
-import { Clock, Lock, Pencil, Plus, PowerOff, Save, X } from "lucide-react";
+import { CalendarClock, Clock, Lock, Pencil, Plus, PowerOff, Save, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin, bolehHr } from "@/hooks/use-sesi";
@@ -73,6 +73,19 @@ const jamPerHariDari = (v: Pick<FormJenis, "startTime" | "endTime" | "breakDurat
         .map(({ k, r }) => ({ weekday: Number(k), startTime: r.startTime, endTime: r.endTime, breakDuration: Number(r.breakDuration || 0) }))
         .filter((j) => !(j.startTime === v.startTime && j.endTime === v.endTime && j.breakDuration === Number(v.breakDuration || 0)));
 
+/** Isian form untuk mengubah sebuah jenis; `perHari` menyalakan bagian jam per hari walau belum ada hari yang berbeda. */
+const nilaiDariJenis = (item: JenisShift, perHari = false): FormJenis => ({
+  name: item.name,
+  code: item.code ?? "",
+  startTime: item.startTime,
+  endTime: item.endTime,
+  breakDuration: String(item.breakDuration),
+  color: (KUNCI_WARNA as string[]).includes(item.color) ? (item.color as WarnaJenisShift) : "teal",
+  departmentId: item.departmentId ?? "",
+  adaPerHari: Boolean(item.dailyHours?.length) || perHari,
+  perHari: perHariAwal({ startTime: item.startTime, endTime: item.endTime, breakDuration: String(item.breakDuration) }, item.dailyHours),
+});
+
 const kunciJamPerHari = (daftar: JamHariShift[] = []) =>
   JSON.stringify([...daftar].sort((a, b) => a.weekday - b.weekday).map((j) => [j.weekday, j.startTime, j.endTime, j.breakDuration]));
 
@@ -89,7 +102,18 @@ export const JamJenis = ({ mulai, selesai }: { mulai: string; selesai: string })
  * berulang. Mengubah jam sebuah jenis ikut mengubah shift ke depan yang
  * dibuat darinya, jadi formulirnya memperingatkan sebelum menyimpan.
  */
-export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
+export const TabJenisShift = ({
+  departemen,
+  aturPerHari,
+}: {
+  departemen: Departemen[];
+  /**
+   * Jenis yang formnya langsung terbuka di bagian jam per hari, dari dialog
+   * Tetapkan Shift. Dialog itu hanya ada di tab lain, jadi tab ini selalu
+   * dipasang baru sesudahnya dan cukup membacanya sebagai keadaan awal.
+   */
+  aturPerHari?: JenisShift | null;
+}) => {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const hr = bolehHr(saya?.role);
@@ -98,7 +122,7 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
   const bolehHapus = punyaIzin(saya, "shift.hapus");
 
   const [semua, setSemua] = React.useState(false);
-  const [form, setForm] = React.useState<{ open: boolean; item: JenisShift | null }>({ open: false, item: null });
+  const [form, setForm] = React.useState<{ open: boolean; item: JenisShift | null }>(() => ({ open: Boolean(aturPerHari), item: aturPerHari ?? null }));
   const [nonaktif, setNonaktif] = React.useState<JenisShift | null>(null);
 
   const jenis = useQuery({
@@ -110,30 +134,30 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
   // departemen dibuat HR dan hanya boleh diubah HR (server menolak 403).
   const bisaDikelola = (j: JenisShift) => hr || (j.departmentId !== null && j.departmentId === saya?.departmentId);
 
-  const f = useForm<FormJenis>({ defaultValues: KOSONG });
+  const f = useForm<FormJenis>({ defaultValues: aturPerHari ? nilaiDariJenis(aturPerHari, true) : KOSONG });
   const [mulai, selesai, istirahat, warna, kode, nama, adaPerHari, perHari] = useWatch({
     control: f.control,
     name: ["startTime", "endTime", "breakDuration", "color", "code", "name", "adaPerHari", "perHari"],
   });
 
-  const bukaForm = (item: JenisShift | null) => {
-    f.reset(
-      item
-        ? {
-            name: item.name,
-            code: item.code ?? "",
-            startTime: item.startTime,
-            endTime: item.endTime,
-            breakDuration: String(item.breakDuration),
-            color: (KUNCI_WARNA as string[]).includes(item.color) ? (item.color as WarnaJenisShift) : "teal",
-            departmentId: item.departmentId ?? "",
-            adaPerHari: Boolean(item.dailyHours?.length),
-            perHari: perHariAwal({ startTime: item.startTime, endTime: item.endTime, breakDuration: String(item.breakDuration) }, item.dailyHours),
-          }
-        : { ...KOSONG, departmentId: hr ? "" : (saya?.departmentId ?? "") }
-    );
+  // Dibuka lewat "Atur jam per hari": bagian per hari langsung menyala dan digulir ke layar.
+  const bagianPerHari = React.useRef<HTMLFieldSetElement>(null);
+  const [fokusPerHari, setFokusPerHari] = React.useState(Boolean(aturPerHari));
+
+  const bukaForm = (item: JenisShift | null, opsi: { perHari?: boolean } = {}) => {
+    f.reset(item ? nilaiDariJenis(item, opsi.perHari) : { ...KOSONG, departmentId: hr ? "" : (saya?.departmentId ?? "") });
     setForm({ open: true, item });
+    setFokusPerHari(Boolean(opsi.perHari));
   };
+
+  React.useEffect(() => {
+    if (!form.open || !fokusPerHari) return;
+    const t = setTimeout(() => {
+      bagianPerHari.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      setFokusPerHari(false);
+    }, 150);
+    return () => clearTimeout(t);
+  }, [form.open, fokusPerHari]);
 
   /** Menyalakan jam khusus sebuah hari: mulai dari jam bawaan saat ini, tinggal disesuaikan. */
   const ubahHari = (k: string, aktif: boolean) => {
@@ -226,6 +250,8 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
     },
   });
 
+  const bolehAturJenis = (j: JenisShift) => bolehUbah && j.isActive && bisaDikelola(j);
+
   const durasiMenit = mulai && selesai ? menitShift(mulai, selesai) : 0;
 
   const kolom: Kolom<JenisShift>[] = [
@@ -248,7 +274,15 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
         <div className="space-y-0.5">
           <JamJenis mulai={j.startTime} selesai={j.endTime} />
           {/* Hari yang jamnya berbeda dari jam di atas, mis. "Jum 08:00–11:30 · Sab 08:00–13:00". */}
-          {j.dailyHours?.length ? <p className="text-xs text-muted">{ringkasPengecualian(j)}</p> : null}
+          {j.dailyHours?.length ? (
+            <p className="text-xs text-muted">{ringkasPengecualian(j)}</p>
+          ) : bolehAturJenis(j) ? (
+            // Ditawarkan tepat di jamnya: tanpa ini HR membuat jenis terpisah per hari
+            // (mis. "Sabtu") yang tidak bisa digabung dalam satu penugasan.
+            <button type="button" onClick={() => bukaForm(j, { perHari: true })} className="flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Atur jam per hari
+            </button>
+          ) : null}
         </div>
       ),
     },
@@ -294,6 +328,15 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
             )}
           </div>
         </div>
+        {bolehUbah && Boolean(jenis.data?.length) && (
+          <p className="flex items-start gap-2 border-b border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+            <CalendarClock className="mt-px h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+            <span>
+              Ada hari yang jamnya berbeda, mis. Sabtu lebih pendek? Klik <span className="font-medium text-foreground">Atur jam per hari</span> pada jenisnya —
+              tidak perlu membuat jenis terpisah untuk hari itu.
+            </span>
+          </p>
+        )}
 
         {jenis.isLoading ? (
           <SkeletonBaris />
@@ -367,8 +410,8 @@ export const TabJenisShift = ({ departemen }: { departemen: Departemen[] }) => {
             </Field>
           </div>
 
-          <fieldset className="min-w-0 space-y-2">
-            <legend className="sr-only">Jam berbeda per hari</legend>
+          <fieldset ref={bagianPerHari} className="min-w-0 scroll-mt-4 space-y-2">
+            <legend className="mb-1.5 text-sm font-medium">Jam per hari</legend>
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" {...f.register("adaPerHari")} className="mt-0.5 h-4 w-4 accent-[var(--primary)]" />
               <span>

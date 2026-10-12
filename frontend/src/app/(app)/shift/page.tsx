@@ -14,7 +14,7 @@ import { TabPenugasan } from "@/components/shift/tab-penugasan";
 import { TabJenisShift } from "@/components/shift/tab-jenis-shift";
 import { DialogTetapkanShift } from "@/components/shift/dialog-tetapkan-shift";
 import { bulanISO, seninDari, tanggalISO } from "@/components/shift/util-shift";
-import type { Departemen, Halaman, KaryawanDirektori, RekapLibur } from "@/lib/types";
+import type { Departemen, Halaman, JenisShift, KaryawanDirektori, RekapLibur } from "@/lib/types";
 
 type Tab = "roster" | "penugasan" | "jenis";
 
@@ -38,6 +38,12 @@ export default function HalamanShift() {
   const perluDept = !hr && !saya?.departmentId;
   const bolehDimuat = hr || Boolean(dept);
   const [tetapkan, setTetapkan] = React.useState<{ awal?: { employeeId: string; date: string; sudahAda?: boolean } } | null>(null);
+  // Dari dialog Tetapkan Shift ke form jenis shift-nya, langsung di bagian jam per hari.
+  // Dikosongkan saat pindah tab, supaya kembali ke Jenis Shift tidak membuka form lagi.
+  const [aturPerHari, setAturPerHari] = React.useState<JenisShift | null>(null);
+  // Sama dengan penjaga di tab Jenis Shift: manajer hanya mengubah jenis departemennya.
+  const bolehAturPerHari = (j: JenisShift) =>
+    punyaIzin(saya, "shift.ubah") && (hr || (j.departmentId !== null && j.departmentId === saya?.departmentId));
 
   const departemen = useQuery({
     queryKey: ["departemen", "semua"],
@@ -113,7 +119,10 @@ export default function HalamanShift() {
             key={t.kunci}
             role="tab"
             aria-selected={tab === t.kunci}
-            onClick={() => setTab(t.kunci)}
+            onClick={() => {
+              setTab(t.kunci);
+              setAturPerHari(null);
+            }}
             className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t.kunci ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}
           >
             {t.label}
@@ -138,7 +147,9 @@ export default function HalamanShift() {
       {tab === "penugasan" && (
         <TabPenugasan dept={dept} pemilihDept={pemilihDept} karyawan={karyawan} bolehDimuat={bolehDimuat} onTetapkan={() => setTetapkan({})} />
       )}
-      {tab === "jenis" && <TabJenisShift departemen={departemen.data ?? []} />}
+      {tab === "jenis" && (
+        <TabJenisShift departemen={departemen.data ?? []} aturPerHari={aturPerHari} />
+      )}
 
       {tetapkan && (
         <DialogTetapkanShift
@@ -147,6 +158,12 @@ export default function HalamanShift() {
           karyawan={karyawan}
           fleksibel={fleksibel}
           tanggalBawaan={tanggalBawaan}
+          bolehAturPerHari={bolehAturPerHari}
+          onAturPerHari={(j) => {
+            setTetapkan(null);
+            setTab("jenis");
+            setAturPerHari(j);
+          }}
         />
       )}
     </>

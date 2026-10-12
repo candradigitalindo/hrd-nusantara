@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CalendarCheck, Check, Loader2, Search, X } from "lucide-react";
+import { CalendarCheck, CalendarClock, Check, Loader2, Search, X } from "lucide-react";
 import { api, ambilGalat } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button } from "@/components/ui/button";
@@ -105,8 +105,14 @@ export const DialogTetapkanShift = ({
   karyawan,
   fleksibel,
   tanggalBawaan,
+  bolehAturPerHari,
+  onAturPerHari,
 }: {
   onClose: () => void;
+  /** Pengguna boleh mengubah jenis ini (izin shift.ubah dan jenisnya dalam kelolaannya). */
+  bolehAturPerHari?: (jenis: JenisShift) => boolean;
+  /** Menutup dialog dan membuka form jenis itu di bagian jam per hari. */
+  onAturPerHari?: (jenis: JenisShift) => void;
   /** Dari sel roster: satu karyawan dan tanggalnya sudah terisi. */
   awal?: { employeeId: string; date: string; sudahAda?: boolean };
   /** Calon yang bisa dipilih (karyawan aktif di departemen yang sedang dilihat). */
@@ -429,6 +435,20 @@ export const DialogTetapkanShift = ({
                 })}
               </div>
               <p className="mt-1.5 text-xs text-muted">Hari yang tidak dipilih menjadi hari libur pada pekan itu.</p>
+              {/* Jenis berjam sama setiap hari untuk beberapa hari kerja: satu-satunya cara memberi
+                  hari tertentu jam lain adalah jam per hari di jenisnya, bukan jenis terpisah. */}
+              {jenisDipilih && !jenisDipilih.dailyHours?.length && hari.length > 1 && (
+                <p className="mt-1 text-xs text-muted">
+                  Semua hari terpilih memakai jam {jenisDipilih.startTime}–{jenisDipilih.endTime}. Ada hari yang jamnya berbeda, mis. Sabtu lebih pendek?{" "}
+                  {onAturPerHari && bolehAturPerHari?.(jenisDipilih) ? (
+                    <button type="button" onClick={() => onAturPerHari(jenisDipilih)} className="inline-flex items-center gap-1 font-medium text-primary hover:underline">
+                      <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Atur jam per hari di {jenisDipilih.name}
+                    </button>
+                  ) : (
+                    <>Minta HR mengatur jam per hari di jenis {jenisDipilih.name}.</>
+                  )}
+                </p>
+              )}
             </fieldset>
           )}
 
