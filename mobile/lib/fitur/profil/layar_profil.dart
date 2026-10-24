@@ -10,6 +10,7 @@ import '../antrean/mesin_antrean.dart';
 import '../auth/sesi_provider.dart';
 import '../wajah/model_wajah.dart';
 import '../wajah/repo_wajah.dart';
+import '../privasi/layar_privasi.dart';
 
 /// Versi terpasang (versionName + versionCode dari manifest APK), supaya
 /// HR tahu build mana yang dipegang karyawan saat menangani keluhan.
@@ -128,6 +129,8 @@ class LayarProfil extends ConsumerWidget {
                 ListTile(leading: const Icon(Icons.phone_android_outlined), title: const Text('Tautan WhatsApp'), subtitle: const Text('Wajib tersambung · pindai QR lewat web'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/whatsapp')),
                 const Divider(),
                 ListTile(leading: const Icon(Icons.lock_reset), title: const Text('Ganti password'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LayarGantiPassword()))),
+                const Divider(),
+                ListTile(leading: const Icon(Icons.privacy_tip_outlined), title: const Text('Kebijakan privasi'), subtitle: const Text('Pengelolaan data dan persetujuan pemantauan'), trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LayarPrivasi()))),
                 const Divider(),
                 Consumer(builder: (context, ref, _) {
                   final antrean = ref.watch(antreanProvider);

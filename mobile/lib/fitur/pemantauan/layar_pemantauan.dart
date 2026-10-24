@@ -18,9 +18,14 @@ Future<void> tampilkanPemberitahuanPemantauan(BuildContext context, WidgetRef re
     builder: (ctx) => AlertDialog(
       icon: const Icon(Icons.share_location_rounded, size: 36),
       title: const Text('Pemantauan lokasi'),
-      content: const Text(
-        'HRD Nusantara mengumpulkan dan mengirim lokasi Anda kepada perusahaan untuk pemantauan karyawan, '
-        'termasuk saat aplikasi ditutup atau tidak digunakan.',
+      content: const SingleChildScrollView(
+        child: Text(
+          'HRD Nusantara mengumpulkan dan mengirim lokasi Anda kepada perusahaan untuk pemantauan karyawan, '
+          'termasuk saat aplikasi ditutup atau tidak digunakan. '
+          'Sesuai pengaturan perusahaan, pemantauan dapat berlangsung selama bekerja atau selama 24 jam, '
+          'termasuk di luar jam kerja. Notifikasi ditampilkan selama pemantauan berjalan. '
+          'Anda dapat menarik persetujuan dan menghentikan pemantauan melalui menu Kebijakan privasi di Profil.',
+        ),
       ),
       actions: [
         TextButton.icon(onPressed: () => Navigator.pop(ctx, false), icon: const Icon(Icons.schedule), label: const Text('Nanti')),

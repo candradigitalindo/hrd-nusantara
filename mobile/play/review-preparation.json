@@ -1,0 +1,104 @@
+{
+  "status": "internal_testing_completed_requires_console_completion",
+  "lastVerifiedPublicationAt": "2026-10-24T10:53:50.825111+00:00",
+  "lastVerifiedInternalReleaseStatus": "completed",
+  "committedVersionName": "0.2.1",
+  "committedVersionCode": 29880562,
+  "bundleSha256": "47b057c34cbe8c8372c9384247fee85254954d8e677e67524ce53f36ee7e136e",
+  "googlePlayReviewSubmitted": false,
+  "appName": "HRD Nusantara",
+  "packageName": "id.nusantara.hrd.hrd_nusantara",
+  "locale": "id",
+  "privacyPolicyUrl": "https://hrd.nbp.co.id/kebijakan-privasi.html",
+  "contactEmail": "hrd@nbp.co.id",
+  "testerEmail": "candra.pribadi28@gmail.com",
+  "releaseTarget": "production_after_all_requirements_complete",
+  "initialUploadTrack": "internal",
+  "initialUploadStatus": "draft",
+  "existingSigningCertificateSha256": "24a52c28c50e1c92d7033ff7d6d41e3e86f5b5f8360664cdaf69de4ba36fc9d6",
+  "appSigning": {
+    "currentPlayCertificateSha256": "24a52c28c50e1c92d7033ff7d6d41e3e86f5b5f8360664cdaf69de4ba36fc9d6",
+    "matchesExistingInternalApk": true,
+    "verifiedVersionCode": 29880562,
+    "downloadedApkSignatureVerified": true,
+    "pepkToolLocalPath": "build/play-upload/pepk.jar",
+    "requiredGooglePublicEncryptionKeyPath": "secrets/encryption_public_key.pem",
+    "encryptedKeyExportPath": "secrets/hrd-nusantara-app-signing-key.zip",
+    "encryptedKeyExportVerified": true,
+    "keyImportedIntoGooglePlay": true,
+    "requirement": "Gunakan sertifikat penandatangan aplikasi yang sama dengan APK internal agar instalasi lama dapat diperbarui lewat Google Play.",
+    "consoleAction": "Impor kunci APK internal sudah terverifikasi pada APK Google untuk versi 29880562. Pertahankan kunci tersebut dan lakukan pengujian pembaruan pada perangkat sebelum rilis produksi.",
+    "source": "https://support.google.com/googleplay/android-developer/answer/9842756"
+  },
+  "appAccess": {
+    "restrictedByLogin": true,
+    "reviewerAccountExists": true,
+    "reviewerAccessReportedReady": true,
+    "reviewerAccessIndependentlyVerified": false,
+    "additionalAccessInstructionsComplete": false,
+    "additionalAccessInstructionsLanguage": "en",
+    "requirements": [
+      "Akun demo aktif dengan data contoh, terpisah dari data karyawan sungguhan.",
+      "Login dapat dipakai berulang tanpa OTP atau perubahan sandi wajib.",
+      "Reviewer dapat mencoba fitur berbasis lokasi dari luar lokasi perusahaan; instruksi mencakup batas radius dan verifikasi wajah/QR.",
+      "Cantumkan kredensial dan langkah penggunaan pada Policy and programs > App content > App access. Jangan menyimpan kata sandi di berkas yang masuk Git."
+    ],
+    "source": "https://support.google.com/googleplay/android-developer/answer/15748846"
+  },
+  "backgroundLocationDeclarationDraft": {
+    "appPurpose": "HRD Nusantara adalah aplikasi internal perusahaan untuk mengelola presensi dan layanan SDM karyawan, termasuk jadwal kerja, cuti, slip gaji, dan komunikasi tim. Fitur Pemantauan Lokasi membantu perusahaan melihat lokasi dan riwayat pergerakan karyawan sesuai pengaturan perusahaan dan persetujuan karyawan.",
+    "coreFeature": "Pemantauan Lokasi karyawan oleh perusahaan",
+    "description": "Fitur Pemantauan Lokasi mengirim lokasi karyawan secara berkala kepada perusahaan saat aplikasi ditutup atau tidak digunakan. Akses latar belakang diperlukan agar pencatatan lokasi tetap berjalan ketika karyawan memakai aplikasi lain. Fitur diaktifkan perusahaan dan memerlukan persetujuan karyawan, selama bekerja atau 24 jam sesuai pengaturan. Notifikasi ditampilkan saat aktif. Karyawan dapat menghentikannya melalui Profil > Kebijakan privasi.",
+    "videoRequired": true,
+    "videoUrl": null,
+    "videoLocalFile": "mobile/build/rilis/hrd-nusantara-video-lokasi-latar-belakang.mp4",
+    "videoDurationSeconds": 30,
+    "videoHostingStatus": "mp4_ready_pending_youtube_upload",
+    "videoCaptionsLanguage": "en",
+    "videoRecordedPlatform": "Android 14 emulator; APK generated from uploaded AAB 29880562",
+    "videoUsesSimulatedGps": true,
+    "videoAccountIdentityRedacted": true,
+    "videoSteps": [
+      "Siapkan akun demo yang Pemantauan Lokasinya sudah diaktifkan oleh perusahaan. Rekam perilaku aplikasi pada perangkat Android; usahakan durasi 30 detik atau kurang.",
+      "Tampilkan cara menemukan dan mengaktifkan fitur melalui Profil > Kebijakan privasi > Persetujuan pemantauan lokasi, atau pengungkapan yang otomatis muncul saat fitur perusahaan aktif.",
+      "Tampilkan pengungkapan lokasi di latar sebelum permintaan izin Android, lalu pilihan Setuju & lanjut.",
+      "Tampilkan permintaan izin lokasi Android. Pada build ini, lanjutkan lewat Pengaturan Android > HRD Nusantara > Izin > Lokasi > Izinkan sepanjang waktu, lalu aktifkan notifikasi aplikasi. Gunakan instalasi dengan izin yang belum diberikan agar dialog runtime terlihat.",
+      "Kembali ke layar utama Android dan tampilkan notifikasi Pemantauan lokasi aktif. Tampilkan titik lokasi baru beserta waktunya pada panel demo perusahaan saat aplikasi berada di latar belakang.",
+      "Tampilkan cara menarik persetujuan melalui Profil > Kebijakan privasi. Unggah rekaman ke YouTube dengan visibilitas Tidak publik, lalu pastikan tautannya dapat ditonton reviewer tanpa login."
+    ],
+    "source": "https://support.google.com/googleplay/android-developer/answer/9799150"
+  },
+  "foregroundServiceDeclarationDraft": {
+    "serviceType": "location",
+    "playConsoleTaskGroup": "Pembaruan lokasi latar belakang",
+    "playConsoleTask": "Berbagi lokasi yang dimulai pengguna",
+    "purpose": "Setelah karyawan menekan Setuju & lanjut dan memberikan izin lokasi serta notifikasi, fitur Pemantauan Lokasi mengirim lokasi berkala kepada perusahaan saat aplikasi berada di latar belakang. Pemantauan berjalan selama bekerja atau 24 jam sesuai pengaturan perusahaan, dengan notifikasi Pemantauan lokasi aktif. Karyawan dapat menghentikannya melalui Profil > Kebijakan privasi.",
+    "impactIfDeferredOrInterrupted": "Perusahaan terlambat menerima pembaruan lokasi karyawan dan riwayat pemantauan dapat memiliki jeda. Lokasi terakhir yang tersimpan mungkin tidak lagi mencerminkan posisi karyawan saat ini.",
+    "videoLocalFile": "mobile/build/rilis/hrd-nusantara-video-lokasi-latar-belakang.mp4",
+    "videoUrl": null,
+    "source": "https://support.google.com/googleplay/android-developer/answer/13392821"
+  },
+  "dataSafetyInventoryForReview": [
+    {"data": "Informasi pribadi dan identitas akun", "examples": "Nama, nomor karyawan, email, telepon, profil", "purpose": "Autentikasi dan layanan SDM"},
+    {"data": "Lokasi akurat dan perkiraan", "examples": "Presensi dan titik pemantauan", "purpose": "Fitur presensi/pemantauan dan pencegahan kecurangan"},
+    {"data": "Foto dan informasi verifikasi wajah", "examples": "Selfie pendaftaran/verifikasi dan foto bukti presensi", "purpose": "Verifikasi kehadiran"},
+    {"data": "Aktivitas aplikasi dan konten pengguna", "examples": "Cuti, survei, keluhan, penilaian dan chat tim", "purpose": "Layanan SDM dan komunikasi"},
+    {"data": "Aplikasi di perangkat dari daftar terbatas", "examples": "Nama paket lokasi tiruan yang ditemukan; bukan seluruh inventaris aplikasi", "purpose": "Pencegahan kecurangan presensi"}
+  ],
+  "dataSafetyPendingReview": [
+    "Tentukan kategori final dari data yang benar-benar dikumpulkan/dibagikan, termasuk dokumen/kesehatan dalam alasan cuti, data keuangan, dan identitas perangkat bila berlaku.",
+    "Periksa penerima foto presensi pada grup WhatsApp dan hubungan perusahaan dengan penyedia layanan sebelum menjawab pertanyaan sharing.",
+    "Firebase belum dikonfigurasi pada build ini; deklarasi harus diperbarui jika diaktifkan.",
+    "Kebijakan menyediakan permintaan akses/koreksi/penghapusan melalui hrd@nbp.co.id. Pastikan proses operasional dan retensi perusahaan sesuai.",
+    "Gunakan template CSV terbaru dari Play Console; jangan mengirim jawaban contoh bawaan template sebagai deklarasi aplikasi."
+  ],
+  "otherConsoleTasks": [
+    "Isi URL kebijakan privasi di App content.",
+    "Lengkapi deklarasi iklan, target audience, content rating, kategori aplikasi, dan negara distribusi sesuai penggunaan perusahaan.",
+    "Tambahkan candra.pribadi28@gmail.com pada daftar tester individual. API edits.testers menerima Google Groups, bukan alamat tester individual.",
+    "Periksa persyaratan akses produksi berdasarkan jenis/tanggal akun developer. Akun personal baru yang tercakup aturan Google membutuhkan 12 tester selama 14 hari berturut-turut.",
+    "Ajukan ke produksi setelah seluruh deklarasi, akses reviewer, pengujian dan penandatanganan lengkap."
+  ],
+  "dataSafetySource": "https://support.google.com/googleplay/android-developer/answer/10787469",
+  "testingSource": "https://support.google.com/googleplay/android-developer/answer/14151465"
+}

@@ -49,3 +49,6 @@ android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 ios/firebase_app_id_file.json
 lib/firebase_options.dart.bak
+
+# Kunci service account Google Play yang diunduh dari Google Cloud.
+hrd-nusantara-publisher-*.json

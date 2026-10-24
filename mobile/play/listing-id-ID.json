@@ -1,0 +1,6 @@
+{
+  "language": "id",
+  "title": "HRD Nusantara",
+  "shortDescription": "Presensi dan layanan SDM untuk karyawan perusahaan.",
+  "fullDescription": "HRD Nusantara adalah aplikasi layanan SDM untuk karyawan perusahaan. Gunakan akun yang diberikan perusahaan untuk mengakses fitur sesuai hak akses Anda.\n\nFitur aplikasi:\n- Presensi dengan lokasi GPS, verifikasi wajah, atau pemindaian QR.\n- Pengajuan cuti dan pemeriksaan saldo cuti.\n- Akses slip gaji dan jadwal kerja.\n- Informasi kinerja, pelatihan, dan pengumuman perusahaan.\n- Survei, keluhan, dan komunikasi tim.\n\nPemantauan lokasi karyawan:\nJika diaktifkan oleh perusahaan dan disetujui oleh karyawan, HRD Nusantara mengumpulkan dan mengirim lokasi kepada perusahaan secara berkala, termasuk saat aplikasi ditutup atau tidak digunakan. Sesuai pengaturan perusahaan, pemantauan dapat berlangsung selama bekerja atau selama 24 jam. Notifikasi pemantauan ditampilkan selama fitur ini berjalan.\n\nAplikasi ini ditujukan untuk penggunaan internal perusahaan. Ketersediaan fitur mengikuti konfigurasi dan hak akses yang diberikan perusahaan."
+}

@@ -34,6 +34,31 @@ void main() {
     expect(await simpanan.bacaSetujuPantau('K2'), isTrue);
   });
 
+  test('pengungkapan 24 jam meminta persetujuan baru dan penarikan bertahan setelah keluar', () async {
+    FlutterSecureStorage.setMockInitialValues({'hrd_setuju_pantau_v2_K1': '2026-10-01T01:00:00.000Z'});
+    final simpanan = PenyimpananSesi();
+    expect(await simpanan.bacaSetujuPantau('K1'), isFalse);
+    expect(await simpanan.bacaPenolakanPantau('K1'), isFalse);
+    await simpanan.simpanSetujuPantau('K1', true);
+    await simpanan.simpanSetujuPantau('K1', false);
+    await simpanan.hapusSemua();
+    expect(await PenyimpananSesi().bacaSetujuPantau('K1'), isFalse);
+    expect(await PenyimpananSesi().bacaPenolakanPantau('K1'), isTrue);
+    expect(await simpanan.bacaPenolakanPantau('K2'), isFalse);
+    await simpanan.simpanSetujuPantau('K1', true);
+    expect(await simpanan.bacaPenolakanPantau('K1'), isFalse);
+  });
+
+  test('persetujuan pemeriksaan integritas terpisah dari pemantauan dan per akun', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final simpanan = PenyimpananSesi();
+    await simpanan.simpanSetujuPantau('K1', true);
+    expect(await simpanan.bacaSetujuIntegritas('K1'), isFalse);
+    await simpanan.simpanSetujuIntegritas('K1');
+    expect(await simpanan.bacaSetujuIntegritas('K1'), isTrue);
+    expect(await simpanan.bacaSetujuIntegritas('K2'), isFalse);
+  });
+
   test('pengingat penyiapan lama tidak menunda penyiapan pengungkapan baru dan penundaan baru tetap per akun', () async {
     final waktuLama = DateTime.utc(2026, 10, 13, 1);
     FlutterSecureStorage.setMockInitialValues({'hrd_penyiapan_pantau_K1': waktuLama.toIso8601String()});

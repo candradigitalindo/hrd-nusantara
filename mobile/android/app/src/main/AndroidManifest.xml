@@ -12,18 +12,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- Pemantauan Lokasi yang tahan lama: dinyalakan lagi setelah ponsel restart,
-         dan meminta dikecualikan dari penghemat baterai (sistem sering menghentikan
-         layanan latar aplikasi yang tidak dikecualikan). Aplikasi ini dibagikan
-         sebagai APK internal; bila suatu saat dipublikasikan ke Play,
-         REQUEST_IGNORE_BATTERY_OPTIMIZATIONS wajib dibenarkan atau dihapus. -->
+    <!-- Pemantauan Lokasi dinyalakan lagi setelah ponsel restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-    <!-- Deteksi fake GPS: memindai aplikasi terpasang yang meminta ACCESS_MOCK_LOCATION.
-         Aplikasi ini didistribusikan sebagai APK internal (bukan Play Store); bila
-         suatu saat dipublikasikan ke Play, izin ini wajib dibenarkan atau dihapus
-         dan deteksi kembali mengandalkan daftar paket di <queries>. -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <!-- Plugin kamera menyertakan izin mikrofon walau aplikasi tidak pernah merekam
          suara; dicabut supaya karyawan tidak diminta izin yang tidak dipakai. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove"/>
@@ -82,7 +72,7 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
-        <!-- Aplikasi lokasi palsu yang umum, agar terlihat oleh deteksi fake GPS (Android 11+). -->
+        <!-- Daftar terbatas untuk deteksi aplikasi lokasi palsu (Android 11+). -->
         <package android:name="com.lexa.fakegps"/>
         <package android:name="com.incorporateapps.fakegps.fre"/>
         <package android:name="com.blogspot.newapphorizons.fakegps"/>

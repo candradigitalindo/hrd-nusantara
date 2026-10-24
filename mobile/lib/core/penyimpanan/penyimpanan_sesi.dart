@@ -6,7 +6,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// (Keychain di iOS, Keystore di Android), bukan SharedPreferences biasa —
 /// token yang bocor sama saja dengan password yang bocor.
 class PenyimpananSesi {
-  PenyimpananSesi([FlutterSecureStorage? storage]) : _storage = storage ?? const FlutterSecureStorage();
+  PenyimpananSesi([FlutterSecureStorage? storage])
+    : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
   static const _kunciToken = 'hrd_token';
@@ -15,19 +16,21 @@ class PenyimpananSesi {
   static const _kunciTokenPush = 'hrd_token_push';
   static const _kunciCache = 'hrd_kunci_cache';
   static const _kunciAntrean = 'hrd_kunci_antrean';
-  // Versi lama hanya menjelaskan absensi, bukan pengiriman lokasi di latar.
-  // Biarkan rekaman lama tersimpan; pengungkapan baru harus disetujui sendiri.
-  static const _awalanSetujuPantau = 'hrd_setuju_pantau_v2_';
+  // Versi ini mengungkapkan cakupan 24 jam dan pilihan menarik persetujuan.
+  // Rekaman versi sebelumnya tidak dipromosikan ke pengungkapan baru.
+  static const _awalanSetujuPantau = 'hrd_setuju_pantau_v3_';
   static const _awalanPenyiapanPantau = 'hrd_penyiapan_pantau_v2_';
 
   Future<String?> bacaToken() => _storage.read(key: _kunciToken);
-  Future<void> simpanToken(String token) => _storage.write(key: _kunciToken, value: token);
+  Future<void> simpanToken(String token) =>
+      _storage.write(key: _kunciToken, value: token);
 
   /// Refresh token sesi perangkat: menukar token akses yang kedaluwarsa
   /// tanpa login ulang (lihat KlienApi).
   Future<String?> bacaRefreshToken() => _storage.read(key: _kunciRefresh);
-  Future<void> simpanRefreshToken(String? token) =>
-      token == null ? _storage.delete(key: _kunciRefresh) : _storage.write(key: _kunciRefresh, value: token);
+  Future<void> simpanRefreshToken(String? token) => token == null
+      ? _storage.delete(key: _kunciRefresh)
+      : _storage.write(key: _kunciRefresh, value: token);
 
   Future<Map<String, dynamic>?> bacaPengguna() async {
     final raw = await _storage.read(key: _kunciPengguna);
@@ -43,35 +46,62 @@ class PenyimpananSesi {
       _storage.write(key: _kunciPengguna, value: jsonEncode(pengguna));
 
   Future<String?> bacaTokenPush() => _storage.read(key: _kunciTokenPush);
-  Future<void> simpanTokenPush(String? token) =>
-      token == null ? _storage.delete(key: _kunciTokenPush) : _storage.write(key: _kunciTokenPush, value: token);
+  Future<void> simpanTokenPush(String? token) => token == null
+      ? _storage.delete(key: _kunciTokenPush)
+      : _storage.write(key: _kunciTokenPush, value: token);
 
   /// Kunci AES untuk cache data offline (lihat cache_lokal.dart), base64.
   Future<String?> bacaKunciCache() => _storage.read(key: _kunciCache);
-  Future<void> simpanKunciCache(String? kunci) =>
-      kunci == null ? _storage.delete(key: _kunciCache) : _storage.write(key: _kunciCache, value: kunci);
+  Future<void> simpanKunciCache(String? kunci) => kunci == null
+      ? _storage.delete(key: _kunciCache)
+      : _storage.write(key: _kunciCache, value: kunci);
 
   /// Kunci AES antrean kirim. Sengaja TIDAK ikut dihapus saat keluar: data
   /// yang belum terkirim tetap bisa dikirim setelah pemiliknya masuk lagi.
   Future<String?> bacaKunciAntrean() => _storage.read(key: _kunciAntrean);
-  Future<void> simpanKunciAntrean(String? kunci) =>
-      kunci == null ? _storage.delete(key: _kunciAntrean) : _storage.write(key: _kunciAntrean, value: kunci);
+  Future<void> simpanKunciAntrean(String? kunci) => kunci == null
+      ? _storage.delete(key: _kunciAntrean)
+      : _storage.write(key: _kunciAntrean, value: kunci);
 
   /// Persetujuan pengungkapan lokasi di latar, per akun dan versi pengungkapan.
-  Future<bool> bacaSetujuPantau(String karyawanId) async => (await _storage.read(key: '$_awalanSetujuPantau$karyawanId')) != null;
+  Future<bool> bacaSetujuPantau(String karyawanId) async {
+    final nilai = await _storage.read(key: '$_awalanSetujuPantau$karyawanId');
+    return nilai != null && DateTime.tryParse(nilai) != null;
+  }
+
+  Future<bool> bacaPenolakanPantau(String karyawanId) async =>
+      (await _storage.read(key: '$_awalanSetujuPantau$karyawanId')) ==
+      'ditolak';
   Future<void> simpanSetujuPantau(String karyawanId, bool setuju) => setuju
-      ? _storage.write(key: '$_awalanSetujuPantau$karyawanId', value: DateTime.now().toUtc().toIso8601String())
-      : _storage.delete(key: '$_awalanSetujuPantau$karyawanId');
+      ? _storage.write(
+          key: '$_awalanSetujuPantau$karyawanId',
+          value: DateTime.now().toUtc().toIso8601String(),
+        )
+      : _storage.write(
+          key: '$_awalanSetujuPantau$karyawanId',
+          value: 'ditolak',
+        );
+
+  Future<bool> bacaSetujuIntegritas(String karyawanId) async =>
+      (await _storage.read(key: 'hrd_setuju_integritas_v1_$karyawanId')) !=
+      null;
+  Future<void> simpanSetujuIntegritas(String karyawanId) => _storage.write(
+    key: 'hrd_setuju_integritas_v1_$karyawanId',
+    value: DateTime.now().toUtc().toIso8601String(),
+  );
 
   /// Kapan karyawan terakhir ditawari pengaturan agar pemantauan bertahan di
-  /// latar (pengecualian baterai dsb.); tidak ditawarkan lagi dalam 7 hari.
+  /// latar (izin lokasi dan notifikasi); tidak ditawarkan lagi dalam 7 hari.
   Future<DateTime?> bacaPenyiapanTerakhir(String karyawanId) async {
     final isi = await _storage.read(key: '$_awalanPenyiapanPantau$karyawanId');
     return isi == null ? null : DateTime.tryParse(isi);
   }
 
   Future<void> simpanPenyiapanTerakhir(String karyawanId, DateTime waktu) =>
-      _storage.write(key: '$_awalanPenyiapanPantau$karyawanId', value: waktu.toUtc().toIso8601String());
+      _storage.write(
+        key: '$_awalanPenyiapanPantau$karyawanId',
+        value: waktu.toUtc().toIso8601String(),
+      );
 
   Future<void> hapusSemua() async {
     await _storage.delete(key: _kunciToken);

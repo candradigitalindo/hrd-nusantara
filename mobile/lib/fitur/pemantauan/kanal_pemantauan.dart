@@ -34,7 +34,7 @@ class StatusPenyiapan {
 }
 
 /// Jembatan ke sisi Android Pemantauan Lokasi (KanalNative.kt): alarm
-/// "pemantauan terhenti", pengecualian baterai, dan kabar bahwa layar ditutup.
+/// "pemantauan terhenti", status pengaturan ponsel, dan kabar bahwa layar ditutup.
 ///
 /// Semua panggilan aman di platform lain dan di tes: tidak melempar galat dan
 /// tidak melakukan apa pun di luar Android.
@@ -63,10 +63,6 @@ class KanalPemantauan {
     if (j == null) return null;
     return StatusPenyiapan(notifikasi: j['notifikasi'] == true, penghematBaterai: j['penghematBaterai'] == true, jendelaBoot: j['jendelaBoot'] == true);
   }
-
-  /// Membuka dialog sistem pengecualian baterai. Hasilnya baru diketahui dari
-  /// [statusPenyiapan] setelah aplikasi kembali ke depan.
-  Future<bool> mintaPengecualianBaterai() async => await _coba(() => _kanal.invokeMethod<bool>('mintaPengecualianBaterai')) ?? false;
 
   Future<bool> bukaPengaturanNotifikasi() async => await _coba(() => _kanal.invokeMethod<bool>('bukaPengaturanNotifikasi')) ?? false;
 

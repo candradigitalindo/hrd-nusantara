@@ -14,6 +14,7 @@ import { NAMA_COOKIE, NAMA_COOKIE_PELAMAR } from "@/lib/nama-cookie";
 const PUBLIK = [
   "/lowongan",
   "/unduh",
+  "/kebijakan-privasi.html",
   "/tes/",
   "/karier/masuk",
   "/karier/daftar",

@@ -72,6 +72,7 @@ void ukuranPonsel(WidgetTester tester, {double tinggi = 844}) {
 Widget aplikasiUji(Widget layar, {List<Override> overrides = const [], TransitionBuilder? builder}) => ProviderScope(
       overrides: overrides,
       child: MaterialApp(
+        debugShowCheckedModeBanner: false,
         theme: temaTerang(),
         locale: const Locale('id', 'ID'),
         supportedLocales: const [Locale('id', 'ID')],
@@ -107,6 +108,17 @@ Future<void> potret(WidgetTester tester, String nama) async {
   if (potretDir.isEmpty) return;
   goldenFileComparator = _PenulisPotret(Directory(potretDir));
   await expectLater(find.byType(MaterialApp), matchesGoldenFile('$nama.png'));
+}
+
+/// Materi Play memakai viewport ponsel 9:16, tanpa mengubah tampilan aplikasi.
+Future<void> potretPonselPlay(WidgetTester tester, String nama) async {
+  if (potretDir.isEmpty) return;
+  final ukuran = tester.view.physicalSize;
+  tester.view.physicalSize = const Size(1170, 2080);
+  await tester.pumpAndSettle();
+  await potret(tester, nama);
+  tester.view.physicalSize = ukuran;
+  await tester.pumpAndSettle();
 }
 
 /// Server tiruan: [jawab] menentukan jawaban per permintaan; [putus] meniru

@@ -42,6 +42,7 @@ void main() {
     }
     expect(find.text('Versi 0.2.0+202609230125 · build 29835285'), findsOneWidget);
     await potret(tester, 'profil');
+    await potretPonselPlay(tester, 'play-03-profil');
   });
 
   testWidgets('profil: tidak ada bagian Privasi / baris Pemantauan lokasi, walau pemantauan aktif', (tester) async {

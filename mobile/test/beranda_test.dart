@@ -110,6 +110,14 @@ void main() {
     }
     expect(find.text('PENGUMUMAN TERBARU'), findsOneWidget);
     await potret(tester, 'beranda');
+    await potretPonselPlay(tester, 'play-01-beranda');
+    if (potretDir.isNotEmpty) {
+      tester.view.physicalSize = const Size(1170, 2080);
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(ListView).first, const Offset(0, -650));
+      await tester.pumpAndSettle();
+      await potretPonselPlay(tester, 'play-02-layanan');
+    }
   });
 
   testWidgets('beranda peran terbatas: bagian yang menunya tidak ada tidak tampil dan tidak memanggil API', (tester) async {

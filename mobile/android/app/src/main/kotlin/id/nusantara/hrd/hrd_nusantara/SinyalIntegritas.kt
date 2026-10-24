@@ -87,21 +87,13 @@ class SinyalIntegritas(private val context: Context) {
     }
 
     /**
-     * Aplikasi yang meminta izin ACCESS_MOCK_LOCATION, atau termasuk daftar
-     * aplikasi lokasi palsu yang dikenal. Di Android 11+ hanya paket yang
-     * dideklarasikan di <queries> yang terlihat; daftar dikenal mengatasinya.
+     * Hanya memeriksa daftar aplikasi lokasi palsu yang dideklarasikan di
+     * <queries>; tidak memindai inventaris seluruh aplikasi perangkat.
      */
     private fun aplikasiLokasiPalsu(): List<String> {
         val hasil = LinkedHashSet<String>()
         try {
             val pm = context.packageManager
-            val paket = if (Build.VERSION.SDK_INT >= 33)
-                pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong()))
-            else @Suppress("DEPRECATION") pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
-            for (p in paket) {
-                if (p.packageName == context.packageName) continue
-                if (p.requestedPermissions?.contains("android.permission.ACCESS_MOCK_LOCATION") == true) hasil.add(p.packageName)
-            }
             for (nama in aplikasiPalsuDikenal) {
                 try { pm.getPackageInfo(nama, 0); hasil.add(nama) } catch (_: PackageManager.NameNotFoundException) {}
             }

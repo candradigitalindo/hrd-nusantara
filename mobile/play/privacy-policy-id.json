@@ -1,0 +1,40 @@
+{
+  "appName": "HRD Nusantara",
+  "updatedAt": "24 Oktober 2026",
+  "contactEmail": "hrd@nbp.co.id",
+  "publicUrl": "https://hrd.nbp.co.id/kebijakan-privasi.html",
+  "sections": [
+    {
+      "title": "Pengelola dan penggunaan aplikasi",
+      "paragraphs": ["HRD Nusantara adalah layanan SDM untuk karyawan perusahaan. Akun karyawan disediakan dan dikelola perusahaan. Akses informasi mengikuti peran dan kewenangan pengguna. Hubungi hrd@nbp.co.id untuk pertanyaan tentang pengelolaan data aplikasi ini."]
+    },
+    {
+      "title": "Data yang diproses",
+      "paragraphs": ["Layanan memproses informasi akun dan profil karyawan, seperti nama, nomor karyawan, email, nomor telepon, alamat, jabatan, dan departemen; serta data presensi, jadwal, cuti, penggajian, penilaian kinerja, pelatihan, survei, keluhan, dan komunikasi yang digunakan melalui layanan.", "Presensi dapat memproses lokasi perangkat, waktu, foto wajah, foto bukti kehadiran, dan hasil verifikasi wajah. Untuk memeriksa keaslian lokasi, aplikasi memeriksa penanda lokasi tiruan, status keamanan perangkat, dan keberadaan aplikasi lokasi tiruan dari daftar paket terbatas. Hasil pemeriksaan tersebut dapat dikirim bersama presensi kepada perusahaan. Aplikasi tidak memindai daftar seluruh aplikasi yang terpasang."]
+    },
+    {
+      "title": "Pemantauan lokasi di latar belakang",
+      "paragraphs": ["Jika perusahaan mengaktifkan fitur Pemantauan Lokasi dan karyawan memberikan persetujuan serta izin perangkat, aplikasi mengumpulkan dan mengirim lokasi secara berkala kepada perusahaan, termasuk saat aplikasi ditutup atau tidak digunakan. Perusahaan dapat mengatur pemantauan selama bekerja atau selama 24 jam, termasuk di luar jam kerja. Notifikasi ditampilkan selama pemantauan berjalan.", "Karyawan dapat menarik persetujuan pemantauan melalui halaman Kebijakan privasi di Profil. Izin lokasi dan kamera juga dapat diubah melalui pengaturan perangkat. Penarikan persetujuan menghentikan pengambilan lokasi berikutnya; data yang telah dikirim sebelumnya mengikuti pengaturan penyimpanan perusahaan."]
+    },
+    {
+      "title": "Tujuan dan penerima data",
+      "paragraphs": ["Data digunakan untuk autentikasi, pelaksanaan layanan SDM, verifikasi dan pencegahan kecurangan presensi, pemantauan karyawan yang telah disetujui, komunikasi perusahaan, serta keamanan dan pengoperasian layanan. Petugas perusahaan mengakses data sesuai kewenangannya.", "Jika perusahaan mengaktifkan pengiriman foto presensi ke WhatsApp, informasi dan foto kehadiran dapat dikirim ke grup WhatsApp yang ditentukan perusahaan. Layanan notifikasi push, bila dikonfigurasi, memakai Firebase dan token notifikasi perangkat. Pengaturan layanan dan penerima data tersebut dikelola perusahaan."]
+    },
+    {
+      "title": "Keamanan dan data offline",
+      "paragraphs": ["Komunikasi aplikasi dengan server produksi menggunakan HTTPS. Token sesi disimpan menggunakan penyimpanan aman sistem operasi. Cache dan antrean offline aplikasi disimpan terenkripsi. Data yang direkam saat perangkat offline dapat dikirim setelah koneksi tersedia. Perusahaan mengelola hak akses dan keamanan server layanan."]
+    },
+    {
+      "title": "Masa penyimpanan",
+      "paragraphs": ["Titik Pemantauan Lokasi mengikuti masa simpan yang diatur perusahaan, antara 1 dan 365 hari; setelan bawaannya 30 hari. Titik yang melewati masa simpan dihapus oleh layanan pembersihan berkala. Data SDM lainnya disimpan untuk tujuan operasional dan kebutuhan retensi perusahaan. Hubungi pengelola untuk informasi masa simpan data Anda."]
+    },
+    {
+      "title": "Permintaan akses, koreksi, dan penghapusan data",
+      "paragraphs": ["Untuk meminta akses, koreksi, atau penghapusan akun dan data, hubungi hrd@nbp.co.id dengan subjek Permintaan Data HRD Nusantara. Cantumkan nama dan nomor karyawan agar perusahaan dapat memverifikasi permintaan. Pengelola akan menilai data yang dapat dihapus dan data yang masih perlu dipertahankan untuk kebutuhan operasional atau kewajiban retensi, serta memberikan penjelasan kepada pemohon. Penghapusan aplikasi dari perangkat tidak otomatis menghapus catatan pada server perusahaan."]
+    },
+    {
+      "title": "Perubahan kebijakan",
+      "paragraphs": ["Kebijakan dapat diperbarui mengikuti perubahan layanan dan pengelolaan data. Tanggal pembaruan tercantum pada halaman ini. Perubahan pengumpulan data yang memerlukan persetujuan baru akan dijelaskan melalui aplikasi sebelum fitur terkait digunakan."]
+    }
+  ]
+}

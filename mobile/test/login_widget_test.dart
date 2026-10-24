@@ -5,6 +5,7 @@ import 'package:hrd_nusantara/core/api/klien_api.dart';
 import 'package:hrd_nusantara/core/penyimpanan/penyimpanan_sesi.dart';
 import 'package:hrd_nusantara/core/widget/lambang.dart';
 import 'package:hrd_nusantara/fitur/auth/layar_login.dart';
+import 'package:hrd_nusantara/fitur/auth/sesi_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'alat_uji.dart';
@@ -23,6 +24,17 @@ void main() {
     expect(tester.getSize(lambang), const Size(72, 72));
     expect(tester.getCenter(lambang).dx, 390 / 2);
     await potret(tester, 'login');
+    await potretPonselPlay(tester, 'play-04-login');
+  });
+
+  testWidgets('kebijakan privasi dapat dibaca sebelum login tanpa meminta izin lokasi', (tester) async {
+    ukuranPonsel(tester);
+    await tester.pumpWidget(aplikasiUji(const LayarLogin(), overrides: [penggunaProvider.overrideWithValue(null)]));
+    await tester.tap(find.text('Kebijakan privasi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pengelola dan penggunaan aplikasi'), findsOneWidget);
+    expect(find.text('Persetujuan pemantauan lokasi'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('validasi form sebelum memanggil server', (tester) async {

@@ -9,6 +9,7 @@ import '../../core/format.dart';
 import '../../core/widget/widget_umum.dart';
 import '../wajah/model_wajah.dart';
 import '../wajah/repo_wajah.dart';
+import '../privasi/persetujuan_integritas.dart';
 import '../whatsapp/repo_whatsapp.dart';
 import 'integritas_lokasi.dart';
 import 'layanan_lokasi.dart';
@@ -92,6 +93,7 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
           permintaan = PermintaanAbsen(metode: metode, qrToken: token, catatan: _catatan.text, fotoStempelBase64: fotoStempel);
         case MetodeAbsen.gps:
         case MetodeAbsen.wajah:
+          if (!await mintaPersetujuanIntegritas(context, ref)) return _batal();
           setState(() => _langkah = 'Memproses…');
           final posisi = await ambilPosisi();
           if (!mounted) return;

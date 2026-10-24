@@ -200,6 +200,8 @@ enum _Putusan {
 /// - aliran yang dimulai memastikan alarm "pemantauan terhenti" terpasang di
 ///   sisi native, dan setiap titik menggeser batasnya.
 class PemantauLokasi extends Notifier<StatusPemantauan> {
+  bool _ditolakOlehPengguna = false;
+  int _versiPersetujuan = 0;
   static const _kunciBuffer = 'pemantauan-buffer';
   static const bufferMaks = 2000;
   static const kirimSekaligus = 200;
@@ -310,6 +312,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
 
   Future<void> _segarkanSekali() async {
     if (_dibuang) return;
+    final versiPersetujuan = _versiPersetujuan;
     final pengguna = ref.read(penggunaProvider);
     if (pengguna == null) {
       if (_keluarAkun) {
@@ -319,6 +322,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
         await _hentikanAliran();
       }
       if (!_dibuang) state = const StatusPemantauan();
+      _ditolakOlehPengguna = false;
       return;
     }
     final repo = ref.read(repoPemantauanProvider);
@@ -346,9 +350,11 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     }
     if (_dibuang) return;
     bool setuju;
+    bool ditolak;
     String izin;
     try {
       setuju = await ref.read(penyimpananSesiProvider).bacaSetujuPantau(pengguna.id);
+      ditolak = await ref.read(penyimpananSesiProvider).bacaPenolakanPantau(pengguna.id);
       izin = await ref.read(izinLokasiProvider).periksa();
     } catch (e) {
       // Keystore atau layanan lokasi tak terbaca: jangan jalan, jangan ikut rusak.
@@ -360,11 +366,12 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     final penyiapanDitunda = await _penyiapanDitunda(pengguna.id);
     final penyiapan = await _kanal.statusPenyiapan();
     if (_dibuang) return;
-    if (ref.read(penggunaProvider)?.id != pengguna.id) {
+    if (ref.read(penggunaProvider)?.id != pengguna.id || versiPersetujuan != _versiPersetujuan) {
       _segarkanLagi = true;
       return;
     }
-    state = state.salin(konfigurasi: konfigurasi, setuju: setuju, izin: izin, penyiapan: penyiapan, hapusPenyiapan: penyiapan == null, penyiapanDitunda: penyiapanDitunda);
+    _ditolakOlehPengguna = ditolak;
+    state = state.salin(konfigurasi: konfigurasi, setuju: setuju, ditunda: ditolak || state.ditunda, izin: izin, penyiapan: penyiapan, hapusPenyiapan: penyiapan == null, penyiapanDitunda: penyiapanDitunda);
     await _terapkan(konfigurasi, setuju, izin);
     if (_dibuang) return;
     await _laporkanStatus(pengguna.id);
@@ -409,7 +416,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
 
   _Putusan _putuskan(KonfigurasiPemantauan? k, bool setuju, String izin) {
     if (k == null) return _Putusan.biarkan;
-    if (!k.aktif || !setuju) return _Putusan.henti;
+    if (!k.aktif || !setuju || _ditolakOlehPengguna) return _Putusan.henti;
     if (k.selamaBekerja) {
       final presensi = ref.read(presensiHariIniProvider);
       // Belum terbaca, atau sedang dibaca ulang — nilai yang terbawa bisa basi,
@@ -445,8 +452,10 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     if (pengguna == null) return;
     await ref.read(penyimpananSesiProvider).simpanSetujuPantau(pengguna.id, true);
     if (_dibuang || ref.read(penggunaProvider)?.id != pengguna.id) return;
+    _versiPersetujuan++;
     // Persetujuan dicatat sebelum dialog izin sistem muncul: saat aplikasi
     // kembali ke depan, pemberitahuan tidak boleh tampil lagi.
+    _ditolakOlehPengguna = false;
     state = state.salin(setuju: true, ditunda: false);
     final izin = await ref.read(izinLokasiProvider).minta();
     if (_dibuang || ref.read(penggunaProvider)?.id != pengguna.id) return;
@@ -456,10 +465,22 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
 
   void tunda() => state = state.salin(ditunda: true);
 
+  Future<void> cabutPersetujuan() async {
+    final pengguna = ref.read(penggunaProvider);
+    if (pengguna == null) return;
+    await ref.read(penyimpananSesiProvider).simpanSetujuPantau(pengguna.id, false);
+    if (_dibuang || ref.read(penggunaProvider)?.id != pengguna.id) return;
+    _versiPersetujuan++;
+    _ditolakOlehPengguna = true;
+    state = state.salin(setuju: false, ditunda: true);
+    await _berhenti();
+    await _laporkanStatus(pengguna.id);
+  }
+
   /// Layar aplikasi ditutup padahal mesin Flutter dipertahankan untuk
   /// pemantauan. Pertanyaan yang tadi ditunda diajukan lagi saat aplikasi
   /// dibuka berikutnya, seperti ketika prosesnya ikut berakhir.
-  void aktivitasDitutup() => state = state.salin(ditunda: false);
+  void aktivitasDitutup() => state = state.salin(ditunda: _ditolakOlehPengguna);
 
   /// Dialog penyiapan sedang ditampilkan: jangan tawarkan lagi selama [jedaPenyiapan].
   Future<void> catatPenyiapanDitampilkan() async {
@@ -496,7 +517,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     if (!diLayar && ((_langganan != null && !_aliranRusak) || !_bolehMulaiDariLatar(izin))) return;
     await _langganan?.cancel();
     _langganan = null;
-    if (_dibuang) return;
+    if (_dibuang || _ditolakOlehPengguna || state.setuju != true) return;
     _intervalBerjalan = interval;
     _mulaiPada = DateTime.now();
     _posisiTerakhirPada = null;
@@ -559,7 +580,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
 
   Future<void> _diterima(Position p) async {
     final interval = _intervalBerjalan;
-    if (interval == null || _dibuang) return;
+    if (interval == null || _dibuang || _ditolakOlehPengguna) return;
     _posisiTerakhirPada = DateTime.now();
     // Sudah keluar akun: putaran berikutnya menghentikan aliran ini.
     if (ref.read(penggunaProvider) == null) return;
@@ -568,7 +589,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     if (_terakhir != null && p.timestamp.difference(_terakhir!) < Duration(minutes: interval) - const Duration(seconds: 30)) return;
     final idPengguna = ref.read(penggunaProvider)?.id;
     final penyiapan = await _kanal.statusPenyiapan();
-    if (_dibuang || ref.read(penggunaProvider)?.id != idPengguna || !state.berjalan) return;
+    if (_dibuang || _ditolakOlehPengguna || ref.read(penggunaProvider)?.id != idPengguna || !state.berjalan) return;
     state = state.salin(penyiapan: penyiapan, hapusPenyiapan: penyiapan == null);
     if (penyiapan?.notifikasi == false || (_kanal.didukung && penyiapan == null)) {
       // Izin bisa dicabut tanpa kembali ke aplikasi: jangan simpan/kirim titik ini.
@@ -678,7 +699,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     if (kunci == _statusTerlapor && _statusTerlaporPada != null && DateTime.now().difference(_statusTerlaporPada!) < jedaLaporanStatus) return;
     try {
       final versi = await (_versiAplikasi ??= _bacaVersi());
-      if (_dibuang || ref.read(penggunaProvider)?.id != idPengguna) return;
+      if (_dibuang || ref.read(penggunaProvider)?.id != idPengguna || s.setuju != state.setuju) return;
       await ref.read(repoPemantauanProvider).laporkanStatus(
             setuju: s.setuju!,
             izin: izin,

@@ -259,6 +259,8 @@ Di ponsel (`lib/fitur/pemantauan/`):
     Izin lokasi saat persetujuan/presensi dan izin notifikasi setelah login
     menggunakan dialog bawaan sistem. Pengaturan baterai dan lokasi
     "Izinkan sepanjang waktu" mengikuti pilihan pengguna di pengaturan ponsel.
+    Aplikasi hanya membaca status pembatasan baterai; tidak meminta
+    pengecualiannya atau membuka dialog pengecualian baterai.
   - Setelah ponsel dinyalakan ulang atau aplikasi diperbarui
     (`BootReceiver.kt`), pemantauan dinyalakan lagi tanpa membuka aplikasi —
     hanya bila izinnya "sepanjang waktu". Tanpa izin itu Android menolak
@@ -281,7 +283,14 @@ Di ponsel (`lib/fitur/pemantauan/`):
   memenuhi kebutuhan pengungkapan/notifikasi pada alur ini, bukan sertifikasi
   lolos Play Store. Publikasi masih memerlukan kebijakan privasi, Data safety,
   deklarasi izin lokasi/layanan latar depan, deskripsi pemantauan, dan peninjauan
-  izin lain (termasuk QUERY_ALL_PACKAGES dan pengecualian baterai) oleh Google.
+  penggunaan pemantauan karyawan oleh Google. Pemindaian aplikasi dibatasi
+  pada daftar paket lokasi tiruan di `<queries>`; izin `QUERY_ALL_PACKAGES`
+  tidak digunakan. Pemeriksaan integritas presensi memerlukan persetujuan
+  terpisah sebelum lokasi GPS atau wajah digunakan.
+- Kebijakan privasi tersedia sebelum login dan lewat Profil. Karyawan dapat
+  menarik persetujuan pemantauan di halaman tersebut; pengambilan lokasi dan
+  pengingat dihentikan, termasuk setelah aplikasi dibuka ulang. Pengungkapan
+  versi baru meminta persetujuan ulang untuk cakupan 24 jam.
 - Keterbatasan:
   - Sebagian ponsel menghentikan paksa aplikasi saat diusap dari daftar
     aplikasi (pengelola baterai bawaan merek). Penghentian paksa ikut menghapus
@@ -330,10 +339,8 @@ Izin yang benar-benar masuk ke APK (hasil merge manifest) dan gunanya:
 | `CAMERA` | selfie verifikasi wajah, pindai QR, foto stempel ke grup WhatsApp | kamera dibuka pertama kali |
 | `ACCESS_BACKGROUND_LOCATION` | Pemantauan Lokasi saat aplikasi ditutup dan setelah ponsel restart ("Izinkan sepanjang waktu") | melalui pengaturan izin lokasi Android |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION` | layanan latar depan Pemantauan Lokasi | tidak ada dialog |
-| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | jembatan native pengecualian penghemat baterai (distribusi APK internal; bila ke Play Store harus dibenarkan atau dihapus) | tidak diminta otomatis; pengguna mengatur baterai melalui pengaturan ponsel |
 | `RECEIVE_BOOT_COMPLETED` | menyalakan lagi Pemantauan Lokasi dan pengingatnya setelah ponsel restart | tidak ada dialog |
 | `POST_NOTIFICATIONS` (Android 13+) | push: presensi, cuti, sesi WhatsApp putus; notifikasi Pemantauan Lokasi dan pengingat "terhenti" | dialog bawaan sistem setelah login (bila Firebase aktif) |
-| `QUERY_ALL_PACKAGES` | mendeteksi aplikasi lokasi palsu yang terpasang (distribusi APK internal; bila ke Play Store harus dibenarkan atau dihapus) | tidak ada dialog |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `VIBRATE`, `WAKE_LOCK`, `c2dm.RECEIVE` | jaringan dan notifikasi (ditambahkan plugin) | tidak ada dialog |
 
 Tidak dipakai dan sengaja dicabut: `RECORD_AUDIO` (plugin kamera menyertakannya,
@@ -433,6 +440,96 @@ butuh hapus-pasang ulang satu kali.
 Karyawan mengunduh versi terbaru dari halaman publik `<web>/unduh` tanpa
 login; HR bisa memajang QR tautannya di outlet. Setiap rilis menyimpan
 sha256 dan jumlah unduhan; versi bermasalah bisa dinonaktifkan.
+
+## Rilis Android ke Google Play: persiapan akses
+
+Package Android aplikasi ini adalah `id.nusantara.hrd.hrd_nusantara`. Draf
+listing bahasa Indonesia ada di [`play/listing-id-ID.json`](play/listing-id-ID.json).
+AAB yang sudah dibangun dan diverifikasi ada di `build/rilis/`.
+
+Persiapan oleh pemilik akun Google:
+
+1. [Play Console](https://play.google.com/console/) → **Create app**. Isi nama
+   **HRD Nusantara**, bahasa **Indonesia**, jenis **App**, dan **Free** untuk
+   distribusi karyawan. Isi email kontak perusahaan dan selesaikan deklarasi
+   pembuatan aplikasi. Package di atas akan terikat melalui AAB yang diunggah.
+2. Sebelum rilis pertama, siapkan **Play App Signing** agar APK dari Play
+   memakai kunci penandatanganan yang sama dengan APK internal yang sudah
+   terpasang. Kunci saat ini ada di `android/app/upload-keystore.jks`; meski
+   namanya upload-keystore, kunci ini juga menandatangani APK internal. Ikuti
+   opsi penyediaan kunci sendiri dan ekspor PEPK pada Console. Pengaturan ini
+   dikerjakan pemilik/admin akun sebelum aplikasi dibagikan kepada karyawan.
+3. Di [Google Cloud Console](https://console.cloud.google.com/), pilih atau buat
+   project, lalu aktifkan **Google Play Android Developer API**. Buka
+   **IAM & Admin → Service Accounts → Create service account**, misalnya
+   bernama `hrd-play-publisher`.
+4. Di Play Console → **Users and permissions → Invite new users**, masukkan
+   email service account tersebut. Batasi akses ke aplikasi **HRD Nusantara**
+   dengan izin **View app information (read-only)**, **Release apps to testing
+   tracks**, **Manage testing tracks and edit tester lists**, serta **Manage
+   store presence** untuk pengaturan listing. Tahap awal menargetkan draf dan
+   pengujian internal.
+5. Pada service account di Google Cloud, buat kunci **JSON** melalui tab
+   **Keys → Add key → Create new key**. Buat direktori `mobile/secrets/`, lalu
+   simpan berkasnya sebagai `google-play-service-account.json` di dalamnya. Direktori
+   `secrets/` sudah diabaikan Git. Setelah menaruh berkas, dari folder `mobile/`:
+
+   ```bash
+   chmod 700 secrets
+   chmod 600 secrets/google-play-service-account.json
+   ```
+
+Kredensial service account disimpan sebagai berkas privat di server. Pada
+24 Oktober 2026, AAB 0.2.1 (29880562), listing, ikon, banner, empat screenshot,
+dan kontak berhasil di-commit dan dibaca ulang di Google Play. Pemeriksaan
+terakhir pukul 17.53 WIB menunjukkan rilis versi tersebut berstatus `completed`
+di jalur pengujian internal. Pengajuan produksi belum dikirim. Akses reviewer, formulir App content,
+Data safety, deklarasi lokasi/layanan latar depan, serta pengujian perangkat
+masih perlu diselesaikan sebelum rilis.
+
+Sertifikat APK hasil Google untuk build 29880562 telah diverifikasi langsung
+menggunakan `apksigner` dan cocok dengan kunci APK internal:
+`24a52c28c50e1c92d7033ff7d6d41e3e86f5b5f8360664cdaf69de4ba36fc9d6`.
+Tanda tangan APK v2 dan v3 valid. Bukti pemeriksaan tanda tangan ada di
+`build/play-upload/signing-verified.json`; hasil pemeriksaan jalur rilis ada di
+`build/play-upload/publication-status.json`.
+
+Paket impor kunci lama sudah dibuat memakai PEPK resmi Google dan kunci
+enkripsi publik dari Console: `secrets/hrd-nusantara-app-signing-key.zip`.
+ZIP berisi kunci privat terenkripsi serta sertifikat publik yang telah
+dicocokkan dengan APK internal. Berkas ini berizin `600` dan diabaikan Git.
+ZIP telah diimpor melalui **Provide a copy of your app signing key** di
+Console. Verifikasi dilakukan pada AAB baru setelah impor; APK yang sudah
+dihasilkan dari unggahan sebelumnya masih dapat menunjukkan kunci sebelumnya.
+
+Materi listing disimpan di `play/`: `icon.png` (512×512),
+`feature-graphic.png` (1024×500), serta `screenshots/` (1170×2080, PNG RGB).
+Screenshot diambil dari widget aplikasi menggunakan data contoh tes. Untuk
+menghasilkan ulang, jalankan tes `beranda_test.dart`, `profil_test.dart`, dan
+`login_widget_test.dart` dengan `--dart-define=POTRET_DIR=<folder>`; berkas
+`play-*.png` memakai viewport ponsel 9:16. Hilangkan kanal alfa sebelum unggah.
+Locale API untuk aplikasi yang sudah dibuat adalah `id`.
+
+Sumber kebijakan bersama aplikasi dan situs adalah
+`play/privacy-policy-id.json`. Dari akar repo, `node merek/buat-materi-play.mjs`
+menghasilkan ikon, banner, dan `frontend/public/kebijakan-privasi.html`.
+URL publiknya adalah `https://hrd.nbp.co.id/kebijakan-privasi.html`; proxy web
+mengizinkan halaman ini dibuka tanpa login. Perubahan isi kebijakan perlu
+dibangun ulang ke aplikasi dan diterbitkan ulang ke situs.
+
+`play/review-preparation.json` berisi bahan deklarasi dan persyaratan yang
+masih harus diselesaikan di Console. Isinya merupakan persiapan peninjauan,
+bukan bukti persetujuan Google. Akun dan akses demo telah dikonfirmasi tersedia;
+verifikasi akses dan petunjuk QR/lokasi/wajah reviewer masih perlu dilengkapi.
+Gunakan akun dengan data contoh. Target akhirnya produksi setelah
+persyaratan lengkap; unggahan awal disimpan sebagai draf internal. Bukti
+operasi API, hasil pemeriksaan build, dan verifikasi URL disimpan di
+`build/play-upload/` tanpa kunci service account.
+
+Referensi resmi: [membuat aplikasi](https://support.google.com/googleplay/android-developer/answer/9859152),
+[akses API dan service account](https://developers.google.com/android-publisher/getting_started),
+[izin Play Console](https://support.google.com/googleplay/android-developer/answer/9844686), dan
+[Play App Signing](https://support.google.com/googleplay/android-developer/answer/9842756).
 
 ## Rilis iOS (App Store privat / Custom App)
 

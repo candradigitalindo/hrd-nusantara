@@ -84,7 +84,6 @@ object KanalNative {
                     "jendelaBoot" to MesinFlutter.dalamJendelaBoot(),
                 )
             )
-            "mintaPengecualianBaterai" -> hasil.success(mintaPengecualianBaterai(app))
             "bukaPengaturanNotifikasi" -> hasil.success(bukaPengaturanNotifikasi(app))
             else -> hasil.notImplemented()
         }
@@ -109,20 +108,6 @@ object KanalNative {
             nm.getNotificationChannel(GeolocatorLocationService.CHANNEL_ID)?.importance?.let {
                 it != NotificationManager.IMPORTANCE_NONE
             } == true
-    }
-
-    /**
-     * Menampilkan dialog sistem "izinkan berjalan tanpa pembatasan baterai".
-     * Bila layar itu tak tersedia di ponsel (sebagian OEM), daftar
-     * pengecualian baterai yang dibuka. Hasilnya diketahui Dart dari
-     * [bebasPenghematBaterai] saat aplikasi kembali ke depan.
-     *
-     * @return true bila sudah bebas atau sebuah layar berhasil dibuka.
-     */
-    private fun mintaPengecualianBaterai(app: Context): Boolean {
-        if (bebasPenghematBaterai(app)) return true
-        val langsung = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${app.packageName}"))
-        return buka(app, langsung) || buka(app, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
     }
 
     /**

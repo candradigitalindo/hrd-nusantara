@@ -51,12 +51,6 @@ class KanalTiruan extends KanalPemantauan {
   @override
   Future<StatusPenyiapan?> statusPenyiapan() async => bacaStatus == null ? status : await bacaStatus!();
   @override
-  Future<bool> mintaPengecualianBaterai() async {
-    catatan.add('baterai');
-    return true;
-  }
-
-  @override
   Future<bool> mintaIzinNotifikasi() async {
     catatan.add('minta-notifikasi');
     return false;
@@ -202,6 +196,42 @@ void main() {
       gps.add(posisi(t0.add(const Duration(minutes: 5))));
       await tunggu();
       expect(kanal.denyutan, [5, 5]);
+    });
+
+    test('persetujuan ditarik: berhenti, lapor ke server, dan tetap berhenti setelah dibuka ulang', () async {
+      await pemantau().setujui();
+      expect(status().berjalan, isTrue);
+      final sebelum = kanal.berhentiDipanggil;
+      await pemantau().cabutPersetujuan();
+      expect(status().setuju, isFalse);
+      expect(status().berjalan, isFalse);
+      expect(kanal.berhentiDipanggil, greaterThan(sebelum));
+      expect(laporan.last['consent'], isFalse);
+      final kiriman = server.percobaan.where((p) => p.uri.path.endsWith('/pings')).length;
+      gps.add(posisi(DateTime.now()));
+      await tunggu();
+      expect(server.percobaan.where((p) => p.uri.path.endsWith('/pings')).length, kiriman);
+      pemantau().aktivitasDitutup();
+      await pemantau().segarkan();
+      expect(status().perluPersetujuan, isFalse, reason: 'penarikan tidak memaksa dialog baru saat aplikasi dibuka');
+      expect(status().berjalan, isFalse);
+      await pemantau().setujui();
+      expect(status().berjalan, isTrue, reason: 'persetujuan baru tetap dapat diberikan dari kebijakan privasi');
+    });
+
+    test('pembacaan izin lama yang selesai setelah penarikan tidak menyalakan kembali pemantauan', () async {
+      await pemantau().setujui();
+      final tertahan = Completer<StatusPenyiapan?>();
+      kanal.bacaStatus = () => tertahan.future;
+      final penyegaran = pemantau().segarkan();
+      await tunggu();
+      await pemantau().cabutPersetujuan();
+      kanal.bacaStatus = null;
+      tertahan.complete(null);
+      await penyegaran;
+      expect(status().setuju, isFalse);
+      expect(status().berjalan, isFalse);
+      expect(laporan.last['consent'], isFalse);
     });
 
     test('dimatikan Super Admin: pengingat dibatalkan, bukan dibiarkan', () async {

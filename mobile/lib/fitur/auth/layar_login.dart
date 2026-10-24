@@ -6,6 +6,7 @@ import '../../core/konfigurasi.dart';
 import '../../core/widget/lambang.dart';
 import '../../core/widget/widget_umum.dart';
 import 'sesi_provider.dart';
+import '../privasi/layar_privasi.dart';
 
 class LayarLogin extends ConsumerStatefulWidget {
   const LayarLogin({super.key});
@@ -69,6 +70,7 @@ class _LayarLoginState extends ConsumerState<LayarLogin> {
                       Text(namaAplikasi, textAlign: TextAlign.center, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
                       const SizedBox(height: 4),
                       Text('Masuk dengan akun karyawan Anda', textAlign: TextAlign.center, style: TextStyle(color: skema.onSurfaceVariant)),
+                      TextButton(onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const LayarPrivasi())), child: const Text('Kebijakan privasi')),
                       const SizedBox(height: 28),
                       TextFormField(
                         controller: _username,
