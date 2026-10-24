@@ -20,6 +20,15 @@ import type { SESSION_EVENT_TYPES } from '../../utils/whatsappRules';
 
 export type TipePesan = 'text' | 'image' | 'document' | 'audio' | 'video';
 
+/** Salinan pesan yang dibalas; isinya bisa tidak disertakan WhatsApp. */
+export interface KutipanPesan {
+  externalMessageId: string;
+  body: string | null;
+  type: string | null;
+  senderNumber: string | null;
+  senderLid: string | null;
+}
+
 /** Berkas yang menyertai pesan, sesudah diunduh pemegang soket. */
 export interface BerkasMedia {
   /** Relatif terhadap UPLOAD_DIR; null bila berkasnya tidak jadi tersimpan. */
@@ -65,6 +74,7 @@ export interface PesanMasuk {
   contactLid?: string | null;
   /** Nama profil WhatsApp pengirim (pesan masuk saja). */
   senderName?: string | null;
+  quotedMessage?: KutipanPesan | null;
 }
 
 export type HasilIngest =
@@ -155,6 +165,11 @@ export const ingestMessage = async (pesan: PesanMasuk, opsi: OpsiIngest = {}): P
         // Token pencarian dihitung dari teks asli SEBELUM dienkripsi —
         // sesudahnya sudah tidak ada kata yang bisa diambil.
         messageBody: encryptField(pesan.body),
+        quotedMessageId: pesan.quotedMessage?.externalMessageId ?? null,
+        quotedMessageBody: pesan.quotedMessage?.body != null ? encryptField(pesan.quotedMessage.body) : null,
+        quotedMessageType: pesan.quotedMessage?.type ?? null,
+        quotedSenderNumber: pesan.quotedMessage?.senderNumber ?? null,
+        quotedSenderLid: pesan.quotedMessage?.senderLid ?? null,
         searchTokens: buildSearchTokens(pesan.body),
         messageType: pesan.type,
         timestamp: pesan.timestamp,
@@ -211,6 +226,11 @@ const tambalDuplikat = async (accountId: string, pesan: PesanMasuk, lingkup: Lin
       senderWhatsappNumber: true,
       receiverWhatsappNumber: true,
       direction: true,
+      quotedMessageId: true,
+      quotedMessageBody: true,
+      quotedMessageType: true,
+      quotedSenderNumber: true,
+      quotedSenderLid: true,
     },
   });
   if (!ada) return { status: 'duplikat', conversationId: null };
@@ -248,6 +268,15 @@ const tambalDuplikat = async (accountId: string, pesan: PesanMasuk, lingkup: Lin
   }
 
   if (!ada.senderName && pesan.senderName) data.senderName = pesan.senderName;
+
+  const kutipan = pesan.quotedMessage;
+  if (kutipan && (!ada.quotedMessageId || ada.quotedMessageId === kutipan.externalMessageId)) {
+    if (!ada.quotedMessageId) data.quotedMessageId = kutipan.externalMessageId;
+    if (ada.quotedMessageBody === null && kutipan.body !== null) data.quotedMessageBody = encryptField(kutipan.body);
+    if (!ada.quotedMessageType && kutipan.type) data.quotedMessageType = kutipan.type;
+    if (!ada.quotedSenderNumber && kutipan.senderNumber) data.quotedSenderNumber = kutipan.senderNumber;
+    if (!ada.quotedSenderLid && kutipan.senderLid) data.quotedSenderLid = kutipan.senderLid;
+  }
 
   if (Object.keys(data).length === 0) return { status: 'duplikat', conversationId: ada.id };
   await prisma.whatsAppConversation.update({ where: { id: ada.id }, data });

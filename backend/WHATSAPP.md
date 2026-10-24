@@ -202,6 +202,40 @@ lama", `keluh` tidak. Beberapa kata berarti DAN.
 Hanya HR yang boleh membaca arsip: isinya memuat data pribadi pelanggan dan
 tamu yang tidak pernah menjadi bagian dari perusahaan.
 
+## Balasan dan kutipan pesan
+
+Pesan balasan menyimpan ID pesan asal, salinan isi kutipan, jenis pesan,
+dan identitas pengirim asal. Isi kutipan dienkripsi seperti isi pesan utama.
+API arsip mengembalikan `quotedMessage: { externalMessageId, messageBody,
+messageType, pengirim }`, atau `null` untuk pesan biasa. Jika isi kutipan
+tidak disertakan WhatsApp, sistem mencari pesan asal dalam akun dan chat
+yang sama, termasuk bila pesan itu berada di halaman arsip lain.
+
+Di pemantauan WA, kutipan tampil di atas isi balasan. Kutipan ke media
+menampilkan jenis media dan keterangannya; jika pesan asal sudah dimuat,
+kutipan bisa diklik untuk menggulir dan menyorot pesan tersebut.
+
+Jalur Baileys membaca konteks ini otomatis. Gateway webhook dapat mengirim
+field opsional berikut bersama payload pesan:
+
+```json
+{
+  "quotedMessage": {
+    "externalMessageId": "id-pesan-asal",
+    "body": "Reservasi untuk empat orang?",
+    "type": "text",
+    "senderNumber": "628111111111",
+    "senderLid": null
+  }
+}
+```
+
+Field selain `externalMessageId` boleh dihilangkan bila belum diketahui.
+Jalankan migrasi `20261024100000_whatsapp_reply_context` sebelum menjalankan
+backend versi ini. Arsip lama dilengkapi ketika riwayat disinkronkan ulang
+dan WhatsApp masih menyertakan konteks balasannya; konteks yang sudah tidak
+tersedia tidak bisa disimpulkan dari teks balasan saja.
+
 ## Masa simpan
 
 ```dotenv

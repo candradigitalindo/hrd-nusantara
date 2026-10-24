@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatAngka, formatNomorWa, formatTanggal, formatWaktu, tampakLid } from "@/lib/utils";
 import { MediaPesan } from "./media-pesan";
+import { KutipanPesan } from "./kutipan-pesan";
 import { useArsipBertahap } from "./arsip-bertahap";
 import {
   AvatarWa,
@@ -78,6 +79,13 @@ export const IsiUtas = ({
   // Pesan tertua yang tampil sebelum memuat yang lebih lama, dan jaraknya
   // dari dasar: dipulihkan setelah pesan lama disisipkan di atas.
   const jangkar = React.useRef<{ id: string; jarak: number } | null>(null);
+  const [pesanDisorot, setPesanDisorot] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!pesanDisorot) return;
+    const timer = setTimeout(() => setPesanDisorot(null), 2000);
+    return () => clearTimeout(timer);
+  }, [pesanDisorot]);
 
   const pesan = useArsipBertahap<Percakapan, Halaman<Percakapan>>({
     queryKey: ["wa", "utas-pesan", utas.kunci],
@@ -187,6 +195,10 @@ export const IsiUtas = ({
         ) : (
           baris.map(({ p, hariBaru, orang, tulisPengirim }) => {
             const keluar = p.direction === "outgoing";
+            const idAsal = p.quotedMessage?.externalMessageId;
+            const asal = idAsal
+              ? pesan.butir.find((s) => s.externalMessageId === idAsal)
+              : null;
             return (
               <React.Fragment key={p.id}>
                 {hariBaru && (
@@ -195,7 +207,7 @@ export const IsiUtas = ({
                   </div>
                 )}
                 <div className={cn("flex", keluar ? "justify-end" : "justify-start", tulisPengirim && !hariBaru && "pt-1.5")}>
-                  <div className={cn("min-w-0 max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm sm:max-w-[70%]", keluar ? "rounded-br-md bg-primary-soft" : "rounded-bl-md bg-surface")}>
+                  <div id={`pesan-wa-${p.id}`} className={cn("min-w-0 max-w-[85%] scroll-my-6 rounded-2xl px-3 py-2 text-sm shadow-sm sm:max-w-[70%]", keluar ? "rounded-br-md bg-primary-soft" : "rounded-bl-md bg-surface", pesanDisorot === p.id && "ring-2 ring-primary")}>
                     {tulisPengirim &&
                       (orang ? (
                         // Teks sebaris (bukan flex) supaya lebar gelembung mengikuti isinya dan baru melipat bila perlu.
@@ -215,6 +227,13 @@ export const IsiUtas = ({
                       ) : (
                         <p className="mb-0.5 text-xs italic text-muted">Pengirim tidak tercatat</p>
                       ))}
+                    {p.quotedMessage && (
+                      <KutipanPesan kutipan={p.quotedMessage} onLihatAsal={asal ? () => {
+                        document.getElementById(`pesan-wa-${asal.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                        dekatBawah.current = false;
+                        setPesanDisorot(asal.id);
+                      } : undefined} />
+                    )}
                     {p.messageBody ? (
                       <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{p.messageBody}</p>
                     ) : (

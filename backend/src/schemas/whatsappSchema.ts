@@ -61,6 +61,13 @@ export const bellysMessageSchema = z
     body: z.string().max(20_000),
     type: z.enum(MESSAGE_TYPES).default('text'),
     timestamp: dateField,
+    quotedMessage: z.object({
+      externalMessageId: z.string().trim().min(1).max(200),
+      body: z.string().max(20_000).nullable().default(null),
+      type: z.enum([...MESSAGE_TYPES, 'sticker', 'location', 'contact']).nullable().default(null),
+      senderNumber: nomor.nullable().default(null),
+      senderLid: z.string().regex(/^\d{1,30}$/).nullable().default(null),
+    }).strict().optional(),
   })
   .strict();
 

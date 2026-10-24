@@ -13,7 +13,7 @@
 // sebelumnya (peta LID -> nomor yang disiapkan pemanggil). LID yang belum
 // terselesaikan tetap disimpan apa adanya, tapi ditandai lewat contactLid /
 // participantLid supaya tidak pernah ditampilkan sebagai "+2147…".
-import type { PesanMasuk, TipePesan } from './ingest';
+import type { KutipanPesan, PesanMasuk, TipePesan } from './ingest';
 
 /** Kunci pesan Baileys (WAMessageKey), hanya bagian yang dipakai. */
 export interface KunciBaileys {
@@ -255,6 +255,49 @@ export const isiDariPesan = (
   return null;
 };
 
+interface KonteksBalasan {
+  stanzaId?: string | null;
+  participant?: string | null;
+  quotedMessage?: Record<string, unknown> | null;
+}
+
+const konteksBalasan = (raw: PesanBaileys['message']): KonteksBalasan | null => {
+  const isi = raw ? bukaBungkus(raw) : null;
+  if (!isi) return null;
+  for (const kunci of ['extendedTextMessage', 'imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'pttMessage']) {
+    const konten = isi[kunci] as { contextInfo?: KonteksBalasan } | null | undefined;
+    if (typeof konten?.contextInfo?.stanzaId === 'string' && konten.contextInfo.stanzaId.trim()) {
+      return konten.contextInfo;
+    }
+  }
+  return null;
+};
+
+const kutipanDariPesan = (
+  raw: PesanBaileys['message'],
+  petaLid: ReadonlyMap<string, string>,
+  pasangan: PasanganLid[]
+): KutipanPesan | null => {
+  const konteks = konteksBalasan(raw);
+  if (!konteks?.stanzaId) return null;
+  const isi = isiDariPesan(konteks.quotedMessage);
+  const mentah = konteks.quotedMessage ? bukaBungkus(konteks.quotedMessage) : null;
+  // Jenis yang belum diarsipkan tetap dapat dikenali ketika dikutip.
+  const tipeLain = mentah?.stickerMessage ? 'sticker'
+    : mentah?.locationMessage || mentah?.liveLocationMessage ? 'location'
+    : mentah?.contactMessage || mentah?.contactsArrayMessage ? 'contact' : null;
+  const lid = lidDariNilai(konteks.participant);
+  const nomor = nomorDariNilai(konteks.participant)
+    ?? (lid ? pasangan.find((p) => p.lid === lid)?.pn ?? petaLid.get(lid) ?? null : null);
+  return {
+    externalMessageId: konteks.stanzaId,
+    body: isi?.body ?? null,
+    type: isi?.type ?? tipeLain,
+    senderNumber: nomor,
+    senderLid: lid,
+  };
+};
+
 /** messageTimestamp bisa datang sebagai angka, string, atau Long protobuf. */
 export const waktuDariTimestamp = (nilai: PesanBaileys['messageTimestamp']): Date => {
   if (nilai === null || nilai === undefined) return new Date();
@@ -272,7 +315,7 @@ export const waktuDariTimestamp = (nilai: PesanBaileys['messageTimestamp']): Dat
 /** Semua LID yang disebut sebuah pesan: lawan bicara dan pengirim grup. */
 export const lidDalamPesan = (raw: PesanBaileys): string[] => {
   const hasil: string[] = [];
-  for (const jid of [raw.key?.remoteJid, raw.key?.participant, raw.participant]) {
+  for (const jid of [raw.key?.remoteJid, raw.key?.participant, raw.participant, konteksBalasan(raw.message)?.participant]) {
     const lid = lidDariNilai(jid);
     if (lid) hasil.push(lid);
   }
@@ -360,6 +403,7 @@ export const normalizeBaileysMessage = (
         timestamp: waktu,
         media: isi.media,
         senderName: namaPengirim,
+        quotedMessage: kutipanDariPesan(raw.message, petaLid, pasangan),
         grup: { jid, kunci: kunciGrup, participantNumber, participantLid },
       },
       pasangan,
@@ -413,6 +457,7 @@ export const normalizeBaileysMessage = (
       media: isi.media,
       contactLid: lid,
       senderName: namaPengirim,
+      quotedMessage: kutipanDariPesan(raw.message, petaLid, pasangan),
     },
     pasangan,
     pengirim: dariSaya ? null : { nomor, lid, pushName: namaPengirim, verifiedName: namaBisnis },

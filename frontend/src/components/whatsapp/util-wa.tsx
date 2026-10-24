@@ -17,6 +17,9 @@ export const LABEL_TIPE: Record<string, string> = {
   audio: "Pesan suara",
   document: "Dokumen",
   text: "Pesan",
+  sticker: "Stiker",
+  location: "Lokasi",
+  contact: "Kontak",
 };
 
 /** Waktu singkat ala aplikasi chat: jam untuk hari ini, "Kemarin", lalu tanggal. */

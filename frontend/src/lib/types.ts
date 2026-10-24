@@ -277,6 +277,13 @@ export interface Percakapan {
   contactNumber: string;
   messageBody: string;
   messageType: string;
+  /** Pesan yang dibalas, termasuk kutipan saat pesan asal belum ada di arsip. */
+  quotedMessage?: {
+    externalMessageId: string;
+    messageBody: string | null;
+    messageType: string | null;
+    pengirim: PengirimWa | null;
+  } | null;
   timestamp: string;
   direction: "incoming" | "outgoing";
   account: { id: string; label: string; phoneNumber: string };

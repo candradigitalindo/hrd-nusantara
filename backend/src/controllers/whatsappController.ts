@@ -188,6 +188,10 @@ export const handleBellysWebhook = async (req: Request, res: Response) => {
     body: payload.body,
     type: payload.type,
     timestamp: payload.timestamp,
+    quotedMessage: payload.quotedMessage ? {
+      ...payload.quotedMessage,
+      senderNumber: payload.quotedMessage.senderNumber ? normalizePhoneNumber(payload.quotedMessage.senderNumber) : null,
+    } : null,
   });
 
   if (hasil.status === 'ditolak') {
@@ -222,6 +226,11 @@ const conversationSelect = {
   contactNumber: true,
   messageBody: true,
   messageType: true,
+  quotedMessageId: true,
+  quotedMessageBody: true,
+  quotedMessageType: true,
+  quotedSenderNumber: true,
+  quotedSenderLid: true,
   timestamp: true,
   direction: true,
   employeeId: true,
@@ -289,14 +298,62 @@ const pengirimDari = (
  * yang memeriksa peran dan mencatat siapa membuka apa.
  */
 const conversationDTO = (
-  { mediaPath, messageBody, ...row }: ConversationRow,
-  pengirim: PengirimDTO | null = null
+  { mediaPath, messageBody, quotedMessageId, quotedMessageBody, quotedMessageType, quotedSenderNumber, quotedSenderLid, ...row }: ConversationRow,
+  pengirim: PengirimDTO | null,
+  quotedMessage: ReturnType<typeof kutipanDTO>
 ) => ({
   ...row,
   messageBody: decryptField(messageBody),
   mediaTersedia: mediaPath !== null,
   pengirim,
+  quotedMessage,
 });
+
+const kunciPesanAsal = (row: ConversationRow, id: string) =>
+  JSON.stringify([row.accountId, row.groupJid, row.contactNumber, id]);
+
+/** Cari hanya dalam akun dan chat yang sama, termasuk bila pesan asal ada di halaman lain. */
+const muatPesanAsal = async (data: ConversationRow[]) => {
+  const balasan = data.filter((row) => row.quotedMessageId);
+  if (balasan.length === 0) return new Map<string, ConversationRow>();
+  const asal = await prisma.whatsAppConversation.findMany({
+    where: { OR: balasan.map((row) => ({
+      accountId: row.accountId,
+      groupJid: row.groupJid,
+      contactNumber: row.contactNumber,
+      externalMessageId: row.quotedMessageId!,
+    })) },
+    select: conversationSelect,
+  });
+  return new Map(asal.map((row) => [kunciPesanAsal(row, row.externalMessageId), row]));
+};
+
+const kutipanDTO = (
+  row: ConversationRow,
+  asal: ConversationRow | undefined,
+  cariNama: CariNama,
+  karyawan: Map<string, { id: string; name: string }>
+) => {
+  if (!row.quotedMessageId) return null;
+  const siapa = identitasDari(row.quotedSenderNumber, row.quotedSenderLid);
+  const sendiri = !!siapa.nomor && siapa.nomor === row.account.phoneNumber;
+  const pengirim: PengirimDTO | null = asal
+    ? pengirimDari(asal, cariNama, karyawan)
+    : sendiri
+      ? pengirimDari({ ...row, direction: 'outgoing' }, cariNama, karyawan)
+      : siapa.nomor || siapa.lid ? {
+        nama: cariNama({ accountId: row.accountId, ...siapa }),
+        ...siapa,
+        karyawan: siapa.nomor ? karyawan.get(siapa.nomor) ?? null : null,
+      } : null;
+  return {
+    externalMessageId: row.quotedMessageId,
+    messageBody: row.quotedMessageBody !== null ? decryptField(row.quotedMessageBody)
+      : asal ? decryptField(asal.messageBody) : null,
+    messageType: row.quotedMessageType ?? asal?.messageType ?? null,
+    pengirim,
+  };
+};
 
 /**
  * Percakapan grup dan berkas medianya hanya untuk Super Admin.
@@ -396,11 +453,18 @@ export const getConversations = async (req: Request, res: Response) => {
   }
 
   // Nama dan status karyawan pengirim, dengan satu kueri masing-masing.
-  const pengirimMasuk = data.flatMap((row) => {
+  const pesanAsal = await muatPesanAsal(data);
+  const pengirimMasuk = [...data, ...pesanAsal.values()].flatMap((row) => {
     if (row.direction === 'outgoing') return [];
     const siapa = identitasPengirimMasuk(row);
     return siapa ? [{ accountId: row.accountId, ...siapa }] : [];
   });
+  for (const row of data) {
+    if (row.quotedMessageId) pengirimMasuk.push({
+      accountId: row.accountId,
+      ...identitasDari(row.quotedSenderNumber, row.quotedSenderLid),
+    });
+  }
   const [cariNama, karyawan] = await Promise.all([
     muatBukuNama(pengirimMasuk),
     muatKaryawanPerNomor(pengirimMasuk.map((p) => p.nomor)),
@@ -409,7 +473,11 @@ export const getConversations = async (req: Request, res: Response) => {
   res.json({
     // Token pencarian tidak pernah ikut keluar: tidak berguna bagi pembaca
     // dan hanya memperbesar permukaan kalau responsnya bocor.
-    data: data.map((row) => conversationDTO(row, pengirimDari(row, cariNama, karyawan))),
+    data: data.map((row) => conversationDTO(
+      row,
+      pengirimDari(row, cariNama, karyawan),
+      kutipanDTO(row, row.quotedMessageId ? pesanAsal.get(kunciPesanAsal(row, row.quotedMessageId)) : undefined, cariNama, karyawan)
+    )),
     pagination: {
       page: query.page,
       limit: query.limit,

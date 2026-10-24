@@ -154,6 +154,83 @@ describe('Mengambil isi pesan', () => {
   });
 });
 
+describe('Konteks balasan WhatsApp', () => {
+  const baca = (message: Record<string, unknown>, peta = new Map<string, string>()) => {
+    const hasil = normalizeBaileysMessage({
+      key: { remoteJid: '628222222222@s.whatsapp.net', id: 'balasan', fromMe: false },
+      message,
+    }, NOMOR_SENDIRI, peta);
+    if (hasil.status !== 'ok') throw new Error('Pesan balasan seharusnya didukung');
+    return hasil.pesan;
+  };
+  const konteks = {
+    stanzaId: 'pesan-asal',
+    participant: `${NOMOR_SENDIRI}:3@s.whatsapp.net`,
+    quotedMessage: { conversation: 'Reservasi untuk empat orang?' },
+  };
+
+  it('memisahkan isi balasan dari teks dan pengirim pesan yang dibalas', () => {
+    const pesan = baca({ extendedTextMessage: { text: 'Ya, betul', contextInfo: konteks } });
+    expect(pesan.body).toBe('Ya, betul');
+    expect(pesan.quotedMessage).toEqual({
+      externalMessageId: 'pesan-asal', body: 'Reservasi untuk empat orang?', type: 'text',
+      senderNumber: NOMOR_SENDIRI, senderLid: null,
+    });
+  });
+
+  it.each(['imageMessage', 'videoMessage', 'documentMessage', 'audioMessage', 'pttMessage'])(
+    'membaca konteks balasan pada %s', (jenis) => {
+      expect(baca({ [jenis]: { contextInfo: konteks } }).quotedMessage?.externalMessageId).toBe('pesan-asal');
+    }
+  );
+
+  it.each([
+    ['imageMessage', { caption: 'Struk', mimetype: 'image/jpeg' }, 'image', 'Struk'],
+    ['videoMessage', {}, 'video', ''],
+    ['audioMessage', {}, 'audio', ''],
+    ['documentMessage', { fileName: 'invoice.pdf' }, 'document', 'invoice.pdf'],
+    ['stickerMessage', {}, 'sticker', null],
+  ])('mengenali isi kutipan %s tanpa mengunduh media', (jenis, isi, type, body) => {
+    const pesan = baca({ extendedTextMessage: { text: 'Ini ya', contextInfo: {
+      ...konteks, quotedMessage: { [jenis as string]: isi },
+    } } });
+    expect(pesan.quotedMessage).toMatchObject({ type, body });
+  });
+
+  it('membuka pembungkus pesan balasan dan pesan yang dikutip tanpa membawa rantai kutipan', () => {
+    const pesan = baca({ ephemeralMessage: { message: {
+      extendedTextMessage: { text: 'Baik', contextInfo: { ...konteks, quotedMessage: {
+        documentWithCaptionMessage: { message: { documentMessage: { fileName: 'kontrak.pdf', contextInfo: konteks } } },
+      } } },
+    } } });
+    expect(pesan.quotedMessage).toMatchObject({ body: 'kontrak.pdf', type: 'document' });
+    expect(pesan.quotedMessage).not.toHaveProperty('quotedMessage');
+  });
+
+  it('tetap menandai balasan ketika hanya ID pesan asal yang dikirim', () => {
+    expect(baca({ extendedTextMessage: { text: 'Ya', contextInfo: { stanzaId: 'asal' } } }).quotedMessage).toEqual({
+      externalMessageId: 'asal', body: null, type: null, senderNumber: null, senderLid: null,
+    });
+  });
+
+  it('pesan biasa, tautan, dan terusan tanpa ID kutipan tidak ditandai sebagai balasan', () => {
+    expect(baca({ conversation: 'Halo' }).quotedMessage).toBeNull();
+    expect(baca({ extendedTextMessage: { text: 'Lihat ini', contextInfo: {
+      isForwarded: true, quotedMessage: { conversation: 'Teks' },
+    } } }).quotedMessage).toBeNull();
+  });
+
+  it('memuat LID pengirim kutipan dan menyelesaikannya lewat peta nomor', () => {
+    const lid = '214751418265748';
+    const message = { extendedTextMessage: { text: 'Ya', contextInfo: { ...konteks, participant: `${lid}@lid` } } };
+    expect(lidDalamPesan({ message })).toContain(lid);
+    expect(baca(message).quotedMessage).toMatchObject({ senderNumber: null, senderLid: lid });
+    expect(baca(message, new Map([[lid, '628333333333']])).quotedMessage).toMatchObject({
+      senderNumber: '628333333333', senderLid: lid,
+    });
+  });
+});
+
 describe('Membaca waktu pesan', () => {
   it('menerima detik sebagai angka', () => {
     expect(waktuDariTimestamp(1789000000)).toEqual(new Date(1789000000 * 1000));

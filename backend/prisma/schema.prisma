@@ -1714,6 +1714,14 @@ model WhatsAppConversation {
   /// dibaca langsung dari database: pakai decryptField.
   messageBody String
 
+  /// Pesan yang dibalas. Kutipan disimpan juga karena pesan asal bisa belum
+  /// masuk arsip. Isi kutipan memakai enkripsi yang sama dengan messageBody.
+  quotedMessageId     String?
+  quotedMessageBody   String?
+  quotedMessageType   String?
+  quotedSenderNumber String?
+  quotedSenderLid    String?
+
   /// Indeks buta: tiap kata pada isi pesan disimpan sebagai HMAC. Ini yang
   /// membuat pencarian tetap mungkin walau isinya terenkripsi. Tidak bisa
   /// dibalikkan menjadi kata tanpa FIELD_ENCRYPTION_KEY.
