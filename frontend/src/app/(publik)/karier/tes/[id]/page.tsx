@@ -36,7 +36,7 @@ export default function HalamanTesPelamar() {
         await api.post(`/karier/tes/${id}/foto`, { image: dataUrl });
       },
       // Gambar soal ikut jalur portal supaya tetap terbaca sesi pelamar.
-      gambarSoal: (questionId) => `/api/backend/cbt/soal/${questionId}/gambar`,
+      gambarSoal: (questionId) => `/api/backend/karier/tes/${id}/soal/${questionId}/gambar`,
     }),
     [id]
   );

@@ -19,6 +19,7 @@ import { SkeletonBaris } from "@/components/ui/skeleton";
 import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { formatRelatif } from "@/lib/utils";
 import { formatJam, geserTanggal, labelTanggal, tanggalWIB } from "@/lib/linimasa";
+import { keadaanPemantauan } from "@/lib/status-pemantauan";
 import type { PengaturanPemantauan, PosisiKaryawan } from "@/lib/types";
 import type { TitikPeta } from "@/components/peta-pemantauan";
 import { NavigasiTanggal, tanpaTahun } from "@/components/pemantauan/navigasi-tanggal";
@@ -33,19 +34,6 @@ const DialogRiwayat = dynamic(() => import("@/components/pemantauan/dialog-riway
 
 type FormPengaturan = { enabled: boolean; mode: "always" | "while_working"; intervalMinutes: number; retentionDays: number };
 
-/** Keadaan pemantauan seorang karyawan, dari yang paling perlu perhatian. */
-const keadaan = (p: PosisiKaryawan, pengaturan?: PengaturanPemantauan): { label: string; nada: "success" | "warning" | "danger" | "neutral" } => {
-  const s = p.status;
-  if (!s || !s.consentAt) return { label: "Belum menyetujui", nada: "warning" };
-  if (s.permission === "service_off") return { label: "Layanan lokasi mati", nada: "danger" };
-  if (s.permission === "denied" || s.permission === "denied_forever") return { label: "Izin lokasi ditolak", nada: "danger" };
-  if (!p.last) return { label: "Belum pernah mengirim", nada: "warning" };
-  const menit = (Date.now() - new Date(p.last.recordedAt).getTime()) / 60_000;
-  // Tiga interval terlewat berturut-turut: kemungkinan ponsel mati, offline, atau aplikasi ditutup paksa.
-  if (pengaturan && pengaturan.mode === "always" && menit > pengaturan.intervalMinutes * 3) return { label: "Tidak melapor", nada: "warning" };
-  return { label: "Aktif", nada: "success" };
-};
-
 export default function HalamanPemantauan() {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
@@ -55,21 +43,21 @@ export default function HalamanPemantauan() {
   const tutupRiwayat = React.useCallback(() => setDipilihId(null), []);
 
   // Posisi ditampilkan per tanggal (WIB), bawaan hari ini. "Hari ini" ikut berganti saat tengah malam.
-  const [hariIni, setHariIni] = React.useState(() => tanggalWIB(Date.now()));
+  const [sekarang, setSekarang] = React.useState(() => Date.now());
+  const hariIni = tanggalWIB(sekarang);
   React.useEffect(() => {
-    const t = window.setInterval(() => setHariIni(tanggalWIB(Date.now())), 60_000);
+    const t = window.setInterval(() => setSekarang(Date.now()), 60_000);
     return () => window.clearInterval(t);
   }, []);
   const [tanggal, setTanggal] = React.useState(hariIni);
-  const lihatHariIni = tanggal === hariIni;
 
   const posisi = useQuery({
     queryKey: ["pemantauan", "terakhir", tanggal],
     queryFn: async () =>
       (await api.get<{ settings: PengaturanPemantauan; date: string | null; data: PosisiKaryawan[] }>(`/location-tracking/latest?date=${tanggal}`)).data,
     enabled: superAdmin,
-    // Hanya hari ini yang masih bergerak; tanggal lampau tidak perlu (dan tiap ambil = entri audit).
-    refetchInterval: lihatHariIni ? 60_000 : false,
+    // Lokasi pada tanggal riwayat tetap, tetapi izin dan presensi adalah keadaan terkini.
+    refetchInterval: 60_000,
     placeholderData: keepPreviousData,
   });
 
@@ -115,7 +103,7 @@ export default function HalamanPemantauan() {
           judul: p.employee.name,
           keterangan: `${kapan(t.recordedAt)} · ±${Math.round(t.accuracyMeters ?? 0)} m · ${p.countOnDate ?? 0} titik${t.isMocked ? " · ditandai palsu" : ""}`,
           // Tanggal lampau: semua penanda adalah posisi terakhir hari itu, bukan tanda masalah.
-          nada: !dataHariIni || keadaan(p, pengaturan).label === "Aktif" ? ("segar" as const) : ("lama" as const),
+          nada: !dataHariIni || keadaanPemantauan(p, pengaturan, sekarang).label === "Aktif" ? ("segar" as const) : ("lama" as const),
         }]
       : [];
   });
@@ -134,7 +122,14 @@ export default function HalamanPemantauan() {
         </div>
       ),
     },
-    { key: "keadaan", header: "Keadaan", cell: (p) => { const k = keadaan(p, pengaturan); return <Badge tone={k.nada} dot>{k.label}</Badge>; } },
+    {
+      key: "keadaan",
+      header: "Keadaan terkini",
+      cell: (p) => {
+        const k = keadaanPemantauan(p, pengaturan, sekarang);
+        return <div className="space-y-1"><Badge tone={k.nada} dot>{k.label}</Badge><p className="max-w-xs text-xs text-muted">{k.rincian}</p></div>;
+      },
+    },
     {
       key: "terakhir",
       header: dataHariIni ? "Lokasi terakhir hari ini" : `Lokasi terakhir ${tanpaTahun(tanggalData)}`,
@@ -223,6 +218,7 @@ export default function HalamanPemantauan() {
                 {titikTerakhir.length} dari {daftar.length} karyawan mengirim lokasi {dataHariIni ? "hari ini" : `pada ${labelTanggal(tanggalData, "panjang")}`}
                 {posisi.isFetching && posisi.isPlaceholderData ? " · memuat…" : ""}
               </p>
+              <p className="mt-1 text-xs text-muted">Keadaan dihitung dari status ponsel terakhir yang dimuat, bukan tanggal riwayat.</p>
             </div>
             <NavigasiTanggal
               tanggal={tanggal}
@@ -252,7 +248,7 @@ export default function HalamanPemantauan() {
       )}
 
       {dipilih && (
-        <DialogRiwayat key={dipilih.employee.id} karyawan={dipilih} keadaan={keadaan(dipilih, pengaturan)} pengaturan={pengaturan} tanggalAwal={tanggal} onClose={tutupRiwayat} />
+        <DialogRiwayat key={dipilih.employee.id} karyawan={dipilih} keadaan={keadaanPemantauan(dipilih, pengaturan, sekarang)} pengaturan={pengaturan} tanggalAwal={tanggal} onClose={tutupRiwayat} />
       )}
     </>
   );

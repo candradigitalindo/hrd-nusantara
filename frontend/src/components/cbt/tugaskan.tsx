@@ -11,7 +11,8 @@ import { Modal } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/alert";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import type { Halaman, Kandidat, KaryawanDirektori, PaketCbt } from "@/lib/types";
+import { kandidatBisaDites } from "@/lib/lingkup-cbt";
+import type { LingkupCbt, Halaman, Kandidat, KaryawanDirektori, PaketCbt } from "@/lib/types";
 
 interface HasilTugas {
   dibuat: number;
@@ -60,18 +61,19 @@ export const DaftarTautan = ({ tautan }: { tautan: HasilTugas["tautan"] }) => {
 };
 
 /** Memilih peserta lalu menugaskan paket tes kepada mereka. */
-export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: () => void }) => {
+export const DialogTugaskan = ({ paket, scope, candidate, onClose }: { paket: PaketCbt; scope: LingkupCbt; candidate?: Kandidat; onClose: () => void }) => {
   const qc = useQueryClient();
   const [cari, setCari] = React.useState("");
   const [karyawanId, setKaryawanId] = React.useState<string[]>([]);
-  const [pelamarId, setPelamarId] = React.useState<string[]>([]);
+  const [pelamarId, setPelamarId] = React.useState<string[]>(candidate ? [candidate.id] : []);
+  const [wajib, setWajib] = React.useState(true);
   const [mulai, setMulai] = React.useState("");
   const [sampai, setSampai] = React.useState("");
   const [catatan, setCatatan] = React.useState("");
   const [hasil, setHasil] = React.useState<HasilTugas | null>(null);
 
-  const untukKaryawan = paket.audience !== "pelamar";
-  const untukPelamar = paket.audience !== "karyawan";
+  const untukKaryawan = scope === "development";
+  const untukPelamar = scope === "recruitment";
 
   const karyawan = useQuery({
     queryKey: ["direktori", cari],
@@ -81,16 +83,17 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
   const pelamar = useQuery({
     queryKey: ["kandidat", "cbt", cari],
     queryFn: async () => (await api.get<Halaman<Kandidat>>(`/candidates?limit=50${cari ? `&search=${encodeURIComponent(cari)}` : ""}`)).data.data,
-    enabled: untukPelamar,
+    enabled: untukPelamar && !candidate,
   });
 
   const tugaskan = useMutation({
     mutationFn: async () =>
       (
-        await api.post<HasilTugas>("/cbt/penugasan", {
+        await api.post<HasilTugas>(`/cbt/penugasan?scope=${scope}`, {
+          scope,
+          required: untukPelamar && wajib,
           testId: paket.id,
-          employeeIds: karyawanId,
-          candidateIds: pelamarId,
+          ...(untukKaryawan ? { employeeIds: karyawanId } : { candidateIds: pelamarId }),
           ...(mulai && { availableFrom: new Date(mulai).toISOString() }),
           ...(sampai && { availableUntil: new Date(sampai).toISOString() }),
           ...(catatan && { note: catatan }),
@@ -98,6 +101,7 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
       ).data,
     onSuccess: (d) => {
       qc.invalidateQueries({ queryKey: ["cbt"] });
+      qc.invalidateQueries({ queryKey: ["kandidat"] });
       notifikasi.sukses(`${d.dibuat} peserta ditugaskan`, d.dilewati > 0 ? `${d.dilewati} dilewati karena masih punya tugas aktif` : undefined);
       if (d.tautan.length > 0) setHasil(d);
       else onClose();
@@ -123,7 +127,7 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
         ) : (
           <>
             <Button variant="outline" onClick={onClose} disabled={tugaskan.isPending}><X className="h-4 w-4" aria-hidden /> Batal</Button>
-            <Button onClick={() => tugaskan.mutate()} loading={tugaskan.isPending} disabled={jumlah === 0}>
+            <Button onClick={() => tugaskan.mutate()} loading={tugaskan.isPending} disabled={jumlah === 0 || Boolean(candidate && !kandidatBisaDites(candidate.status))}>
               {!tugaskan.isPending && <Send className="h-4 w-4" aria-hidden />} Tugaskan ({jumlah})
             </Button>
           </>
@@ -134,6 +138,8 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
         <DaftarTautan tautan={hasil.tautan} />
       ) : (
         <div className="space-y-4">
+          {candidate && <Alert tone="info" title={candidate.name}>{candidate.email} · {candidate.appliedPosition.title}</Alert>}
+          {untukPelamar && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1 accent-[var(--primary)]" checked={wajib} onChange={(e) => setWajib(e.target.checked)} /><span>Tes wajib sebelum penerimaan<span className="block text-xs text-muted">Harus selesai, dinilai, dan ditinjau HR. Setidaknya satu tes wajib diperlukan.</span></span></label>}
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Bisa dikerjakan mulai" hint="Kosongkan bila boleh langsung dikerjakan">
               <Input type="datetime-local" value={mulai} min={sekarangLokal()} onChange={(e) => setMulai(e.target.value)} />
@@ -146,10 +152,10 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
             <Textarea rows={2} value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="Kerjakan di ruang training lantai 2" />
           </Field>
 
-          <div className="relative">
+          {!candidate && <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
             <Input className="pl-9" placeholder="Cari nama…" value={cari} onChange={(e) => setCari(e.target.value)} aria-label="Cari peserta" />
-          </div>
+          </div>}
 
           {untukKaryawan && (
             <fieldset>
@@ -171,7 +177,7 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
             </fieldset>
           )}
 
-          {untukPelamar && (
+          {untukPelamar && !candidate && (
             <fieldset>
               <legend className="mb-2 flex items-center gap-1.5 text-sm font-medium">
                 <UserPlus className="h-4 w-4" aria-hidden /> Pelamar {pelamarId.length > 0 && <span className="text-muted">({pelamarId.length} dipilih)</span>}
@@ -183,7 +189,7 @@ export const DialogTugaskan = ({ paket, onClose }: { paket: PaketCbt; onClose: (
                 <SkeletonBaris jumlah={3} />
               ) : (
                 <ul className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-border p-2">
-                  {(pelamar.data ?? []).map((k) => (
+                  {(pelamar.data ?? []).filter((k) => kandidatBisaDites(k.status)).map((k) => (
                     <li key={k.id}>
                       <label className={cn("flex cursor-pointer items-center gap-3 rounded-lg p-2 text-sm", pelamarId.includes(k.id) ? "bg-primary-soft" : "hover:bg-surface-2")}>
                         <input type="checkbox" className="h-4 w-4 accent-[var(--primary)]" checked={pelamarId.includes(k.id)} onChange={() => pilih(pelamarId, setPelamarId, k.id)} />

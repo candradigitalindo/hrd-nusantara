@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Logo } from "@/components/ui/logo";
+import { TautanAkunPelamar } from "@/components/rekrutmen/tautan-akun-pelamar";
 
 type Nilai = { email: string; password: string };
 
@@ -95,9 +96,7 @@ export default function HalamanMasukPelamar() {
       </div>
       <p className="mt-5 text-center text-sm text-muted">
         Belum punya akun?{" "}
-        <Link href="/karier/daftar" className="font-medium text-primary hover:underline">
-          Daftar di sini
-        </Link>
+        <React.Suspense><TautanAkunPelamar tujuan="daftar" /></React.Suspense>
       </p>
       <p className="mt-2 text-center text-xs text-muted">
         Karyawan masuk lewat <Link href="/login" className="hover:underline">halaman karyawan</Link>.

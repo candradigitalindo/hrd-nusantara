@@ -2,6 +2,7 @@ import request from 'supertest';
 import { Role } from '@prisma/client';
 import { prisma, resetDatabase, makeEmployee, makeDepartment, makePosition } from './helpers/db';
 import { bikinApp } from './helpers/app';
+import { generateULID } from '../src/utils/generateULID';
 import { login, auth } from './helpers/api';
 
 const app = bikinApp();
@@ -52,6 +53,16 @@ const lamar = (jobPostingId: string, ubah: Record<string, unknown> = {}) =>
 const pindahTahap = (id: string, stage: string, extra: Record<string, unknown> = {}) =>
   request(app).patch(`/api/candidates/${id}/stage`).set(auth(hrToken)).send({ stage, ...extra });
 
+/** Completed, explicitly reviewed selection fixture; the CBT suite tests the actual workflow. */
+const seleksiSelesai = async (candidateId: string) => {
+  const hr = await prisma.employee.findUniqueOrThrow({ where: { email: 'hr@resto.id' } });
+  const questionId = generateULID();
+  const testId = generateULID();
+  await prisma.cbtQuestion.create({ data: { id: questionId, scope: 'recruitment', category: 'Kemampuan', type: 'isian', text: 'Sebutkan kesiapan bekerja', answerKey: ['siap'], createdById: hr.id } });
+  await prisma.cbtTest.create({ data: { id: testId, code: `SEL-${testId}`, title: 'Tes seleksi', audience: 'pelamar', durationMinutes: 10, status: 'published', createdById: hr.id, questions: { create: { id: generateULID(), questionId } } } });
+  await prisma.cbtAssignment.create({ data: { id: generateULID(), testId, candidateId, required: true, status: 'graded', assignedById: hr.id, reviewedAt: new Date(), reviewedById: hr.id, attempt: { create: { id: generateULID(), deadlineAt: new Date(), submittedAt: new Date(), gradedAt: new Date(), answers: { create: { id: generateULID(), questionId, text: 'siap', points: 1 } } } } } });
+};
+
 /** Membawa pelamar sampai tahap offer, siap diterima. */
 const sampaiOffer = async () => {
   const lowongan = await buatLowongan();
@@ -61,6 +72,7 @@ const sampaiOffer = async () => {
   await pindahTahap(pelamar.body.id, 'screening');
   await pindahTahap(pelamar.body.id, 'interview');
   await pindahTahap(pelamar.body.id, 'offer');
+    await seleksiSelesai(pelamar.body.id);
 
   return { jobPostingId: lowongan.body.id as string, candidateId: pelamar.body.id as string };
 };
@@ -305,6 +317,7 @@ describe('Penerimaan pelamar', () => {
     await pindahTahap(pelamar.body.id, 'screening');
     await pindahTahap(pelamar.body.id, 'interview');
     await pindahTahap(pelamar.body.id, 'offer');
+    await seleksiSelesai(pelamar.body.id);
 
     const res = await request(app)
       .post(`/api/candidates/${pelamar.body.id}/hire`)

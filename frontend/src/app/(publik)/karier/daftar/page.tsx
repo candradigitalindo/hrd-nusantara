@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { UserPlus } from "lucide-react";
@@ -10,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Field } from "@/components/ui/input";
 import { Alert } from "@/components/ui/alert";
 import { Logo } from "@/components/ui/logo";
+import { sumberRekrutmen } from "@/lib/sumber-rekrutmen";
+import { TautanAkunPelamar } from "@/components/rekrutmen/tautan-akun-pelamar";
 
 type Nilai = { name: string; email: string; phoneNumber: string; password: string; ulangi: string; situs: string };
 
@@ -17,6 +18,7 @@ function FormDaftar() {
   const router = useRouter();
   const params = useSearchParams();
   const lowongan = params.get("lowongan");
+  const source = sumberRekrutmen(params.get("source"));
   const [galat, setGalat] = React.useState<string | null>(null);
 
   const {
@@ -38,7 +40,7 @@ function FormDaftar() {
       });
       // Langsung ke dashboard; bila datang dari sebuah lowongan, formulir
       // lamarannya dibuka sekalian.
-      router.replace(lowongan ? `/karier/dashboard?lamar=${lowongan}` : "/karier/dashboard");
+      router.replace(lowongan ? `/karier/dashboard?lamar=${encodeURIComponent(lowongan)}${source ? `&source=${source}` : ""}` : "/karier/dashboard");
       router.refresh();
     } catch (e) {
       const pesan = (e as { response?: { data?: { error?: string } } }).response?.data?.error;
@@ -105,9 +107,7 @@ export default function HalamanDaftarPelamar() {
       </div>
       <p className="mt-5 text-center text-sm text-muted">
         Sudah punya akun?{" "}
-        <Link href="/karier/masuk" className="font-medium text-primary hover:underline">
-          Masuk
-        </Link>
+        <React.Suspense><TautanAkunPelamar tujuan="masuk" /></React.Suspense>
       </p>
     </div>
   );

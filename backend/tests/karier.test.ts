@@ -245,8 +245,8 @@ describe('Tes CBT lewat portal karier', () => {
     const paket = await request(app).post('/api/cbt/tes/standar/kepribadian-big5').set(auth(hr));
     expectStatus(paket, 201);
     // Walau HR membuka nilai untuk peserta, inventori kepribadian tidak punya nilai.
-    expectStatus(await request(app).put(`/api/cbt/tes/${paket.body.id}`).set(auth(hr)).send({ showResultToTaker: true }), 200);
-    expectStatus(await request(app).post('/api/cbt/penugasan').set(auth(hr)).send({ testId: paket.body.id, candidateIds: [pelamar.id] }), 201);
+    expectStatus(await request(app).put(`/api/cbt/tes/${paket.body.id}`).set(auth(hr)).send({ scope: 'recruitment', showResultToTaker: true }), 200);
+    expectStatus(await request(app).post('/api/cbt/penugasan').set(auth(hr)).send({ scope: 'recruitment', testId: paket.body.id, candidateIds: [pelamar.id] }), 201);
     const penugasan = await prisma.cbtAssignment.findFirstOrThrow();
 
     const ruang = await request(app).post(`/api/karier/tes/${penugasan.id}/mulai`).set(auth(token));

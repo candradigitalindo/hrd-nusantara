@@ -216,7 +216,7 @@ export const buatPaketKepribadianBig5 = async (
   try {
     const butirBaru = await prisma.$transaction(async (tx) => {
       const lama = await tx.cbtQuestion.findMany({
-        where: { type: 'skala', isActive: true, text: { in: BUTIR_BIG5.map((b) => b.teks) } },
+        where: { scope: 'recruitment', type: 'skala', isActive: true, text: { in: BUTIR_BIG5.map((b) => b.teks) } },
         select: { id: true, text: true, category: true },
         orderBy: { createdAt: 'asc' },
       });
@@ -228,6 +228,7 @@ export const buatPaketKepribadianBig5 = async (
 
       const baru = BUTIR_BIG5.filter((b) => !petaLama.has(`${b.kategori}|${b.teks}`)).map((b) => ({
         id: generateULID(),
+        scope: 'recruitment',
         category: b.kategori,
         difficulty: 'sedang',
         type: 'skala',
@@ -252,7 +253,7 @@ export const buatPaketKepribadianBig5 = async (
           title: 'Inventori Kepribadian Big Five (IPIP-50)',
           description: DESKRIPSI_PAKET_BIG5,
           descriptionHtml: null,
-          audience: 'keduanya',
+          audience: 'pelamar',
           durationMinutes: 25,
           passingScore: null,
           shuffleQuestions: true,

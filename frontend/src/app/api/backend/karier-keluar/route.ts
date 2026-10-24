@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { NAMA_COOKIE_PELAMAR } from "../[...path]/route";
+import { NAMA_COOKIE_PELAMAR } from "@/lib/nama-cookie";
 
 /**
  * Keluar dari portal karier: cukup menghapus cookie sesinya; tokennya sendiri

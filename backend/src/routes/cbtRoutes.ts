@@ -4,6 +4,8 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { env } from '../config/env';
 import {
   createAssignments,
+  reviewAssignment,
+  updateAssignmentSelection,
   createQuestion,
   createStandardPersonalityTest,
   createTest,
@@ -39,6 +41,8 @@ import { validate } from '../middleware/validate';
 import { idParamSchema } from '../schemas/common';
 import {
   createAssignmentSchema,
+  reviewAssignmentSchema,
+  selectionAssignmentSchema,
   createQuestionSchema,
   createTestSchema,
   gradeAttemptSchema,
@@ -52,6 +56,8 @@ import {
   updateQuestionSchema,
   updateTestSchema,
 } from '../schemas/cbtSchema';
+
+import { scopeCbt } from '../services/cbt/scope';
 
 const router = express.Router();
 
@@ -109,40 +115,44 @@ router.post(
 router.get('/cbt/saya/:id/hasil', requirePermission('cbt.lihat'), validate(idParamSchema, 'params'), asyncHandler(getMyResult));
 
 // --- Bank soal ---
-router.get('/cbt/soal/kategori', requirePermission('cbt_soal.lihat', 'cbt.buat', 'cbt.ubah'), asyncHandler(getQuestionCategories));
-router.get('/cbt/soal', requirePermission('cbt_soal.lihat', 'cbt.buat', 'cbt.ubah'), validate(listQuestionQuerySchema, 'query'), asyncHandler(getQuestions));
-router.post('/cbt/soal', requirePermission('cbt_soal.buat'), validate(createQuestionSchema), asyncHandler(createQuestion));
-router.put('/cbt/soal/:id', requirePermission('cbt_soal.ubah'), validate(idParamSchema, 'params'), validate(updateQuestionSchema), asyncHandler(updateQuestion));
-router.delete('/cbt/soal/:id', requirePermission('cbt_soal.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteQuestion));
+router.get('/cbt/soal/kategori', scopeCbt(), requirePermission('cbt_soal.lihat', 'cbt.buat', 'cbt.ubah'), asyncHandler(getQuestionCategories));
+router.get('/cbt/soal', scopeCbt(), requirePermission('cbt_soal.lihat', 'cbt.buat', 'cbt.ubah'), validate(listQuestionQuerySchema, 'query'), asyncHandler(getQuestions));
+router.post('/cbt/soal', scopeCbt(), requirePermission('cbt_soal.buat'), validate(createQuestionSchema), asyncHandler(createQuestion));
+router.put('/cbt/soal/:id', scopeCbt(), requirePermission('cbt_soal.ubah'), validate(idParamSchema, 'params'), validate(updateQuestionSchema), asyncHandler(updateQuestion));
+router.delete('/cbt/soal/:id', scopeCbt(), requirePermission('cbt_soal.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteQuestion));
 // Gambar soal juga dibuka untuk peserta karyawan: tanpa ini soal bergambar
 // tidak bisa dikerjakan.
-router.get('/cbt/soal/:id/gambar', requirePermission('cbt.lihat', 'cbt_soal.lihat'), validate(idParamSchema, 'params'), asyncHandler(getQuestionImage));
+router.get('/cbt/soal/:id/gambar', requirePermission('cbt.lihat', 'cbt_soal.lihat', 'cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getQuestionImage));
 
 // --- Paket tes ---
 // Daftar paket (termasuk draf, ambang lulus, dan setelan pengawasan) hanya
 // untuk pengelola dan pembaca hasil; peserta cukup melihat penugasannya di
 // /cbt/saya.
-router.get('/cbt/tes', requirePermission('cbt.buat', 'cbt.ubah', 'cbt.hapus', 'cbt_hasil.lihat'), asyncHandler(getTests));
-router.get('/cbt/tes/:id', requirePermission('cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getTestById));
-router.post('/cbt/tes', requirePermission('cbt.buat'), validate(createTestSchema), asyncHandler(createTest));
+router.get('/cbt/tes', scopeCbt(), requirePermission('cbt.buat', 'cbt.ubah', 'cbt.hapus', 'cbt_hasil.lihat'), asyncHandler(getTests));
+router.get('/cbt/tes/:id', scopeCbt(), requirePermission('cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getTestById));
+router.post('/cbt/tes', scopeCbt(), requirePermission('cbt.buat'), validate(createTestSchema), asyncHandler(createTest));
 // Paket standar inventori kepribadian Big Five (IPIP-50): dibuat sekali, siap ditugaskan.
 // Membuat paket SEKALIGUS menulis 50 butir ke bank soal: butuh kedua izin
 // (requirePermission dengan beberapa kunci bersifat ATAU, jadi dipasang dua kali).
-router.post('/cbt/tes/standar/kepribadian-big5', requirePermission('cbt.buat'), requirePermission('cbt_soal.buat'), asyncHandler(createStandardPersonalityTest));
-router.put('/cbt/tes/:id', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(updateTestSchema), asyncHandler(updateTest));
-router.put('/cbt/tes/:id/soal', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(setTestQuestionsSchema), asyncHandler(setTestQuestions));
-router.delete('/cbt/tes/:id', requirePermission('cbt.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteTest));
+router.post('/cbt/tes/standar/kepribadian-big5', scopeCbt('recruitment'), requirePermission('cbt.buat'), requirePermission('cbt_soal.buat'), asyncHandler(createStandardPersonalityTest));
+router.put('/cbt/tes/:id', scopeCbt(), requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(updateTestSchema), asyncHandler(updateTest));
+router.put('/cbt/tes/:id/soal', scopeCbt(), requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), validate(setTestQuestionsSchema), asyncHandler(setTestQuestions));
+router.delete('/cbt/tes/:id', scopeCbt(), requirePermission('cbt.hapus'), validate(idParamSchema, 'params'), asyncHandler(deleteTest));
 
 // --- Penugasan ---
-router.get('/cbt/penugasan', requirePermission('cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(listAssignmentQuerySchema, 'query'), asyncHandler(getAssignments));
-router.post('/cbt/penugasan', requirePermission('cbt.buat'), validate(createAssignmentSchema), asyncHandler(createAssignments));
-router.post('/cbt/penugasan/:id/tautan', requirePermission('cbt.buat', 'cbt.ubah'), validate(idParamSchema, 'params'), asyncHandler(regenerateAssignmentToken));
-router.delete('/cbt/penugasan/:id', requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), asyncHandler(deleteAssignment));
+router.get('/cbt/penugasan', scopeCbt(), requirePermission('cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'), validate(listAssignmentQuerySchema, 'query'), asyncHandler(getAssignments));
+router.post('/cbt/penugasan', scopeCbt(), requirePermission('cbt.buat'), validate(createAssignmentSchema), asyncHandler(createAssignments));
+router.post('/cbt/penugasan/:id/tautan', scopeCbt(), requirePermission('cbt.buat', 'cbt.ubah'), validate(idParamSchema, 'params'), asyncHandler(regenerateAssignmentToken));
+router.delete('/cbt/penugasan/:id', scopeCbt(), requirePermission('cbt.ubah'), validate(idParamSchema, 'params'), asyncHandler(deleteAssignment));
+
+router.post('/cbt/penugasan/:id/review', scopeCbt('recruitment'), requirePermission('cbt_hasil.lihat'), requirePermission('rekrutmen.ubah'), validate(idParamSchema, 'params'), validate(reviewAssignmentSchema), asyncHandler(reviewAssignment));
+
+router.patch('/cbt/penugasan/:id/selection', scopeCbt('recruitment'), requirePermission('cbt.ubah'), requirePermission('rekrutmen.ubah'), validate(idParamSchema, 'params'), validate(selectionAssignmentSchema), asyncHandler(updateAssignmentSelection));
 
 // --- Hasil & penilaian ---
-router.get('/cbt/hasil', requirePermission('cbt_hasil.lihat'), validate(listAssignmentQuerySchema, 'query'), asyncHandler(getResults));
-router.get('/cbt/hasil/:id', requirePermission('cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getResultDetail));
-router.put('/cbt/hasil/:id/nilai', requirePermission('cbt_hasil.ubah'), validate(idParamSchema, 'params'), validate(gradeAttemptSchema), asyncHandler(gradeAttempt));
-router.get('/cbt/hasil/:id/foto/:photoId', requirePermission('cbt_hasil.lihat'), asyncHandler(getProctorPhoto));
+router.get('/cbt/hasil', scopeCbt(), requirePermission('cbt_hasil.lihat'), validate(listAssignmentQuerySchema, 'query'), asyncHandler(getResults));
+router.get('/cbt/hasil/:id', scopeCbt(), requirePermission('cbt_hasil.lihat'), validate(idParamSchema, 'params'), asyncHandler(getResultDetail));
+router.put('/cbt/hasil/:id/nilai', scopeCbt(), requirePermission('cbt_hasil.ubah'), validate(idParamSchema, 'params'), validate(gradeAttemptSchema), asyncHandler(gradeAttempt));
+router.get('/cbt/hasil/:id/foto/:photoId', scopeCbt(), requirePermission('cbt_hasil.lihat'), asyncHandler(getProctorPhoto));
 
 export default router;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { NAMA_COOKIE } from "../[...path]/route";
+import { NAMA_COOKIE } from "@/lib/nama-cookie";
 
 /**
  * Logout: cukup menghapus cookie sesi. Token JWT-nya sendiri stateless.

@@ -34,10 +34,17 @@ import {
   recruitmentReportQuerySchema,
 } from '../schemas/recruitmentSchema';
 import { lihatAtauKelola } from '../utils/permissions';
+import { getRecruitmentIntegrations, testRecruitmentIntegration, getJobPublications, changeJobPublication } from '../controllers/recruitmentIntegrationController';
+import { integrationParamsSchema, publicationParamsSchema, publicationInputSchema } from '../schemas/recruitmentIntegrationSchema';
 
 const router = express.Router();
 
 router.use(authenticateToken);
+
+router.get('/recruitment/integrations', requirePermission(...lihatAtauKelola('rekrutmen')), asyncHandler(getRecruitmentIntegrations));
+router.post('/recruitment/integrations/:platform/test', requirePermission('rekrutmen.ubah'), validate(integrationParamsSchema, 'params'), asyncHandler(testRecruitmentIntegration));
+router.get('/job-postings/:id/publications', requirePermission(...lihatAtauKelola('rekrutmen')), validate(idParamSchema, 'params'), asyncHandler(getJobPublications));
+router.post('/job-postings/:id/publications/:platform', requirePermission('rekrutmen.ubah'), validate(publicationParamsSchema, 'params'), validate(publicationInputSchema), asyncHandler(changeJobPublication));
 
 
 // --- Lowongan ---

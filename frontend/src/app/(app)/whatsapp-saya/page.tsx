@@ -20,7 +20,7 @@ interface KejadianSesi { id: string; eventType: string; occurredAt: string; note
 
 const JUDUL: Record<TautanWhatsApp["status"], string> = {
   never_linked: "WhatsApp belum ditautkan",
-  connecting: "Menyiapkan kode QR…",
+  connecting: "Menyambungkan WhatsApp…",
   pending_scan: "Pindai kode QR dengan WhatsApp di ponsel Anda",
   connected: "WhatsApp tersambung",
   disconnected: "Tautan WhatsApp terputus",
@@ -42,7 +42,24 @@ export default function HalamanWhatsAppSaya() {
   const kejadian = useQuery({ queryKey: ["wa", "kejadian-saya"], queryFn: async () => (await api.get<Halaman<KejadianSesi>>("/whatsapp/session-events?limit=5")).data.data });
   const sambungkan = useMutation({
     mutationFn: async () => (await api.post<TautanWhatsApp>("/whatsapp/me/connect", {})).data,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["wa", "saya"] }); qc.invalidateQueries({ queryKey: ["wa", "kejadian-saya"] }); notifikasi.info("Menyiapkan kode QR", "Siapkan WhatsApp di ponsel Anda; kode muncul beberapa detik lagi."); },
+    onSuccess: (r) => {
+      qc.setQueryData(tautanWhatsAppQuery.queryKey, r);
+      qc.invalidateQueries({ queryKey: ["wa", "saya"] });
+      qc.invalidateQueries({ queryKey: ["wa", "kejadian-saya"] });
+      if (r.status === "connected") {
+        notifikasi.sukses("WhatsApp tersambung", "Sinkronisasi pesan kembali aktif.");
+      } else if (r.status === "pending_scan") {
+        notifikasi.info("Kode QR siap dipindai", "Pindai kode yang tampil dengan WhatsApp di ponsel Anda.");
+      } else if (r.status === "connecting") {
+        const sambungUlang = Boolean(r.session?.sedangSambungUlang || r.account?.lastConnectedAt);
+        notifikasi.info(
+          sambungUlang ? "Menyambungkan kembali WhatsApp" : "Menyiapkan tautan WhatsApp",
+          sambungUlang ? "Sistem sedang mencoba menyambungkan kembali WhatsApp. Tunggu hingga status diperbarui." : "Tunggu status terbaru; pindai hanya jika kode QR ditampilkan."
+        );
+      } else {
+        notifikasi.info("Status WhatsApp diperbarui", "Periksa status dan keterangan tautan di halaman ini.");
+      }
+    },
     onError: (e) => notifikasi.galat(e, "Belum bisa menautkan"),
   });
 
@@ -59,6 +76,8 @@ export default function HalamanWhatsAppSaya() {
   });
 
   const t = tautan.data;
+  const menyambung = t?.status === "connecting";
+  const sambungUlang = menyambung && Boolean(t?.session?.sedangSambungUlang || t?.account?.lastConnectedAt);
   return (
     <>
       <PageHeader title="WhatsApp Saya" description="Setiap karyawan wajib menautkan WhatsApp-nya agar pesan tersinkron ke sistem perusahaan. Pemindaian QR hanya dilakukan dari halaman ini." />
@@ -69,20 +88,26 @@ export default function HalamanWhatsAppSaya() {
           <CardHeader className="flex-row items-start justify-between gap-3">
             <div className="flex items-start gap-3">
               <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${t.status === "connected" ? "bg-success-soft text-success" : t.status === "pending_scan" || t.status === "connecting" ? "bg-info-soft text-info" : "bg-danger-soft text-danger"}`} aria-hidden>
-                {t.status === "connected" ? <Link2 className="h-5 w-5" /> : t.status === "pending_scan" || t.status === "connecting" ? <QrCode className="h-5 w-5" /> : <Link2Off className="h-5 w-5" />}
+                {t.status === "connected" ? <Link2 className="h-5 w-5" /> : menyambung ? <RefreshCw className="h-5 w-5 animate-spin" /> : t.status === "pending_scan" ? <QrCode className="h-5 w-5" /> : <Link2Off className="h-5 w-5" />}
               </span>
               <div>
-                <CardTitle>{JUDUL[t.status]}</CardTitle>
+                <CardTitle>{sambungUlang ? "WhatsApp sedang menyambung ulang" : JUDUL[t.status]}</CardTitle>
                 <CardDescription className="tabular-nums">{t.account?.phoneNumber ? `+${t.account.phoneNumber}` : "Nomor terisi otomatis setelah dipindai"}{t.account?.lastConnectedAt && t.status === "connected" ? ` · tersambung ${formatRelatif(t.account.lastConnectedAt)}` : ""}</CardDescription>
               </div>
             </div>
-            <Badge tone={t.status === "connected" ? "success" : t.status === "pending_scan" || t.status === "connecting" ? "info" : "danger"} dot>{t.status === "never_linked" ? "Wajib" : t.status === "inactive" ? "Nonaktif" : labelStatus(t.status)}</Badge>
+            <Badge tone={t.status === "connected" ? "success" : t.status === "pending_scan" || t.status === "connecting" ? "info" : "danger"} dot>{t.status === "never_linked" ? "Wajib" : t.status === "inactive" ? "Nonaktif" : menyambung ? (sambungUlang ? "Menyambung ulang" : "Menyambungkan") : labelStatus(t.status)}</Badge>
           </CardHeader>
           <CardContent className="space-y-4">
             {t.status === "connected" && (
               <p className="text-sm text-muted">Pesan Anda tersinkron ke sistem perusahaan. Jangan hapus perangkat tertaut &ldquo;HRD Nusantara&rdquo; di WhatsApp, atau tautan akan terputus dan Anda harus memindai ulang.</p>
             )}
-            {t.status === "connecting" && <Skeleton className="mx-auto h-64 w-64 rounded-xl" />}
+            {menyambung && (
+              <p role="status" className="text-sm text-muted">
+                {sambungUlang
+                  ? "Sistem sedang mencoba menyambungkan kembali WhatsApp. Tunggu hingga status diperbarui; pindai hanya jika kode QR ditampilkan."
+                  : "Tautan WhatsApp sedang disiapkan. Tunggu status terbaru; pindai hanya jika kode QR ditampilkan."}
+              </p>
+            )}
             {t.status === "pending_scan" && (
               <div className="grid gap-4 md:grid-cols-[16rem_1fr] md:items-start">
                 {t.qr ? (
@@ -97,25 +122,21 @@ export default function HalamanWhatsAppSaya() {
               </div>
             )}
             {t.catatan && t.status !== "connected" && (
-              // Judulnya mengikuti keadaan, bukan tetap: pesan "menyambung
-              // ulang dalam sekian detik" dulu tampil di bawah judul merah
-              // "Tautan terakhir dibatalkan", padahal tidak ada yang
-              // dibatalkan dan sistemnya sedang memulihkan diri sendiri.
               <Alert
-                tone={t.session?.sedangSambungUlang ? "info" : "warning"}
-                title={t.session?.sedangSambungUlang ? "Sedang menyambung ulang sendiri" : "Tautan terputus"}
+                tone={menyambung ? "info" : "warning"}
+                title={menyambung ? (sambungUlang ? "Sedang menyambung ulang" : "Sedang menyiapkan tautan") : t.status === "pending_scan" ? "Status penautan" : JUDUL[t.status]}
               >
                 {t.catatan}
               </Alert>
             )}
             {(t.status === "never_linked" || t.status === "disconnected") && (
               <>
-                <p className="text-sm text-muted">{t.status === "never_linked" ? "Prosesnya satu menit: tekan tombol, lalu pindai kode QR dengan WhatsApp di ponsel Anda." : `Sesi terputus${t.account?.lastDisconnectedAt ? ` ${formatRelatif(t.account.lastDisconnectedAt)}` : ""}. Sistem mencoba menyambung kembali; bila tidak berhasil, pindai ulang di sini.`}</p>
-                {bolehUbah && <Button onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}>{!sambungkan.isPending && <QrCode className="h-4 w-4" aria-hidden />} {t.status === "never_linked" ? "Tautkan WhatsApp" : "Pindai Ulang"}</Button>}
+                <p className="text-sm text-muted">{t.status === "never_linked" ? "Tekan tombol, lalu pindai kode QR yang tampil dengan WhatsApp di ponsel Anda." : `Sesi terputus${t.account?.lastDisconnectedAt ? ` ${formatRelatif(t.account.lastDisconnectedAt)}` : ""}. Tekan Sambungkan kembali untuk mencoba memulihkan tautan; pindai ulang jika kode QR ditampilkan.`}</p>
+                {bolehUbah && <Button onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}>{!sambungkan.isPending && (t.status === "never_linked" ? <QrCode className="h-4 w-4" aria-hidden /> : <Link2 className="h-4 w-4" aria-hidden />)} {t.status === "never_linked" ? "Tautkan WhatsApp" : "Sambungkan kembali"}</Button>}
               </>
             )}
             {t.status === "inactive" && <p className="text-sm text-muted">HR menonaktifkan tautan WhatsApp Anda. Hubungi HR untuk mengaktifkannya kembali.</p>}
-            {bolehUbah && (t.status === "pending_scan" || t.status === "connecting") && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}>{!sambungkan.isPending && <RefreshCw className="h-4 w-4" aria-hidden />} Minta kode baru</Button>}
+            {bolehUbah && t.status === "pending_scan" && <Button variant="ghost" size="sm" onClick={() => sambungkan.mutate()} loading={sambungkan.isPending}>{!sambungkan.isPending && <RefreshCw className="h-4 w-4" aria-hidden />} Minta kode baru</Button>}
           </CardContent>
         </Card>
       )}

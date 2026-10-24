@@ -21,6 +21,7 @@ import 'package:hrd_nusantara/fitur/presensi/model_presensi.dart';
 import 'package:hrd_nusantara/fitur/presensi/repo_presensi.dart';
 import 'package:hrd_nusantara/router.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'alat_uji.dart';
 import 'data_uji.dart';
@@ -30,11 +31,16 @@ import 'pemantauan_test.dart' show CacheMemori, IzinTiruan, posisi;
 class KanalTiruan extends KanalPemantauan {
   KanalTiruan([this.status]);
   StatusPenyiapan? status;
+  bool platformDidukung = false;
+  Future<StatusPenyiapan?> Function()? bacaStatus;
   final mulaian = <int>[];
   final denyutan = <int>[];
   int berhentiDipanggil = 0; // setUp sudah memanggilnya (belum setuju = dimatikan); tes membandingkan dengan nilai sebelumnya
   final catatan = <String>[];
   VoidCallback? saatDitutup;
+
+  @override
+  bool get didukung => platformDidukung;
 
   @override
   Future<void> mulai(int intervalMenit) async => mulaian.add(intervalMenit);
@@ -43,7 +49,7 @@ class KanalTiruan extends KanalPemantauan {
   @override
   Future<void> berhenti() async => berhentiDipanggil++;
   @override
-  Future<StatusPenyiapan?> statusPenyiapan() async => status;
+  Future<StatusPenyiapan?> statusPenyiapan() async => bacaStatus == null ? status : await bacaStatus!();
   @override
   Future<bool> mintaPengecualianBaterai() async {
     catatan.add('baterai');
@@ -147,6 +153,7 @@ void main() {
       // setelah restart. Sebagian besar tes ini tentang aplikasi yang dibuka.
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       FlutterSecureStorage.setMockInitialValues({});
+      PackageInfo.setMockInitialValues(appName: 'HRD Nusantara', packageName: 'id.nusantara.hrd.hrd_nusantara', version: '9.8.7', buildNumber: '987', buildSignature: 'test');
       intervalDiminta = [];
       laporan = [];
       presensiHariIni = null;
@@ -238,6 +245,34 @@ void main() {
       expect(status().berjalan, isFalse);
       expect(kanal.berhentiDipanggil, greaterThan(sebelum));
     });
+
+    for (final kasus in [
+      (nama: 'ditutup otomatis tanpa check-out', status: 'no_checkout', usia: const Duration(hours: 1)),
+      (nama: 'tepat mencapai batas 16 jam', status: 'present', usia: const Duration(hours: 16)),
+      (nama: 'lebih lama dari 16 jam', status: 'present', usia: const Duration(hours: 17)),
+      (nama: 'jam masuk masih di masa depan', status: 'present', usia: const Duration(minutes: -1)),
+    ]) {
+      test('mode "selama bekerja": sesi ${kasus.nama} tidak melanjutkan pemantauan', () async {
+        konfigurasi = {'enabled': true, 'mode': 'while_working', 'intervalMinutes': 5};
+        presensiHariIni = Presensi(id: 'P1', status: 'present', jamMasuk: DateTime.now().subtract(const Duration(hours: 1)));
+        c.invalidate(presensiHariIniProvider);
+        await c.read(presensiHariIniProvider.future);
+        await pemantau().setujui();
+        expect(status().berjalan, isTrue);
+        expect(gps.hasListener, isTrue);
+        final sebelum = kanal.berhentiDipanggil;
+
+        // Jam pulang tetap kosong: aturan lama hanya memeriksa masihTerbuka.
+        presensiHariIni = Presensi(id: 'P1', status: kasus.status, jamMasuk: DateTime.now().subtract(kasus.usia));
+        c.invalidate(presensiHariIniProvider);
+        await c.read(presensiHariIniProvider.future);
+        await pemantau().segarkan();
+        expect(status().berjalan, isFalse);
+        expect(gps.hasListener, isFalse);
+        expect(kanal.berhentiDipanggil, greaterThan(sebelum), reason: 'sesi kerja berakhir, jadi pengingat juga dibatalkan');
+        expect(intervalDiminta, [5], reason: 'tidak membuka aliran pengganti untuk sesi yang tak berlaku');
+      });
+    }
 
     test('pengaturan belum pernah terbaca (offline sejak awal): tidak memulai dan tidak membatalkan pengingat', () async {
       final kanalBaru = KanalTiruan();
@@ -355,6 +390,25 @@ void main() {
       expect(status().perluPenyiapan, isFalse);
     });
 
+    test('penundaan penyiapan versi lama tidak menyembunyikan kebutuhan notifikasi setelah persetujuan baru', () async {
+      await const FlutterSecureStorage().write(
+        key: 'hrd_penyiapan_pantau_${pengguna.id}',
+        value: DateTime.now().toUtc().toIso8601String(),
+      );
+      kanal.status = const StatusPenyiapan(notifikasi: false, penghematBaterai: true);
+      await pemantau().setujui();
+
+      expect(status().setuju, isTrue);
+      expect(status().perluPenyiapan, isTrue);
+      expect(status().langkahKurang, [LangkahPenyiapan.notifikasi]);
+      expect(status().berjalan, isFalse);
+      expect(laporan.last['permission'], 'notifications_denied');
+
+      await pemantau().catatPenyiapanDitampilkan();
+      await pemantau().segarkan();
+      expect(status().perluPenyiapan, isFalse, reason: 'penundaan versi baru tetap dihormati');
+    });
+
     test('penyiapan tidak ditawarkan sebelum izin lokasi diberikan atau persetujuan dibaca', () async {
       kanal.status = const StatusPenyiapan(notifikasi: false, penghematBaterai: false);
       await pemantau().segarkan();
@@ -416,16 +470,111 @@ void main() {
       expect(intervalDiminta, [5, 5]);
     });
 
-    test('izin notifikasi diberikan sesudah aliran jalan: aliran dimulai ulang sekali agar notifikasinya tampil', () async {
+    test('notifikasi diblokir: tidak mengambil lokasi; setelah diizinkan baru mulai', () async {
       kanal.status = const StatusPenyiapan(notifikasi: false, penghematBaterai: true);
       await pemantau().setujui();
-      expect(intervalDiminta, [5]);
+      expect(intervalDiminta, isEmpty);
+      expect(status().berjalan, isFalse);
 
       kanal.status = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
       await pemantau().segarkan();
-      expect(intervalDiminta, [5, 5]);
+      expect(intervalDiminta, [5]);
+      expect(status().berjalan, isTrue);
       await pemantau().segarkan();
-      expect(intervalDiminta, [5, 5]);
+      expect(intervalDiminta, [5], reason: 'tidak membuat aliran ganda');
+
+      kanal.status = const StatusPenyiapan(notifikasi: false, penghematBaterai: true);
+      await pemantau().segarkan();
+      expect(status().berjalan, isFalse, reason: 'pencabutan izin notifikasi menghentikan pemantauan');
+      expect(gps.hasListener, isFalse);
+    });
+
+    test('status native Android berubah dari diizinkan menjadi tidak terbaca: berhenti dan laporkan unavailable', () async {
+      kanal.platformDidukung = true;
+      kanal.status = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
+      await pemantau().setujui();
+      expect(status().berjalan, isTrue);
+      expect(laporan.last['permission'], 'granted_always');
+      expect(laporan.last['appVersion'], '9.8.7 (987)', reason: 'status operasional menyertakan versi aplikasi yang benar-benar terpasang');
+
+      kanal.status = null;
+      await pemantau().segarkan();
+      expect(status().penyiapan, isNull, reason: 'izin lama tidak boleh tertinggal setelah pembacaan gagal');
+      expect(status().berjalan, isFalse);
+      expect(gps.hasListener, isFalse);
+      expect(laporan.last['permission'], 'unavailable');
+
+      kanal.status = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
+      await pemantau().segarkan();
+      expect(status().berjalan, isTrue);
+      expect(laporan.last['permission'], 'granted_always', reason: 'pemulihan izin dilaporkan tanpa menunggu jeda 15 menit');
+    });
+
+    for (final tidakTerbaca in [false, true]) {
+      test('titik masuk ketika notifikasi ${tidakTerbaca ? 'tidak terbaca' : 'dicabut'} tidak disimpan atau dikirim', () async {
+        kanal.platformDidukung = true;
+        kanal.status = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
+        await pemantau().setujui();
+        expect(gps.hasListener, isTrue);
+        final cache = c.read(cacheLokalProvider) as CacheMemori;
+        expect(cache.isi['pemantauan-buffer'], isNull);
+
+        // Tanpa segarkan()/resume: perubahan izin harus terbaca dari jalur titik masuk.
+        kanal.status = tidakTerbaca ? null : const StatusPenyiapan(notifikasi: false, penghematBaterai: true);
+        gps.add(posisi(DateTime.utc(2026, 10, 13, 3)));
+        await tunggu();
+        await tunggu();
+
+        expect(status().berjalan, isFalse);
+        expect(gps.hasListener, isFalse);
+        expect(cache.isi['pemantauan-buffer'], isNull, reason: 'titik ditolak sebelum ditulis ke penyimpanan');
+        expect(server.percobaan.where((p) => p.uri.path.endsWith('/location-tracking/pings')), isEmpty);
+        expect(kanal.denyutan, isEmpty, reason: 'titik yang ditolak bukan bukti pemantauan masih berjalan');
+        expect(status().terakhirDiambil, isNull);
+        expect(laporan.last['permission'], tidakTerbaca ? 'unavailable' : 'notifications_denied');
+
+        kanal.status = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
+        await pemantau().segarkan();
+        expect(laporan.last['permission'], 'granted_always');
+        expect(status().izin, 'granted_always', reason: 'penghambat notifikasi tidak mengganti izin lokasi asli');
+        gps.add(posisi(DateTime.utc(2026, 10, 13, 3, 1)));
+        await tunggu();
+        await tunggu();
+        expect(kanal.denyutan, [5]);
+        expect(server.percobaan.where((p) => p.uri.path.endsWith('/location-tracking/pings')), hasLength(1));
+        expect(status().terakhirDiambil, DateTime.utc(2026, 10, 13, 3, 1), reason: 'titik yang ditolak tidak memajukan pembatas interval');
+      });
+    }
+
+    test('dua titik serentak yang menunggu izin native tetap menghasilkan satu titik per interval', () async {
+      kanal.platformDidukung = true;
+      kanal.status = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
+      await pemantau().setujui();
+
+      final jawabanNative = Completer<StatusPenyiapan?>();
+      var pembacaan = 0;
+      kanal.bacaStatus = () {
+        pembacaan++;
+        return jawabanNative.future;
+      };
+      final awal = DateTime.utc(2026, 10, 13, 4);
+      gps.add(posisi(awal));
+      gps.add(posisi(awal.add(const Duration(seconds: 1))));
+      await tunggu();
+      expect(pembacaan, 2, reason: 'kedua callback tertahan setelah pemeriksaan interval awal');
+      expect(server.percobaan.where((p) => p.uri.path.endsWith('/location-tracking/pings')), isEmpty);
+
+      jawabanNative.complete(kanal.status);
+      await tunggu();
+      await tunggu();
+      final kiriman = server.percobaan.where((p) => p.uri.path.endsWith('/location-tracking/pings')).toList();
+      expect(kiriman, hasLength(1));
+      final titik = (kiriman.single.data as Map)['pings'] as List;
+      expect(titik, hasLength(1));
+      expect(titik.single['recordedAt'], awal.toIso8601String());
+      expect(kanal.denyutan, [5]);
+      expect(status().terakhirDiambil, awal);
+      expect(status().tertunda, 0);
     });
 
     test('dari latar, izin sepanjang waktu saja tidak cukup: perlu bebas penghemat baterai atau jendela boot', () async {
@@ -597,68 +746,50 @@ void main() {
 
     tearDown(() => binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
 
-    testWidgets('penyiapan muncul sekali, dan tiap langkah dikerjakan dari barisnya', (tester) async {
+    testWidgets('beranda tidak ditutup popup penyiapan walau semua pengaturan ponsel belum lengkap', (tester) async {
       ukuranPonsel(tester);
       await tester.pumpWidget(aplikasi(StatusPemantauan(konfigurasi: konfig, setuju: true, izin: 'granted_while_in_use', penyiapan: keadaan)));
       await tester.pumpAndSettle();
 
-      expect(find.text('Agar pemantauan tidak terputus'), findsOneWidget);
-      expect(find.text('Atur'), findsNWidgets(3));
-      await potret(tester, 'pemantauan-penyiapan');
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(find.text('Atur'), findsNothing);
+      expect(find.text('Beranda uji'), findsOneWidget);
+      expect(kunciNavigatorAkar.currentState!.canPop(), isFalse);
+      expect(kanal.catatan, isEmpty, reason: 'tidak memaksa layar pengaturan ponsel terbuka');
+      expect(izin.dinaikkan, 0);
+      await potret(tester, 'beranda-tanpa-popup-pengaturan');
 
-      // Pengecualian baterai: dialog sistem dibuka; hasilnya terbaca saat kembali.
-      keadaan = const StatusPenyiapan(notifikasi: false, penghematBaterai: true); // yang akan terbaca setelah dialog sistem ditutup
-      await tester.tap(find.widgetWithText(TextButton, 'Atur').at(1));
-      await tester.pumpAndSettle();
-      expect(kanal.catatan, ['baterai']);
-      expect(find.text('Atur'), findsNWidgets(2));
-
-      // Notifikasi: dialog sistem dulu, lalu pengaturan bila ditolak (tombol tak boleh mati).
-      await tester.tap(find.widgetWithText(TextButton, 'Atur').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(TextButton, 'Atur').first);
-      await tester.pumpAndSettle();
-      expect(kanal.catatan, ['baterai', 'minta-notifikasi', 'pengaturan-notifikasi']);
-
-      // Lokasi sepanjang waktu.
-      await tester.tap(find.widgetWithText(TextButton, 'Atur').last);
-      await tester.pumpAndSettle();
-      expect(izin.dinaikkan, 1);
-
-      // Tutup: tidak muncul lagi (dicatat 7 hari), juga saat aplikasi kembali ke depan.
-      await tester.tap(find.text('Nanti saja'));
-      await tester.pumpAndSettle();
-      expect(find.text('Agar pemantauan tidak terputus'), findsNothing);
       binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
-      expect(find.text('Agar pemantauan tidak terputus'), findsNothing);
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(kunciNavigatorAkar.currentState!.canPop(), isFalse);
     });
 
-    testWidgets('baris notifikasi tetap tampil, tercentang, setelah izinnya diberikan', (tester) async {
+    testWidgets('notifikasi yang diblokir tidak membuka popup atau pengaturan secara otomatis', (tester) async {
       ukuranPonsel(tester);
-      await tester.pumpWidget(aplikasi(StatusPemantauan(konfigurasi: konfig, setuju: true, izin: 'granted_while_in_use', penyiapan: keadaan)));
+      keadaan = const StatusPenyiapan(notifikasi: false, penghematBaterai: true);
+      await tester.pumpWidget(aplikasi(StatusPemantauan(konfigurasi: konfig, setuju: true, izin: 'granted_always', penyiapan: keadaan)));
       await tester.pumpAndSettle();
-      expect(find.text('Izinkan notifikasi'), findsOneWidget);
-
-      keadaan = const StatusPenyiapan(notifikasi: true, penghematBaterai: false); // yang terbaca setelah dialog sistem ditutup
-      await tester.tap(find.widgetWithText(TextButton, 'Atur').first);
-      await tester.pumpAndSettle();
-      expect(find.text('Izinkan notifikasi'), findsOneWidget);
-      expect(find.text('Atur'), findsNWidgets(2), reason: 'notifikasi selesai; baterai dan sepanjang waktu tersisa');
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(find.text('Atur'), findsNothing);
+      expect(kanal.catatan, isEmpty);
+      expect(izin.dinaikkan, 0);
     });
 
-    testWidgets('pemberitahuan persetujuan lebih dulu; penyiapan menyusul setelah persetujuan', (tester) async {
+    testWidgets('persetujuan pemantauan tetap diminta; tidak disusul popup pengaturan ponsel', (tester) async {
       ukuranPonsel(tester);
       await tester.pumpWidget(aplikasi(StatusPemantauan(konfigurasi: konfig, setuju: false, izin: 'granted_while_in_use', penyiapan: keadaan)));
       await tester.pumpAndSettle();
-      expect(find.text('Akses Lokasi'), findsOneWidget);
-      expect(find.text('Agar pemantauan tidak terputus'), findsNothing);
+      expect(find.text('Pemantauan lokasi'), findsOneWidget);
+      expect(find.text('Pengaturan ponsel'), findsNothing);
 
-      await tester.tap(find.text('Saya mengerti'));
+      await tester.tap(find.text('Setuju & lanjut'));
       await tester.pumpAndSettle();
-      expect(find.text('Akses Lokasi'), findsNothing);
-      expect(find.text('Agar pemantauan tidak terputus'), findsOneWidget);
+      expect(find.text('Pemantauan lokasi'), findsNothing);
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(find.text('Beranda uji'), findsOneWidget);
+      expect(kunciNavigatorAkar.currentState!.canPop(), isFalse);
     });
 
     testWidgets('tidak ada dialog bila semuanya sudah beres', (tester) async {
@@ -666,11 +797,11 @@ void main() {
       keadaan = const StatusPenyiapan(notifikasi: true, penghematBaterai: true);
       await tester.pumpWidget(aplikasi(StatusPemantauan(konfigurasi: konfig, setuju: true, izin: 'granted_always', penyiapan: keadaan)));
       await tester.pumpAndSettle();
-      expect(find.text('Agar pemantauan tidak terputus'), findsNothing);
-      expect(find.text('Akses Lokasi'), findsNothing);
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(find.text('Pemantauan lokasi'), findsNothing);
     });
 
-    testWidgets('mesin dipertahankan tanpa layar: keadaan yang menuntut dialog tidak menampilkannya, dan tidak dianggap sudah ditawarkan', (tester) async {
+    testWidgets('mesin tanpa layar yang dibuka lagi tidak memunculkan penyiapan ponsel', (tester) async {
       ukuranPonsel(tester);
       keadaan = const StatusPenyiapan(notifikasi: false, penghematBaterai: false);
       await tester.pumpWidget(aplikasi(StatusPemantauan(konfigurasi: konfig, setuju: true, izin: 'granted_always', penyiapan: const StatusPenyiapan(notifikasi: true, penghematBaterai: true))));
@@ -678,18 +809,19 @@ void main() {
       final wadah = ProviderScope.containerOf(tester.element(find.byType(Scaffold)));
       final pemantau = wadah.read(pemantauLokasiProvider.notifier) as PemantauPenyiapanUji;
 
-      // Aplikasi ditutup, mesin tetap hidup; lalu pembacaan di latar menemukan yang kurang.
       binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
       pemantau.ubah(StatusPemantauan(konfigurasi: konfig, setuju: true, izin: 'granted_while_in_use', penyiapan: keadaan));
       await tester.pump();
-      expect(wadah.read(pemantauLokasiProvider).perluPenyiapan, isTrue);
-      expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isFalse, reason: 'belum ada yang melihat, jangan dihitung sudah ditawarkan');
-      expect(kunciNavigatorAkar.currentState!.canPop(), isFalse, reason: 'tidak ada layar/dialog yang didorong ke navigator');
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isFalse);
+      expect(kunciNavigatorAkar.currentState!.canPop(), isFalse);
 
       binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
-      expect(find.text('Agar pemantauan tidak terputus'), findsOneWidget, reason: 'begitu aplikasi dibuka, dialog yang tertunda tampil');
-      expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isTrue);
+      expect(find.text('Pengaturan ponsel'), findsNothing);
+      expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isFalse);
+      expect(kunciNavigatorAkar.currentState!.canPop(), isFalse);
+      expect(kanal.catatan, isEmpty);
     });
 
     testWidgets('kembaliKeBeranda juga menutup layar di navigator tab: kamera dan lembar absen', (tester) async {

@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { DialogTugaskan } from "./tugaskan";
 import { DialogPesertaPaket } from "./peserta-paket";
 import { LABEL_TIPE_SOAL } from "./bank-soal";
-import type { AudiensCbt, PaketCbt, PaketCbtRinci, SoalCbt } from "@/lib/types";
+import type { LingkupCbt, AudiensCbt, PaketCbt, PaketCbtRinci, SoalCbt } from "@/lib/types";
 import { EditorTeks } from "@/components/ui/editor-teks";
 
 const LABEL_AUDIENS: Record<AudiensCbt, string> = { karyawan: "Karyawan", pelamar: "Pelamar", keduanya: "Karyawan & pelamar" };
@@ -44,7 +44,7 @@ const kosong: FormPaket = {
   code: "",
   title: "",
   description: "",
-  audience: "keduanya",
+  audience: "karyawan",
   durationMinutes: 30,
   passingScore: "70",
   shuffleQuestions: true,
@@ -56,7 +56,7 @@ const kosong: FormPaket = {
 };
 
 /** Memilih butir soal yang menyusun sebuah paket. */
-const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () => void }) => {
+const DialogSusunSoal = ({ paketId, scope, onClose }: { paketId: string; scope: LingkupCbt; onClose: () => void }) => {
   const qc = useQueryClient();
   // Pilihan pengguna menimpa susunan yang sudah tersimpan; selama belum
   // disentuh, yang tampil adalah isi paket dari server.
@@ -64,23 +64,23 @@ const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () =>
   const [kategori, setKategori] = React.useState("");
 
   const rinci = useQuery({
-    queryKey: ["cbt", "paket", paketId],
-    queryFn: async () => (await api.get<PaketCbtRinci>(`/cbt/tes/${paketId}`)).data,
+    queryKey: ["cbt", "paket", scope, paketId],
+    queryFn: async () => (await api.get<PaketCbtRinci>(`/cbt/tes/${paketId}?scope=${scope}`)).data,
 
   });
   const soal = useQuery({
-    queryKey: ["cbt", "soal", "semua", kategori],
+    queryKey: ["cbt", "soal", "semua", scope, kategori],
     // Seluruh bank soal aktif, bukan 100 pertama: paket Big Five saja sudah
     // 50 butir, dan soal di luar halaman pertama tidak bisa dipilih.
-    queryFn: async () => ambilSemua<SoalCbt>("/cbt/soal", kategori ? { category: kategori } : {}),
+    queryFn: async () => ambilSemua<SoalCbt>("/cbt/soal", { scope, ...(kategori ? { category: kategori } : {}) }),
   });
   const kategoriTersedia = useQuery({
-    queryKey: ["cbt", "soal", "kategori"],
-    queryFn: async () => (await api.get<{ data: { category: string; jumlah: number }[] }>("/cbt/soal/kategori")).data.data,
+    queryKey: ["cbt", "soal", "kategori", scope],
+    queryFn: async () => (await api.get<{ data: { category: string; jumlah: number }[] }>(`/cbt/soal/kategori?scope=${scope}`)).data.data,
   });
 
   const simpan = useMutation({
-    mutationFn: async () => api.put(`/cbt/tes/${paketId}/soal`, { questions: terpilih.map((id) => ({ questionId: id })) }),
+    mutationFn: async () => api.put(`/cbt/tes/${paketId}/soal?scope=${scope}`, { questions: terpilih.map((id) => ({ questionId: id })) }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cbt"] });
       notifikasi.sukses("Susunan soal tersimpan", `${terpilih.length} soal`);
@@ -159,11 +159,13 @@ const DialogSusunSoal = ({ paketId, onClose }: { paketId: string; onClose: () =>
 };
 
 /** Daftar paket tes beserta pengelolaannya. */
-export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: boolean; bolehUbah: boolean; bolehHapus: boolean }) => {
+export const PaketTes = ({ scope, bolehBuat, bolehUbah, bolehHapus }: { scope: LingkupCbt; bolehBuat: boolean; bolehUbah: boolean; bolehHapus: boolean }) => {
   const qc = useQueryClient();
   // Paket standar Big Five juga menulis 50 butir ke bank soal.
   const { data: saya } = useSesi();
   const bolehSoal = punyaIzin(saya, "cbt_soal.buat");
+  const bolehPaketBersama = punyaIzin(saya, "rekrutmen.lihat", "rekrutmen.buat", "rekrutmen.ubah", "rekrutmen.hapus");
+  const bolehSunting = (p: PaketCbt) => bolehUbah && (p.audience !== "keduanya" || bolehPaketBersama);
   const [form, setForm] = React.useState<{ open: boolean; item: PaketCbt | null }>({ open: false, item: null });
   const [susun, setSusun] = React.useState<PaketCbt | null>(null);
   const [tugas, setTugas] = React.useState<PaketCbt | null>(null);
@@ -171,8 +173,8 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   const [peserta, setPeserta] = React.useState<PaketCbt | null>(null);
 
   const paket = useQuery({
-    queryKey: ["cbt", "paket"],
-    queryFn: async () => (await api.get<{ data: PaketCbt[] }>("/cbt/tes")).data.data,
+    queryKey: ["cbt", "paket", scope],
+    queryFn: async () => (await api.get<{ data: PaketCbt[] }>(`/cbt/tes?scope=${scope}`)).data.data,
   });
 
   const f = useForm<FormPaket>({ defaultValues: kosong });
@@ -197,9 +199,9 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
             proctorPhotos: p.proctorPhotos,
             proctorPhotoIntervalSec: p.proctorPhotoIntervalSec,
           }
-        : kosong
+        : { ...kosong, audience: scope === "recruitment" ? "pelamar" : "karyawan" }
     );
-  }, [form, f]);
+  }, [form, f, scope]);
 
   const segarkan = () => qc.invalidateQueries({ queryKey: ["cbt"] });
 
@@ -209,9 +211,9 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         code: v.code.toUpperCase(),
         title: v.title,
         descriptionHtml: v.description || null,
-        audience: v.audience,
+        audience: form.item?.audience ?? (scope === "recruitment" ? "pelamar" : "karyawan"),
         durationMinutes: Number(v.durationMinutes),
-        passingScore: v.passingScore === "" ? null : Number(v.passingScore),
+        passingScore: form.item?.kind === "kepribadian" || v.passingScore === "" ? null : Number(v.passingScore),
         shuffleQuestions: v.shuffleQuestions,
         shuffleOptions: v.shuffleOptions,
         showResultToTaker: v.showResultToTaker,
@@ -235,14 +237,14 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
             ...(body.proctorPhotos && body.proctorPhotoIntervalSec !== undefined ? { proctorPhotoIntervalSec: body.proctorPhotoIntervalSec } : {}),
           }
         : body;
-      return form.item ? api.put(`/cbt/tes/${form.item.id}`, bodySunting) : api.post("/cbt/tes", body);
+      return form.item ? api.put(`/cbt/tes/${form.item.id}?scope=${scope}`, bodySunting) : api.post(`/cbt/tes?scope=${scope}`, { ...body, scope });
     },
     onSuccess: () => { segarkan(); notifikasi.sukses(form.item ? "Paket diperbarui" : "Paket dibuat"); setForm({ open: false, item: null }); },
     onError: (e) => notifikasi.galat(e, "Gagal menyimpan paket"),
   });
 
   const ubahStatus = useMutation({
-    mutationFn: async ({ p, status }: { p: PaketCbt; status: string }) => api.put(`/cbt/tes/${p.id}`, { status }),
+    mutationFn: async ({ p, status }: { p: PaketCbt; status: string }) => api.put(`/cbt/tes/${p.id}?scope=${scope}`, { status }),
     onSuccess: (_, v) => { segarkan(); notifikasi.sukses(v.status === "published" ? "Paket ditayangkan" : "Paket diarsipkan", v.p.title); },
     onError: (e) => notifikasi.galat(e, "Gagal mengubah status"),
   });
@@ -250,7 +252,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   // Paket standar inventori kepribadian Big Five (IPIP-50, domain publik):
   // 50 butir skala dibuat sekali di bank soal, paketnya langsung tayang.
   const buatStandar = useMutation({
-    mutationFn: async () => (await api.post<PaketCbt & { dibuat: boolean }>("/cbt/tes/standar/kepribadian-big5")).data,
+    mutationFn: async () => (await api.post<PaketCbt & { dibuat: boolean }>(`/cbt/tes/standar/kepribadian-big5?scope=${scope}`, { scope })).data,
     onSuccess: (p) => {
       segarkan();
       if (p.dibuat) notifikasi.sukses("Paket kepribadian dibuat", `${p.title} · 50 butir skala dalam 5 dimensi, siap ditugaskan.`);
@@ -261,7 +263,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   });
 
   const buang = useMutation({
-    mutationFn: async (p: PaketCbt) => api.delete(`/cbt/tes/${p.id}`),
+    mutationFn: async (p: PaketCbt) => api.delete(`/cbt/tes/${p.id}?scope=${scope}`),
     onSuccess: () => { segarkan(); notifikasi.sukses("Paket dihapus"); setHapus(null); },
     onError: (e) => { notifikasi.galat(e, "Gagal menghapus"); setHapus(null); },
   });
@@ -270,7 +272,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
     <>
       {bolehBuat && (
         <div className="flex flex-wrap justify-end gap-2">
-          {bolehSoal && <Button variant="outline" onClick={() => buatStandar.mutate()} loading={buatStandar.isPending} title="Inventori Big Five berbasis IPIP-50 (domain publik): 50 pernyataan skala 1–5, hasilnya profil per dimensi">
+          {scope === "recruitment" && bolehSoal && <Button variant="outline" onClick={() => buatStandar.mutate()} loading={buatStandar.isPending} title="Inventori Big Five berbasis IPIP-50 (domain publik): 50 pernyataan skala 1–5, hasilnya profil per dimensi">
             {!buatStandar.isPending && <Brain className="h-4 w-4" aria-hidden />} Paket Kepribadian Big Five
           </Button>}
           <Button onClick={() => setForm({ open: true, item: null })}><Plus className="h-4 w-4" aria-hidden /> Paket Tes</Button>
@@ -291,12 +293,13 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                     <span className="truncate">{p.title}</span>
                     <Badge tone={p.status === "published" ? "success" : p.status === "draft" ? "neutral" : "warning"}>{LABEL_STATUS[p.status]}</Badge>
                     {p.kind === "kepribadian" && <Badge tone="info">Kepribadian</Badge>}
+                    {p.audience === "keduanya" && <Badge tone="info">Paket bersama (lama)</Badge>}
                   </CardTitle>
                   <CardDescription className="line-clamp-2">{p.description ?? `Kode ${p.code}`}</CardDescription>
                 </div>
                 <div className="flex shrink-0 gap-1.5">
-                  {bolehUbah && <TombolAksi icon={Pencil} label={`Sunting ${p.title}`} onClick={() => setForm({ open: true, item: p })} />}
-                  {bolehHapus && p._count.assignments === 0 && <TombolAksi icon={Trash2} label={`Hapus ${p.title}`} tone="bahaya" onClick={() => setHapus(p)} />}
+                  {bolehSunting(p) && <TombolAksi icon={Pencil} label={`Sunting ${p.title}`} onClick={() => setForm({ open: true, item: p })} />}
+                  {bolehHapus && (p.audience !== "keduanya" || bolehPaketBersama) && p._count.assignments === 0 && <TombolAksi icon={Trash2} label={`Hapus ${p.title}`} tone="bahaya" onClick={() => setHapus(p)} />}
                 </div>
               </CardHeader>
               <CardContent className="mt-auto space-y-2 text-xs text-muted">
@@ -311,12 +314,12 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                   {p.proctorPhotos && <span className="inline-flex items-center gap-1 text-warning"><Camera className="h-3.5 w-3.5" aria-hidden /> Foto pengawasan</span>}
                   {p.showResultToTaker && <span className="inline-flex items-center gap-1"><Eye className="h-3.5 w-3.5" aria-hidden /> Nilai dibuka</span>}
                 </p>
-                {(bolehUbah || ((bolehBuat || bolehUbah) && p._count.assignments > 0)) && (
+                {(bolehBuat || bolehUbah) && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {(bolehBuat || bolehUbah) && p._count.assignments > 0 && (
                       <Button size="sm" variant="outline" onClick={() => setPeserta(p)}><Users className="h-4 w-4" aria-hidden /> Peserta</Button>
                     )}
-                    {bolehUbah && (<>
+                    {bolehSunting(p) && (<>
                     {p._count.assignments === 0 && (
                       <Button size="sm" variant="outline" onClick={() => setSusun(p)}><ListChecks className="h-4 w-4" aria-hidden /> Susun soal</Button>
                     )}
@@ -325,13 +328,9 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                         <Megaphone className="h-4 w-4" aria-hidden /> Tayangkan
                       </Button>
                     )}
-                    {p.status === "published" && (
-                      <>
-                        <Button size="sm" onClick={() => setTugas(p)}><Send className="h-4 w-4" aria-hidden /> Tugaskan</Button>
-                        <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ p, status: "archived" })}><Archive className="h-4 w-4" aria-hidden /> Arsipkan</Button>
-                      </>
-                    )}
+                    {p.status === "published" && <Button size="sm" variant="outline" onClick={() => ubahStatus.mutate({ p, status: "archived" })}><Archive className="h-4 w-4" aria-hidden /> Arsipkan</Button>}
                     </>)}
+                    {bolehBuat && p.status === "published" && <Button size="sm" onClick={() => setTugas(p)}><Send className="h-4 w-4" aria-hidden /> Tugaskan</Button>}
                   </div>
                 )}
               </CardContent>
@@ -344,7 +343,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         open={form.open}
         onClose={() => setForm({ open: false, item: null })}
         size="lg"
-        title={form.item ? `Sunting: ${form.item.title}` : "Paket Tes Baru"}
+        title={form.item ? `Sunting: ${form.item.title}` : scope === "recruitment" ? "Paket Tes Seleksi Baru" : "Paket Tes Karyawan Baru"}
         description={form.item?._count.assignments ? "Paket sudah ditugaskan: durasi, ambang lulus, pengacakan, dan isinya terkunci." : "Aturan main dikunci begitu paket ditugaskan ke peserta pertama."}
         footer={
           <>
@@ -356,7 +355,7 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         <form id="form-paket" onSubmit={f.handleSubmit((v) => simpan.mutate(v))} className="space-y-4" noValidate>
           {form.item && form.item._count.assignments > 0 && (
             <Alert tone="info" title="Sebagian setelan terkunci">
-              {form.item._count.assignments} peserta sudah ditugaskan. Yang masih bisa diubah: judul, keterangan, sasaran peserta, pembukaan nilai, dan pengawasan.
+              {form.item._count.assignments} peserta sudah ditugaskan. Yang masih bisa diubah: judul, keterangan, pembukaan nilai, dan pengawasan.
             </Alert>
           )}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -373,16 +372,14 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
 
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Sasaran peserta">
-              <Select {...f.register("audience")}>
-                {Object.entries(LABEL_AUDIENS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </Select>
+              <p className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">{LABEL_AUDIENS[form.item?.audience ?? (scope === "recruitment" ? "pelamar" : "karyawan")]}</p>
             </Field>
             <Field label="Durasi (menit)">
               <Input type="number" min="1" {...f.register("durationMinutes", { valueAsNumber: true })} disabled={Boolean(form.item?._count.assignments)} />
             </Field>
-            <Field label="Ambang lulus (%)" hint="Kosongkan bila tanpa kelulusan">
+            {form.item?.kind === "kepribadian" ? <Field label="Hasil"><p className="py-2 text-sm text-muted">Profil per dimensi, tanpa kelulusan</p></Field> : <Field label="Ambang lulus (%)" hint="Kosongkan bila tanpa kelulusan">
               <Input type="number" min="0" max="100" {...f.register("passingScore")} disabled={Boolean(form.item?._count.assignments)} />
-            </Field>
+            </Field>}
           </div>
 
           <fieldset className="space-y-2 rounded-xl border border-border p-3">
@@ -410,9 +407,9 @@ export const PaketTes = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
 
       {/* Keduanya dipasang hanya saat dibuka: satu kali pakai, keadaannya
           selalu mulai dari nol tanpa perlu effect pereset. */}
-      {susun && <DialogSusunSoal paketId={susun.id} onClose={() => setSusun(null)} />}
-      {peserta && <DialogPesertaPaket paket={peserta} onClose={() => setPeserta(null)} />}
-      {tugas && <DialogTugaskan paket={tugas} onClose={() => setTugas(null)} />}
+      {susun && <DialogSusunSoal scope={scope} paketId={susun.id} onClose={() => setSusun(null)} />}
+      {peserta && <DialogPesertaPaket scope={scope} paket={peserta} onClose={() => setPeserta(null)} />}
+      {tugas && <DialogTugaskan scope={scope} paket={tugas} onClose={() => setTugas(null)} />}
 
       <ConfirmDialog
         open={Boolean(hapus)}

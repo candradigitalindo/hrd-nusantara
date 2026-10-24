@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { NAMA_COOKIE, NAMA_COOKIE_PELAMAR } from "@/lib/nama-cookie";
 
 /**
  * Proxy ke backend Express (pola backend-for-frontend).
@@ -10,7 +11,6 @@ import { cookies } from "next/headers";
  * dipindahkan ke cookie dan TIDAK diteruskan ke browser.
  */
 const BACKEND = process.env.BACKEND_URL ?? "http://localhost:3000";
-export const NAMA_COOKIE = "hrd_sesi";
 /**
  * Sesi portal karier, terpisah dari sesi karyawan.
  *
@@ -18,7 +18,6 @@ export const NAMA_COOKIE = "hrd_sesi";
  * sebaliknya. Dua cookie berbeda membuat pemisahan itu tidak bergantung pada
  * ketelitian kode di kemudian hari.
  */
-export const NAMA_COOKIE_PELAMAR = "hrd_pelamar";
 
 // "range" ikut diteruskan supaya video panjang bisa digeser: tanpa itu
 // peramban hanya bisa memutarnya dari awal.

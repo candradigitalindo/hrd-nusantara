@@ -15,8 +15,10 @@ class PenyimpananSesi {
   static const _kunciTokenPush = 'hrd_token_push';
   static const _kunciCache = 'hrd_kunci_cache';
   static const _kunciAntrean = 'hrd_kunci_antrean';
-  static const _awalanSetujuPantau = 'hrd_setuju_pantau_';
-  static const _awalanPenyiapanPantau = 'hrd_penyiapan_pantau_';
+  // Versi lama hanya menjelaskan absensi, bukan pengiriman lokasi di latar.
+  // Biarkan rekaman lama tersimpan; pengungkapan baru harus disetujui sendiri.
+  static const _awalanSetujuPantau = 'hrd_setuju_pantau_v2_';
+  static const _awalanPenyiapanPantau = 'hrd_penyiapan_pantau_v2_';
 
   Future<String?> bacaToken() => _storage.read(key: _kunciToken);
   Future<void> simpanToken(String token) => _storage.write(key: _kunciToken, value: token);
@@ -55,7 +57,7 @@ class PenyimpananSesi {
   Future<void> simpanKunciAntrean(String? kunci) =>
       kunci == null ? _storage.delete(key: _kunciAntrean) : _storage.write(key: _kunciAntrean, value: kunci);
 
-  /// Persetujuan Pemantauan Lokasi, per akun (ponsel bisa dipakai bergantian).
+  /// Persetujuan pengungkapan lokasi di latar, per akun dan versi pengungkapan.
   Future<bool> bacaSetujuPantau(String karyawanId) async => (await _storage.read(key: '$_awalanSetujuPantau$karyawanId')) != null;
   Future<void> simpanSetujuPantau(String karyawanId, bool setuju) => setuju
       ? _storage.write(key: '$_awalanSetujuPantau$karyawanId', value: DateTime.now().toUtc().toIso8601String())

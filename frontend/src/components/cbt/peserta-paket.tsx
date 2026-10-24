@@ -13,8 +13,10 @@ import { Modal, ConfirmDialog } from "@/components/ui/modal";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatTanggal, LABEL_STATUS_TES } from "@/lib/utils";
+import { BadgeTinjauanSeleksi } from "./tinjauan-seleksi";
 import { DaftarTautan } from "./tugaskan";
-import type { PaketCbt, PenugasanCbt } from "@/lib/types";
+import { tautanHasilCbt } from "@/lib/lingkup-cbt";
+import type { LingkupCbt, PaketCbt, PenugasanCbt } from "@/lib/types";
 
 /**
  * Peserta satu paket: memantau statusnya, membatalkan yang belum dimulai,
@@ -22,7 +24,7 @@ import type { PaketCbt, PenugasanCbt } from "@/lib/types";
  * saat ditugaskan). Ada di sini, bukan hanya di tab Hasil, supaya pemegang
  * cbt.ubah tanpa akses hasil tetap bisa membereskan penugasannya.
  */
-export const DialogPesertaPaket = ({ paket, onClose }: { paket: PaketCbt; onClose: () => void }) => {
+export const DialogPesertaPaket = ({ paket, scope, onClose }: { paket: PaketCbt; scope: LingkupCbt; onClose: () => void }) => {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const bolehBatal = punyaIzin(saya, "cbt.ubah");
@@ -32,16 +34,17 @@ export const DialogPesertaPaket = ({ paket, onClose }: { paket: PaketCbt; onClos
   const [tautan, setTautan] = React.useState<{ assignmentId: string; nama: string; token: string } | null>(null);
 
   const daftar = useQuery({
-    queryKey: ["cbt", "penugasan", paket.id],
-    queryFn: async () => ambilSemua<PenugasanCbt>("/cbt/penugasan", { testId: paket.id }),
+    queryKey: ["cbt", "penugasan", scope, paket.id],
+    queryFn: async () => ambilSemua<PenugasanCbt>("/cbt/penugasan", { testId: paket.id, scope }),
   });
 
   const nama = (a: PenugasanCbt) => a.employee?.name ?? a.candidate?.name ?? "Peserta";
 
   const batalkan = useMutation({
-    mutationFn: async (a: PenugasanCbt) => api.delete(`/cbt/penugasan/${a.id}`),
+    mutationFn: async (a: PenugasanCbt) => api.delete(`/cbt/penugasan/${a.id}?scope=${scope}`),
     onSuccess: (_, a) => {
       qc.invalidateQueries({ queryKey: ["cbt"] });
+      qc.invalidateQueries({ queryKey: ["kandidat"] });
       notifikasi.sukses("Penugasan dibatalkan", nama(a));
       setBatal(null);
     },
@@ -49,7 +52,7 @@ export const DialogPesertaPaket = ({ paket, onClose }: { paket: PaketCbt; onClos
   });
 
   const buatTautan = useMutation({
-    mutationFn: async (a: PenugasanCbt) => (await api.post<{ assignmentId: string; token: string }>(`/cbt/penugasan/${a.id}/tautan`)).data,
+    mutationFn: async (a: PenugasanCbt) => (await api.post<{ assignmentId: string; token: string }>(`/cbt/penugasan/${a.id}/tautan?scope=${scope}`)).data,
     onSuccess: (d, a) => setTautan({ assignmentId: d.assignmentId, nama: nama(a), token: d.token }),
     onError: (e) => notifikasi.galat(e, "Tautan baru gagal dibuat"),
   });
@@ -86,8 +89,9 @@ export const DialogPesertaPaket = ({ paket, onClose }: { paket: PaketCbt; onClos
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
                     <Badge tone={nadaStatus(a.status)} dot>{LABEL_STATUS_TES[a.status] ?? a.status}</Badge>
+                    {scope === "recruitment" && <BadgeTinjauanSeleksi tugas={a} />}
                     {selesai && a.attempt && bolehHasil && (
-                      <Link href={`/cbt/hasil/${a.attempt.id}`}><Button size="sm" variant="ghost"><Eye className="h-4 w-4" aria-hidden /> Hasil</Button></Link>
+                      <Link href={tautanHasilCbt(scope, a.attempt.id)}><Button size="sm" variant="ghost"><Eye className="h-4 w-4" aria-hidden /> Hasil</Button></Link>
                     )}
                     {bolehTautan && a.candidate && (a.status === "assigned" || a.status === "in_progress") && (
                       <Button size="sm" variant="outline" onClick={() => buatTautan.mutate(a)} loading={buatTautan.isPending && buatTautan.variables?.id === a.id}>

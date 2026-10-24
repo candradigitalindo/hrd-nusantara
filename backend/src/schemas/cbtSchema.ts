@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { ulidField, dateField, paginationFields } from './common';
 import { TINGKAT_SOAL, TIPE_SOAL } from '../utils/cbt';
 
+export const CBT_SCOPES = ['recruitment', 'development'] as const;
+const scopeField = z.enum(CBT_SCOPES).optional();
+
 const teksPendek = z.string().trim().min(1).max(200);
 const persen = z.coerce.number().min(0).max(100);
 
@@ -22,6 +25,7 @@ const pilihan = z
 // --- Bank soal ---
 
 const soalDasar = {
+  scope: scopeField,
   category: teksPendek,
   difficulty: z.enum(TINGKAT_SOAL).default('sedang'),
   type: z.enum(TIPE_SOAL),
@@ -126,6 +130,7 @@ export const createQuestionSchema = z.object(soalDasar).strict().superRefine(per
 
 export const updateQuestionSchema = z
   .object({
+    scope: scopeField,
     category: teksPendek.optional(),
     difficulty: z.enum(TINGKAT_SOAL).optional(),
     type: z.enum(TIPE_SOAL).optional(),
@@ -144,6 +149,7 @@ export const updateQuestionSchema = z
 
 export const listQuestionQuerySchema = z
   .object({
+    scope: scopeField,
     ...paginationFields,
     category: z.string().trim().max(200).optional(),
     type: z.enum(TIPE_SOAL).optional(),
@@ -161,6 +167,7 @@ export const STATUS_TES = ['draft', 'published', 'archived'] as const;
 
 export const createTestSchema = z
   .object({
+    scope: scopeField,
     code: z
       .string()
       .trim()
@@ -170,7 +177,7 @@ export const createTestSchema = z
     title: z.string().trim().min(3).max(150),
     description: z.string().trim().max(2000).nullable().optional(),
     descriptionHtml: z.string().max(200_000).nullable().optional(),
-    audience: z.enum(AUDIENS).default('keduanya'),
+    audience: z.enum(AUDIENS).optional(),
     durationMinutes: z.coerce.number().int().min(1).max(600),
     passingScore: persen.nullable().optional(),
     shuffleQuestions: z.boolean().default(true),
@@ -193,6 +200,7 @@ export const createTestSchema = z
  */
 export const updateTestSchema = z
   .object({
+    scope: scopeField,
     code: z
       .string()
       .trim()
@@ -219,6 +227,7 @@ export const updateTestSchema = z
 
 export const setTestQuestionsSchema = z
   .object({
+    scope: scopeField,
     questions: z
       .array(z.object({ questionId: ulidField, points: z.coerce.number().min(0.5).max(100).nullable().optional() }).strict())
       .min(1, 'Paket tes butuh minimal satu soal')
@@ -230,7 +239,9 @@ export const setTestQuestionsSchema = z
 
 export const createAssignmentSchema = z
   .object({
+    scope: scopeField,
     testId: ulidField,
+    required: z.boolean().optional(),
     employeeIds: z.array(ulidField).max(500).default([]),
     candidateIds: z.array(ulidField).max(500).default([]),
     availableFrom: dateField.nullable().optional(),
@@ -252,6 +263,7 @@ export const createAssignmentSchema = z
 
 export const listAssignmentQuerySchema = z
   .object({
+    scope: scopeField,
     ...paginationFields,
     testId: ulidField.optional(),
     employeeId: ulidField.optional(),
@@ -309,6 +321,7 @@ export const proctorPhotoSchema = z.object({ image: z.string().min(100).max(4_00
 
 export const gradeAttemptSchema = z
   .object({
+    scope: scopeField,
     scores: z
       .array(
         z
@@ -340,3 +353,7 @@ export type SaveAnswersInput = z.infer<typeof saveAnswersSchema>;
 export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
 export type ProctorEventInput = z.infer<typeof proctorEventSchema>;
 export type GradeAttemptInput = z.infer<typeof gradeAttemptSchema>;
+
+export const reviewAssignmentSchema = z.object({ scope: scopeField, attemptUpdatedAt: dateField }).strict();
+
+export const selectionAssignmentSchema = z.object({ scope: scopeField, required: z.boolean(), reason: z.string().trim().min(5).max(500) }).strict();

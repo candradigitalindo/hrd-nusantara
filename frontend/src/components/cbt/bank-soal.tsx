@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { ListChecks, Pencil, Plus, RotateCcw, Search, Trash2, X, Save } from "lucide-react";
 import { api } from "@/lib/api";
+import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { Button, TombolAksi } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
-import type { Halaman, PilihanSoal, SoalCbt, TingkatSoalCbt, TipeSoalCbt } from "@/lib/types";
+import type { LingkupCbt, Halaman, PilihanSoal, SoalCbt, TingkatSoalCbt, TipeSoalCbt } from "@/lib/types";
 import { EditorTeks } from "@/components/ui/editor-teks";
 
 export const LABEL_TIPE_SOAL: Record<TipeSoalCbt, string> = {
@@ -75,8 +76,10 @@ const kosong: FormSoal = {
 };
 
 /** Bank soal: sumber butir untuk semua paket tes. */
-export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: boolean; bolehUbah: boolean; bolehHapus: boolean }) => {
+export const BankSoal = ({ scope, bolehBuat, bolehUbah, bolehHapus }: { scope: LingkupCbt; bolehBuat: boolean; bolehUbah: boolean; bolehHapus: boolean }) => {
   const qc = useQueryClient();
+  const { data: saya } = useSesi();
+  const bolehSoalBersama = punyaIzin(saya, "rekrutmen.lihat", "rekrutmen.buat", "rekrutmen.ubah", "rekrutmen.hapus");
   const [page, setPage] = React.useState(1);
   const [cari, setCari] = React.useState("");
   const [kategori, setKategori] = React.useState("");
@@ -84,7 +87,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   const [form, setForm] = React.useState<{ open: boolean; item: SoalCbt | null }>({ open: false, item: null });
   const [hapus, setHapus] = React.useState<SoalCbt | null>(null);
 
-  const params = new URLSearchParams({ page: String(page), limit: "20", includeInactive: "true" });
+  const params = new URLSearchParams({ page: String(page), limit: "20", includeInactive: "true", scope });
   if (cari) params.set("search", cari);
   if (kategori) params.set("category", kategori);
   if (tipe) params.set("type", tipe);
@@ -95,8 +98,8 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
     placeholderData: (p) => p,
   });
   const kategoriTersedia = useQuery({
-    queryKey: ["cbt", "soal", "kategori"],
-    queryFn: async () => (await api.get<{ data: { category: string; jumlah: number }[] }>("/cbt/soal/kategori")).data.data,
+    queryKey: ["cbt", "soal", "kategori", scope],
+    queryFn: async () => (await api.get<{ data: { category: string; jumlah: number }[] }>(`/cbt/soal/kategori?scope=${scope}`)).data.data,
   });
 
   const f = useForm<FormSoal>({ defaultValues: kosong });
@@ -148,7 +151,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
       if (form.item && terkunci) {
         // Hanya bagian yang tidak menyentuh penilaian; mengirim kunci/bobot
         // ikut membuat server menolak seluruh suntingan.
-        return api.put(`/cbt/soal/${form.item.id}`, {
+        return api.put(`/cbt/soal/${form.item.id}?scope=${scope}`, {
           category: v.category,
           difficulty: v.difficulty,
           textHtml: v.text,
@@ -176,7 +179,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                 }
               : { options: pilihan, answerKey: daftarKunci(v.kunci).filter((k) => pilihan.some((o) => o.kode === k)) }),
       };
-      return form.item ? api.put(`/cbt/soal/${form.item.id}`, body) : api.post("/cbt/soal", body);
+      return form.item ? api.put(`/cbt/soal/${form.item.id}?scope=${scope}`, body) : api.post(`/cbt/soal?scope=${scope}`, { ...body, scope });
     },
     onSuccess: () => {
       segarkan();
@@ -190,13 +193,13 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
   // paket standar Big Five, yang tidak bisa dibuat ulang) tidak bisa
   // ditugaskan lagi setelah satu butirnya terhapus tidak sengaja.
   const aktifkan = useMutation({
-    mutationFn: async (s: SoalCbt) => api.put(`/cbt/soal/${s.id}`, { isActive: true }),
+    mutationFn: async (s: SoalCbt) => api.put(`/cbt/soal/${s.id}?scope=${scope}`, { isActive: true }),
     onSuccess: () => { segarkan(); notifikasi.sukses("Soal diaktifkan lagi"); },
     onError: (e) => notifikasi.galat(e, "Gagal mengaktifkan soal"),
   });
 
   const buang = useMutation({
-    mutationFn: async (s: SoalCbt) => api.delete(`/cbt/soal/${s.id}`),
+    mutationFn: async (s: SoalCbt) => api.delete(`/cbt/soal/${s.id}?scope=${scope}`),
     onSuccess: () => { segarkan(); notifikasi.sukses("Soal dihapus atau dinonaktifkan"); setHapus(null); },
     onError: (e) => { notifikasi.galat(e, "Gagal menghapus"); setHapus(null); },
   });
@@ -223,7 +226,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
         {soal.isLoading ? (
           <SkeletonBaris />
         ) : !soal.data?.data.length ? (
-          <EmptyState icon={ListChecks} title="Belum ada soal" description="Bank soal dipakai bersama oleh semua paket tes, jadi satu butir cukup ditulis sekali." />
+          <EmptyState icon={ListChecks} title="Belum ada soal" description="Tambahkan butir untuk paket pada bagian ini. Soal lama yang dipakai bersama tetap ditandai." />
         ) : (
           <>
             <ul className="divide-y divide-border">
@@ -232,6 +235,7 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge tone="neutral">{s.category}</Badge>
+                      {s.scope === "shared" && <Badge tone="info">Soal bersama (lama)</Badge>}
                       <span className="text-xs text-muted">{LABEL_TIPE_SOAL[s.type]} · {LABEL_TINGKAT[s.difficulty]} · {s.points} poin</span>
                       {!s.isActive && <Badge tone="danger">Nonaktif</Badge>}
                       {s._count.answers > 0 && <Badge tone="warning">Sudah dijawab {s._count.answers}×</Badge>}
@@ -239,9 +243,9 @@ export const BankSoal = ({ bolehBuat, bolehUbah, bolehHapus }: { bolehBuat: bool
                     <p className="mt-1 line-clamp-2 text-sm">{s.text}</p>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
-                    {bolehUbah && !s.isActive && <TombolAksi icon={RotateCcw} label={`Aktifkan lagi soal ${s.category}`} onClick={() => aktifkan.mutate(s)} />}
-                    {bolehUbah && <TombolAksi icon={Pencil} label={`Sunting soal ${s.category}`} onClick={() => setForm({ open: true, item: s })} />}
-                    {bolehHapus && s.isActive && <TombolAksi icon={Trash2} label={`Hapus soal ${s.category}`} tone="bahaya" onClick={() => setHapus(s)} />}
+                    {bolehUbah && (s.scope !== "shared" || bolehSoalBersama) && !s.isActive && <TombolAksi icon={RotateCcw} label={`Aktifkan lagi soal ${s.category}`} onClick={() => aktifkan.mutate(s)} />}
+                    {bolehUbah && (s.scope !== "shared" || bolehSoalBersama) && <TombolAksi icon={Pencil} label={`Sunting soal ${s.category}`} onClick={() => setForm({ open: true, item: s })} />}
+                    {bolehHapus && (s.scope !== "shared" || bolehSoalBersama) && s.isActive && <TombolAksi icon={Trash2} label={`Hapus soal ${s.category}`} tone="bahaya" onClick={() => setHapus(s)} />}
                   </div>
                 </li>
               ))}

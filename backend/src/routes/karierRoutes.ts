@@ -9,6 +9,7 @@ import { env } from '../config/env';
 import {
   daftar,
   fotoTes,
+  gambarSoalTes,
   gantiSandi,
   getLowonganPublik,
   getLowonganPublikById,
@@ -36,7 +37,7 @@ import {
   ubahProfilPelamarSchema,
   unggahCvSchema,
 } from '../schemas/karierSchema';
-import { proctorEventSchema, proctorPhotoSchema, saveAnswersSchema, submitAttemptSchema } from '../schemas/cbtSchema';
+import { questionIdParamSchema, proctorEventSchema, proctorPhotoSchema, saveAnswersSchema, submitAttemptSchema } from '../schemas/cbtSchema';
 
 const router = express.Router();
 
@@ -96,6 +97,7 @@ router.post('/lamar', authPelamar, batasTulisPublik, validate(lamarSchema), asyn
 router.get('/lamaran/:id', authPelamar, validate(idParamSchema, 'params'), asyncHandler(lamaranSaya));
 
 // --- Tes CBT dari portal ---
+router.get('/tes/:id/soal/:questionId/gambar', authPelamar, validate(questionIdParamSchema, 'params'), asyncHandler(gambarSoalTes));
 router.post('/tes/:id/mulai', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), asyncHandler(mulaiTes));
 router.put('/tes/:id/jawaban', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), validate(saveAnswersSchema), asyncHandler(simpanJawabanTes));
 router.post('/tes/:id/kirim', authPelamar, batasPengerjaan, validate(idParamSchema, 'params'), validate(submitAttemptSchema), asyncHandler(kirimTes));

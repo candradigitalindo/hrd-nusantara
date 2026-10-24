@@ -15,6 +15,8 @@ import { decryptBytes } from '../utils/fieldCrypto';
 import { bacaPilihan, dinilaiOtomatis, jenisPaket, rentangSkala, ringkasKategori, type JenisPaket } from '../utils/cbt';
 import { GalatCbt, hashToken, hitungUlangNilai, tutupPengerjaanKedaluwarsa } from '../services/cbt/attempt';
 import { buatPaketKepribadianBig5, interpretasiDimensi } from '../services/cbt/kepribadian';
+import { currentScope, scopeAudience, audienceScope, packageWhere, questionWhere, assignmentWhere, allowResource, canAccessRecruitment } from '../services/cbt/scope';
+import { lockCandidate, selectionAssignmentSelect, selectionCompletionProblem } from '../services/cbt/selection';
 import { masalahBentukSoal } from '../schemas/cbtSchema';
 import type {
   CreateAssignmentInput,
@@ -32,6 +34,7 @@ import type {
 
 const soalSelect = {
   id: true,
+  scope: true,
   category: true,
   difficulty: true,
   type: true,
@@ -81,7 +84,7 @@ export const getQuestions = async (req: Request, res: Response) => {
   const { page, limit, category, type, difficulty, search, includeInactive } =
     req.query as unknown as ListQuestionQuery;
 
-  const where: Prisma.CbtQuestionWhereInput = {};
+  const where: Prisma.CbtQuestionWhereInput = questionWhere(res);
   if (!includeInactive) where.isActive = true;
   if (category) where.category = category;
   if (type) where.type = type;
@@ -106,7 +109,7 @@ export const getQuestions = async (req: Request, res: Response) => {
 export const getQuestionCategories = async (_req: Request, res: Response) => {
   const kategori = await prisma.cbtQuestion.groupBy({
     by: ['category'],
-    where: { isActive: true },
+    where: { isActive: true, ...questionWhere(res) },
     _count: { _all: true },
     orderBy: { category: 'asc' },
   });
@@ -131,6 +134,7 @@ export const createQuestion = async (req: Request, res: Response) => {
   const soal = await prisma.cbtQuestion.create({
     data: {
       id: generateULID(),
+      scope: currentScope(res),
       category: input.category,
       difficulty: input.difficulty,
       type: input.type,
@@ -162,17 +166,32 @@ export const updateQuestion = async (req: Request, res: Response) => {
 
   const lama = await prisma.cbtQuestion.findUnique({ where: { id: req.params.id }, select: soalSelect });
   if (!lama) return res.status(404).json({ error: 'Soal tidak ditemukan' });
+  if (!allowResource(req, res, lama.scope, true)) return;
 
   // Soal yang sudah pernah dijawab tidak boleh berubah bentuk atau kuncinya:
   // hasil yang sudah keluar dihitung dengan kunci lama, dan mengubahnya
   // membuat nilai lama tidak bisa dipertanggungjawabkan. Nonaktifkan lalu
   // buat versi baru.
   const menyentuhPenilaian =
-    input.type !== undefined || input.answerKey !== undefined || input.options !== undefined || input.points !== undefined;
+    (input.type !== undefined && input.type !== lama.type) ||
+    (input.answerKey !== undefined && JSON.stringify(input.answerKey) !== JSON.stringify(lama.answerKey)) ||
+    (input.options !== undefined && JSON.stringify(bacaPilihan(input.options)) !== JSON.stringify(bacaPilihan(lama.options))) ||
+    (input.points !== undefined && input.points !== lama.points);
   if (lama._count.answers > 0 && menyentuhPenilaian) {
     return res.status(409).json({
       error: `Soal ini sudah dijawab ${lama._count.answers} kali. Kunci, pilihan, tipe, dan bobotnya tidak bisa diubah — nonaktifkan soal ini lalu buat versi barunya.`,
     });
+  }
+
+  const isiSoal = pasanganTeks(input.textHtml, input.text);
+  const mengubahBuktiSeleksi =
+    (input.category !== undefined && input.category !== lama.category) ||
+    (isiSoal !== null && (isiSoal.teks !== lama.text || isiSoal.html !== lama.textHtml)) ||
+    (input.rubric !== undefined && input.rubric !== lama.rubric) ||
+    (input.explanation !== undefined && input.explanation !== lama.explanation) ||
+    (input.image !== undefined && (Boolean(input.image) || lama.imagePath !== null));
+  if (lama.scope !== 'development' && lama._count.answers > 0 && mengubahBuktiSeleksi) {
+    return res.status(409).json({ error: 'Materi seleksi ini sudah dijawab. Kategori, isi, rubrik, pembahasan, dan gambar menjadi bagian riwayat; buat versi soal baru untuk perubahan.' });
   }
 
   // Bentuk soal diperiksa seperti saat dibuat, terhadap gabungan isian baru
@@ -202,7 +221,6 @@ export const updateQuestion = async (req: Request, res: Response) => {
   if (input.category !== undefined) data.category = input.category;
   if (input.difficulty !== undefined) data.difficulty = input.difficulty;
   if (input.type !== undefined) data.type = input.type;
-  const isiSoal = pasanganTeks(input.textHtml, input.text);
   if (isiSoal) {
     data.text = isiSoal.teks;
     data.textHtml = isiSoal.html;
@@ -234,6 +252,7 @@ export const updateQuestion = async (req: Request, res: Response) => {
 export const deleteQuestion = async (req: Request, res: Response) => {
   const soal = await prisma.cbtQuestion.findUnique({ where: { id: req.params.id }, select: soalSelect });
   if (!soal) return res.status(404).json({ error: 'Soal tidak ditemukan' });
+  if (!allowResource(req, res, soal.scope, true)) return;
 
   // Soal yang pernah dijawab adalah bagian dari hasil yang sudah terbit:
   // dinonaktifkan supaya tidak terpakai lagi, tapi barisnya tetap ada.
@@ -262,10 +281,19 @@ export const deleteQuestion = async (req: Request, res: Response) => {
   res.status(204).send();
 };
 
-/** Gambar soal. Dipakai pengelola maupun peserta, jadi izinnya cukup cbt.lihat. */
+/** Managers use the chosen scope; participants may only read their assigned question. */
 export const getQuestionImage = async (req: Request, res: Response) => {
-  const soal = await prisma.cbtQuestion.findUnique({ where: { id: req.params.id }, select: { imagePath: true } });
+  const soal = await prisma.cbtQuestion.findUnique({ where: { id: req.params.id }, select: { imagePath: true, scope: true } });
   if (!soal?.imagePath) return res.status(404).json({ error: 'Soal ini tidak punya gambar' });
+  const manager = ['cbt_soal.lihat', 'cbt.buat', 'cbt.ubah', 'cbt_hasil.lihat'].some((p) => req.user!.permissions.includes(p));
+  const scope = req.query.scope ?? 'development';
+  if (scope !== 'development' && scope !== 'recruitment') return res.status(400).json({ error: 'Lingkup tes tidak sah' });
+  const inScope = soal.scope === scope || soal.scope === 'shared';
+  const adminAllowed = manager && inScope && (scope !== 'recruitment' || canAccessRecruitment(req));
+  if (!adminAllowed) {
+    const own = await prisma.cbtAssignment.findFirst({ where: { employeeId: req.user!.id, test: { questions: { some: { questionId: req.params.id } } } }, select: { id: true } });
+    if (!own) return res.status(404).json({ error: 'Gambar tidak ditemukan' });
+  }
   await kirimGambar(res, soal.imagePath, false);
 };
 
@@ -315,7 +343,7 @@ const soalNonaktifDiPaket = (testId: string) =>
 export const getTests = async (req: Request, res: Response) => {
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
   const daftar = await prisma.cbtTest.findMany({
-    where: status ? { status } : {},
+    where: { ...packageWhere(res), ...(status ? { status } : {}) },
     select: paketSelect,
     orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
   });
@@ -326,11 +354,13 @@ export const getTests = async (req: Request, res: Response) => {
 /**
  * Paket standar inventori kepribadian Big Five (IPIP-50, domain publik):
  * 50 butir skala + paket siap tugas, dibuat sekali. HR tinggal menugaskannya
- * ke pelamar atau karyawan; hasilnya profil per dimensi, bukan kelulusan.
+ * ke pelamar; hasilnya profil per dimensi, bukan kelulusan.
  */
 export const createStandardPersonalityTest = async (req: Request, res: Response) => {
+  if (currentScope(res) !== 'recruitment') return res.status(400).json({ error: 'Paket standar ini dibuat untuk seleksi pelamar' });
   const { id, dibuat, butirBaru } = await buatPaketKepribadianBig5(req.user!.id);
   const paket = await prisma.cbtTest.findUniqueOrThrow({ where: { id }, select: paketSelect });
+  if (!allowResource(req, res, audienceScope(paket.audience))) return;
   if (dibuat) {
     res.locals.audit = {
       action: 'cbt.tes.buat',
@@ -358,6 +388,7 @@ export const getTestById = async (req: Request, res: Response) => {
     },
   });
   if (!paket) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
+  if (!allowResource(req, res, audienceScope(paket.audience))) return;
 
   const totalPoin = paket.questions.reduce((n, q) => n + (q.points ?? q.question.points), 0);
   res.json({ ...paket, totalPoin, kind: jenisPaket(paket.questions.map((q) => q.question.type)) });
@@ -365,6 +396,7 @@ export const getTestById = async (req: Request, res: Response) => {
 
 export const createTest = async (req: Request, res: Response) => {
   const input = req.body as CreateTestInput;
+  if (input.audience !== undefined && input.audience !== scopeAudience(res)) return res.status(400).json({ error: 'Peserta paket harus sesuai lingkup seleksi pelamar atau pengembangan karyawan' });
   try {
     const paket = await prisma.cbtTest.create({
       data: {
@@ -373,7 +405,7 @@ export const createTest = async (req: Request, res: Response) => {
         title: input.title,
         description: pasanganTeks(input.descriptionHtml, input.description)?.teks ?? input.description ?? null,
         descriptionHtml: pasanganTeks(input.descriptionHtml, input.description)?.html ?? null,
-        audience: input.audience,
+        audience: scopeAudience(res),
         durationMinutes: input.durationMinutes,
         passingScore: input.passingScore ?? null,
         shuffleQuestions: input.shuffleQuestions,
@@ -401,6 +433,8 @@ export const updateTest = async (req: Request, res: Response) => {
 
   const lama = await prisma.cbtTest.findUnique({ where: { id: req.params.id }, select: paketSelect });
   if (!lama) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
+  if (!allowResource(req, res, audienceScope(lama.audience), true)) return;
+  if (input.audience !== undefined && input.audience !== lama.audience) return res.status(409).json({ error: 'Lingkup paket tidak dapat dipindahkan. Buat paket baru agar riwayat peserta tetap utuh' });
 
   // Aturan main yang berubah di tengah jalan akan membuat dua peserta
   // dinilai dengan ukuran berbeda pada tes yang sama.
@@ -473,6 +507,7 @@ export const updateTest = async (req: Request, res: Response) => {
 export const deleteTest = async (req: Request, res: Response) => {
   const paket = await prisma.cbtTest.findUnique({ where: { id: req.params.id }, select: paketSelect });
   if (!paket) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
+  if (!allowResource(req, res, audienceScope(paket.audience), true)) return;
   if (paket._count.assignments > 0) {
     return res.status(409).json({ error: 'Paket yang sudah ditugaskan tidak bisa dihapus. Arsipkan saja supaya hasilnya tetap bisa dibuka.' });
   }
@@ -491,6 +526,7 @@ export const setTestQuestions = async (req: Request, res: Response) => {
 
   const paket = await prisma.cbtTest.findUnique({ where: { id: req.params.id }, select: paketSelect });
   if (!paket) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
+  if (!allowResource(req, res, audienceScope(paket.audience), true)) return;
   if (paket._count.assignments > 0) {
     return res.status(409).json({ error: 'Isi paket tidak bisa diubah setelah ditugaskan. Arsipkan lalu buat paket baru.' });
   }
@@ -498,8 +534,10 @@ export const setTestQuestions = async (req: Request, res: Response) => {
   const id = questions.map((q) => q.questionId);
   if (new Set(id).size !== id.length) return res.status(400).json({ error: 'Ada soal yang dimasukkan dua kali' });
 
-  const ada = await prisma.cbtQuestion.findMany({ where: { id: { in: id } }, select: { id: true, isActive: true, type: true } });
+  const ada = await prisma.cbtQuestion.findMany({ where: { id: { in: id } }, select: { id: true, isActive: true, type: true, scope: true } });
   if (ada.length !== id.length) return res.status(400).json({ error: 'Ada soal yang tidak ditemukan' });
+  const scope = audienceScope(paket.audience);
+  if (ada.some((q) => q.scope !== 'shared' && q.scope !== scope)) return res.status(400).json({ error: 'Soal berasal dari lingkup tes lain' });
   const nonaktif = ada.filter((s) => !s.isActive);
   if (nonaktif.length > 0) return res.status(400).json({ error: 'Soal nonaktif tidak bisa dimasukkan ke paket' });
 
@@ -546,6 +584,9 @@ const penugasanSelect = {
   id: true,
   testId: true,
   status: true,
+  required: true,
+  reviewedAt: true,
+  reviewedBy: { select: { id: true, name: true } },
   note: true,
   availableFrom: true,
   availableUntil: true,
@@ -559,6 +600,7 @@ const penugasanSelect = {
       id: true,
       startedAt: true,
       submittedAt: true,
+      updatedAt: true,
       autoSubmitted: true,
       scoreTotal: true,
       maxScore: true,
@@ -574,12 +616,13 @@ export const getAssignments = async (req: Request, res: Response) => {
   const { page, limit, testId, employeeId, candidateId, status } = req.query as unknown as ListAssignmentQuery;
   // Pengerjaan yang ditinggalkan setelah batas waktu ditutup dulu, supaya
   // daftar ini tidak memuat "sedang dikerjakan" yang sebenarnya sudah habis.
-  await tutupPengerjaanKedaluwarsa(testId ? { assignment: { testId } } : {});
+  await tutupPengerjaanKedaluwarsa({ assignment: { ...assignmentWhere(res), ...(testId ? { testId } : {}) } });
   const where: Prisma.CbtAssignmentWhereInput = {
     ...(testId && { testId }),
     ...(employeeId && { employeeId }),
     ...(candidateId && { candidateId }),
     ...(status && { status }),
+    AND: [assignmentWhere(res)],
   };
 
   const [total, data] = await Promise.all([
@@ -608,9 +651,12 @@ const buatToken = () => randomBytes(32).toString('base64url');
 export const createAssignments = async (req: Request, res: Response) => {
   const input = req.body as CreateAssignmentInput;
   const aktor = req.user!;
+  if ((currentScope(res) === 'recruitment' && input.employeeIds.length > 0) || (currentScope(res) === 'development' && input.candidateIds.length > 0)) return res.status(400).json({ error: 'Peserta tidak sesuai lingkup penugasan' });
+  if (input.employeeIds.length > 0 && input.required) return res.status(400).json({ error: 'Tes wajib seleksi hanya berlaku bagi pelamar' });
 
   const paket = await prisma.cbtTest.findUnique({ where: { id: input.testId }, select: paketSelect });
   if (!paket) return res.status(404).json({ error: 'Paket tes tidak ditemukan' });
+  if (!allowResource(req, res, audienceScope(paket.audience))) return;
   if (paket.status !== 'published') return res.status(409).json({ error: 'Hanya paket yang sudah ditayangkan yang bisa ditugaskan' });
   if (paket._count.questions === 0) return res.status(409).json({ error: 'Paket ini belum punya soal' });
   // Soal yang dinonaktifkan tidak boleh diujikan ke peserta baru.
@@ -640,59 +686,71 @@ export const createAssignments = async (req: Request, res: Response) => {
   // Penugasan ganda pada paket yang sama hanya menimbulkan kebingungan
   // "yang mana yang harus dikerjakan"; ujian ulang diberikan setelah yang
   // lama selesai, bukan berbarengan.
-  const sudahAda = await prisma.cbtAssignment.findMany({
-    where: {
-      testId: paket.id,
-      status: { in: ['assigned', 'in_progress'] },
-      OR: [{ employeeId: { in: input.employeeIds } }, { candidateId: { in: input.candidateIds } }],
-    },
-    select: { employeeId: true, candidateId: true },
-  });
-  const lewatiKaryawan = new Set(sudahAda.map((a) => a.employeeId).filter(Boolean) as string[]);
-  const lewatiPelamar = new Set(sudahAda.map((a) => a.candidateId).filter(Boolean) as string[]);
+  const lewatiKaryawan = new Set<string>();
+  const lewatiPelamar = new Set<string>();
 
   const tautan: { assignmentId: string; nama: string; token: string }[] = [];
   const dibuat: string[] = [];
 
-  await prisma.$transaction(async (tx) => {
-    for (const k of karyawan) {
-      if (lewatiKaryawan.has(k.id)) continue;
-      const a = await tx.cbtAssignment.create({
-        data: {
-          id: generateULID(),
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const p of [...pelamar].sort((a, b) => a.id.localeCompare(b.id))) await lockCandidate(tx, p.id, true);
+      const sudahAda = await tx.cbtAssignment.findMany({
+        where: {
           testId: paket.id,
-          employeeId: k.id,
-          availableFrom: input.availableFrom ?? null,
-          availableUntil: input.availableUntil ?? null,
-          note: input.note ?? null,
-          assignedById: aktor.id,
+          status: { in: ['assigned', 'in_progress'] },
+          OR: [{ employeeId: { in: input.employeeIds } }, { candidateId: { in: input.candidateIds } }],
         },
-        select: { id: true },
+        select: { employeeId: true, candidateId: true },
       });
-      dibuat.push(a.id);
-    }
-    for (const p of pelamar) {
-      if (lewatiPelamar.has(p.id)) continue;
-      // Pelamar belum punya akun: tautan bertoken adalah kunci masuknya.
-      // Yang disimpan hanya sidik SHA-256-nya, seperti kata sandi.
-      const token = buatToken();
-      const a = await tx.cbtAssignment.create({
-        data: {
-          id: generateULID(),
-          testId: paket.id,
-          candidateId: p.id,
-          accessTokenHash: hashToken(token),
-          availableFrom: input.availableFrom ?? null,
-          availableUntil: input.availableUntil ?? null,
-          note: input.note ?? null,
-          assignedById: aktor.id,
-        },
-        select: { id: true },
-      });
-      dibuat.push(a.id);
-      tautan.push({ assignmentId: a.id, nama: p.name, token });
-    }
-  });
+
+      for (const a of sudahAda) {
+        if (a.employeeId) lewatiKaryawan.add(a.employeeId);
+        if (a.candidateId) lewatiPelamar.add(a.candidateId);
+      }
+      for (const k of karyawan) {
+        if (lewatiKaryawan.has(k.id)) continue;
+        const a = await tx.cbtAssignment.create({
+          data: {
+            id: generateULID(),
+            testId: paket.id,
+            employeeId: k.id,
+            availableFrom: input.availableFrom ?? null,
+            availableUntil: input.availableUntil ?? null,
+            note: input.note ?? null,
+            assignedById: aktor.id,
+          },
+          select: { id: true },
+        });
+        dibuat.push(a.id);
+      }
+      for (const p of pelamar) {
+        if (lewatiPelamar.has(p.id)) continue;
+        // Pelamar belum punya akun: tautan bertoken adalah kunci masuknya.
+        // Yang disimpan hanya sidik SHA-256-nya, seperti kata sandi.
+        const token = buatToken();
+        const a = await tx.cbtAssignment.create({
+          data: {
+            id: generateULID(),
+            testId: paket.id,
+            candidateId: p.id,
+            required: input.required ?? true,
+            accessTokenHash: hashToken(token),
+            availableFrom: input.availableFrom ?? null,
+            availableUntil: input.availableUntil ?? null,
+            note: input.note ?? null,
+            assignedById: aktor.id,
+          },
+          select: { id: true },
+        });
+        dibuat.push(a.id);
+        tautan.push({ assignmentId: a.id, nama: p.name, token });
+      }
+    });
+  } catch (e) {
+    if (tanganiGalatCbt(e, res)) return;
+    throw e;
+  }
 
   res.locals.audit = {
     action: 'cbt.tugaskan',
@@ -717,6 +775,7 @@ export const regenerateAssignmentToken = async (req: Request, res: Response) => 
     select: { id: true, candidateId: true, status: true, candidate: { select: { name: true } } },
   });
   if (!penugasan) return res.status(404).json({ error: 'Penugasan tidak ditemukan' });
+  if (!allowResource(req, res, penugasan.candidateId ? 'recruitment' : 'development')) return;
   if (!penugasan.candidateId) return res.status(400).json({ error: 'Tautan hanya untuk peserta pelamar; karyawan masuk lewat akunnya' });
   if (penugasan.status === 'submitted' || penugasan.status === 'graded') {
     return res.status(409).json({ error: 'Tes ini sudah dikerjakan' });
@@ -737,9 +796,10 @@ export const regenerateAssignmentToken = async (req: Request, res: Response) => 
 export const deleteAssignment = async (req: Request, res: Response) => {
   const penugasan = await prisma.cbtAssignment.findUnique({
     where: { id: req.params.id },
-    select: { id: true, status: true, test: { select: { title: true } }, attempt: { select: { id: true } } },
+    select: { id: true, candidateId: true, status: true, test: { select: { title: true } }, attempt: { select: { id: true } } },
   });
   if (!penugasan) return res.status(404).json({ error: 'Penugasan tidak ditemukan' });
+  if (!allowResource(req, res, penugasan.candidateId ? 'recruitment' : 'development')) return;
   // Dijaga dari keberadaan pengerjaan, bukan nama status: menghapus penugasan
   // ikut menghapus pengerjaannya (cascade), jadi yang sudah dimulai tidak
   // boleh terhapus apa pun statusnya. Yang belum pernah dimulai — termasuk
@@ -748,7 +808,15 @@ export const deleteAssignment = async (req: Request, res: Response) => {
     return res.status(409).json({ error: 'Penugasan yang sudah dimulai atau dikerjakan tidak bisa dibatalkan; hasilnya bagian dari riwayat.' });
   }
 
-  await prisma.cbtAssignment.delete({ where: { id: penugasan.id } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (penugasan.candidateId) await lockCandidate(tx, penugasan.candidateId, true);
+      await tx.$queryRaw`SELECT "id" FROM "CbtAssignment" WHERE "id" = ${penugasan.id} FOR UPDATE`;
+      const current = await tx.cbtAssignment.findUnique({ where: { id: penugasan.id }, select: { attempt: { select: { id: true } } } });
+      if (!current || current.attempt) throw new GalatCbt(409, 'Penugasan sudah mulai dikerjakan; riwayatnya tidak dapat dihapus');
+      await tx.cbtAssignment.delete({ where: { id: penugasan.id } });
+    });
+  } catch (e) { if (tanganiGalatCbt(e, res)) return; throw e; }
   res.locals.audit = {
     action: 'cbt.tugaskan.batal',
     entity: 'CbtAssignment',
@@ -758,18 +826,55 @@ export const deleteAssignment = async (req: Request, res: Response) => {
   res.status(204).send();
 };
 
+export const reviewAssignment = async (req: Request, res: Response) => {
+  if (currentScope(res) !== 'recruitment') return res.status(400).json({ error: 'Peninjauan HR hanya untuk tes seleksi' });
+  try {
+    const assignment = await prisma.$transaction(async (tx) => {
+      const owner = await tx.cbtAssignment.findUnique({ where: { id: req.params.id }, select: { candidateId: true } });
+      if (!owner?.candidateId) throw new GalatCbt(404, 'Penugasan pelamar tidak ditemukan');
+      await lockCandidate(tx, owner.candidateId, true);
+      const current = await tx.cbtAssignment.findUnique({ where: { id: req.params.id }, select: selectionAssignmentSelect });
+      if (!current) throw new GalatCbt(404, 'Penugasan tidak ditemukan');
+      const problem = selectionCompletionProblem(current);
+      if (problem) throw new GalatCbt(409, problem);
+      const expected = (req.body as { attemptUpdatedAt: Date }).attemptUpdatedAt;
+      if (current.attempt!.updatedAt.getTime() !== expected.getTime()) throw new GalatCbt(409, 'Hasil tes telah berubah. Muat ulang dan tinjau hasil terbaru sebelum menyetujui.', 'CBT_RESULT_CHANGED');
+      return tx.cbtAssignment.update({ where: { id: current.id }, data: { reviewedAt: new Date(), reviewedById: req.user!.id }, select: penugasanSelect });
+    });
+    res.locals.audit = { action: 'cbt.seleksi.tinjau', entity: 'CbtAssignment', entityId: assignment.id, summary: 'HR meninjau hasil tes seleksi; bukan keputusan kelulusan otomatis' };
+    res.json(assignment);
+  } catch (e) { if (tanganiGalatCbt(e, res)) return; throw e; }
+};
+
+export const updateAssignmentSelection = async (req: Request, res: Response) => {
+  if (currentScope(res) !== 'recruitment') return res.status(400).json({ error: 'Tes wajib hanya untuk seleksi pelamar' });
+  const { required, reason } = req.body as { required: boolean; reason: string };
+  try {
+    const assignment = await prisma.$transaction(async (tx) => {
+      const owner = await tx.cbtAssignment.findUnique({ where: { id: req.params.id }, select: { candidateId: true } });
+      if (!owner?.candidateId) throw new GalatCbt(404, 'Penugasan pelamar tidak ditemukan');
+      await lockCandidate(tx, owner.candidateId, true);
+      if (!await tx.cbtAssignment.findUnique({ where: { id: req.params.id }, select: { id: true } })) throw new GalatCbt(404, 'Penugasan tidak ditemukan');
+      return tx.cbtAssignment.update({ where: { id: req.params.id }, data: { required, reviewedAt: null, reviewedById: null }, select: penugasanSelect });
+    });
+    res.locals.audit = { action: 'cbt.seleksi.wajib', entity: 'CbtAssignment', entityId: assignment.id, summary: required ? 'Menjadikan tes seleksi wajib' : 'Menjadikan tes seleksi opsional', metadata: { required, reason } };
+    res.json(assignment);
+  } catch (e) { if (tanganiGalatCbt(e, res)) return; throw e; }
+};
+
 // ============ Hasil & penilaian ============
 
 export const getResults = async (req: Request, res: Response) => {
   const { page, limit, testId, employeeId, candidateId, status } = req.query as unknown as ListAssignmentQuery;
   // Pengerjaan yang ditinggalkan setelah batas waktu ikut ditutup dan dinilai,
   // supaya hasilnya muncul di sini tanpa menunggu penyapu berkala.
-  await tutupPengerjaanKedaluwarsa(testId ? { assignment: { testId } } : {});
+  await tutupPengerjaanKedaluwarsa({ assignment: { ...assignmentWhere(res), ...(testId ? { testId } : {}) } });
   const where: Prisma.CbtAssignmentWhereInput = {
     status: status ?? { in: ['submitted', 'graded'] },
     ...(testId && { testId }),
     ...(employeeId && { employeeId }),
     ...(candidateId && { candidateId }),
+    AND: [assignmentWhere(res)],
   };
 
   const [total, data] = await Promise.all([
@@ -804,6 +909,7 @@ export const getResultDetail = async (req: Request, res: Response) => {
     },
   });
   if (!attempt) return res.status(404).json({ error: 'Hasil tidak ditemukan' });
+  if (!allowResource(req, res, attempt.assignment.candidate ? 'recruitment' : 'development')) return;
 
   const paket = await prisma.cbtTest.findUniqueOrThrow({
     where: { id: attempt.assignment.testId },
@@ -862,6 +968,7 @@ export const gradeAttempt = async (req: Request, res: Response) => {
     },
   });
   if (!attempt) return res.status(404).json({ error: 'Hasil tidak ditemukan' });
+  if (!allowResource(req, res, attempt.assignment.candidateId ? 'recruitment' : 'development')) return;
   if (!attempt.submittedAt) return res.status(409).json({ error: 'Tes ini belum dikirim peserta' });
 
   const butir = new Map(attempt.assignment.test.questions.map((b) => [b.questionId, b]));
@@ -875,25 +982,21 @@ export const gradeAttempt = async (req: Request, res: Response) => {
     if (nilai.points > maks) return res.status(400).json({ error: `Nilai melebihi bobot soal (maksimal ${maks})` });
   }
 
-  await prisma.$transaction(
-    scores.map((n) =>
-      prisma.cbtAnswer.upsert({
-        where: { attemptId_questionId: { attemptId: attempt.id, questionId: n.questionId } },
-        create: {
-          id: generateULID(),
-          attemptId: attempt.id,
-          questionId: n.questionId,
-          chosen: [],
-          points: n.points,
-          isCorrect: null,
-          graderNote: n.graderNote ?? null,
-        },
-        update: { points: n.points, graderNote: n.graderNote ?? null },
-      })
-    )
-  );
-
-  const hasil = await hitungUlangNilai(attempt.id, aktor.id);
+  let hasil: Awaited<ReturnType<typeof hitungUlangNilai>>;
+  try {
+    hasil = await prisma.$transaction(async (tx) => {
+      if (attempt.assignment.candidateId) await lockCandidate(tx, attempt.assignment.candidateId, true);
+      await tx.$queryRaw`SELECT "id" FROM "CbtAssignment" WHERE "id" = ${attempt.assignmentId} FOR UPDATE`;
+      for (const n of scores) {
+        await tx.cbtAnswer.upsert({
+          where: { attemptId_questionId: { attemptId: attempt.id, questionId: n.questionId } },
+          create: { id: generateULID(), attemptId: attempt.id, questionId: n.questionId, chosen: [], points: n.points, isCorrect: null, graderNote: n.graderNote ?? null },
+          update: { points: n.points, graderNote: n.graderNote ?? null },
+        });
+      }
+      return hitungUlangNilai(attempt.id, aktor.id, tx);
+    });
+  } catch (e) { if (tanganiGalatCbt(e, res)) return; throw e; }
 
   res.locals.audit = {
     action: 'cbt.nilai',
@@ -908,9 +1011,10 @@ export const gradeAttempt = async (req: Request, res: Response) => {
 export const getProctorPhoto = async (req: Request, res: Response) => {
   const foto = await prisma.cbtProctorPhoto.findUnique({
     where: { id: req.params.photoId },
-    select: { id: true, attemptId: true, storagePath: true },
+    select: { id: true, attemptId: true, storagePath: true, attempt: { select: { assignment: { select: { candidateId: true } } } } },
   });
   if (!foto || foto.attemptId !== req.params.id) return res.status(404).json({ error: 'Foto tidak ditemukan' });
+  if (!allowResource(req, res, foto.attempt.assignment.candidateId ? 'recruitment' : 'development')) return;
 
   // Membuka wajah orang adalah akses ke data pribadi: dicatat walau ini GET.
   res.locals.audit = {
@@ -924,7 +1028,7 @@ export const getProctorPhoto = async (req: Request, res: Response) => {
 
 export const tanganiGalatCbt = (e: unknown, res: Response): boolean => {
   if (e instanceof GalatCbt) {
-    res.status(e.status).json({ error: e.message });
+    res.status(e.status).json({ error: e.message, ...(e.code ? { code: e.code } : {}) });
     return true;
   }
   return false;

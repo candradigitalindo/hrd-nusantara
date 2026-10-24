@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { Role } from '@prisma/client';
+import { Prisma, Role } from '@prisma/client';
 import { prisma, resetDatabase, makeEmployee, makePosition } from './helpers/db';
 import { bikinApp } from './helpers/app';
 import { login, auth, expectStatus } from './helpers/api';
@@ -46,12 +46,14 @@ const buatPaket = (ubah: Record<string, unknown> = {}) =>
   request(app)
     .post('/api/cbt/tes')
     .set(auth(hr))
-    .send({ code: 'HIG-1', title: 'Tes Higiene Dasar', durationMinutes: 30, passingScore: 60, shuffleQuestions: false, ...ubah });
+    .send({ scope: ubah.audience === 'pelamar' ? 'recruitment' : 'development', code: 'HIG-1', title: 'Tes Higiene Dasar', durationMinutes: 30, passingScore: 60, shuffleQuestions: false, ...ubah });
 
 /** Paket siap tugas berisi satu soal objektif dan satu esai. */
 const paketSiap = async (ubahPaket: Record<string, unknown> = {}) => {
-  const pg = await buatSoal();
+  const scope = ubahPaket.audience === 'pelamar' ? 'recruitment' : 'development';
+  const pg = await buatSoal({ scope });
   const esai = await buatSoal({
+    scope,
     type: 'esai',
     text: 'Jelaskan alur cuci tangan enam langkah.',
     options: undefined,
@@ -65,15 +67,15 @@ const paketSiap = async (ubahPaket: Record<string, unknown> = {}) => {
     await request(app)
       .put(`/api/cbt/tes/${paket.body.id}/soal`)
       .set(auth(hr))
-      .send({ questions: [{ questionId: pg.body.id }, { questionId: esai.body.id }] }),
+      .send({ scope, questions: [{ questionId: pg.body.id }, { questionId: esai.body.id }] }),
     200
   );
-  expectStatus(await request(app).put(`/api/cbt/tes/${paket.body.id}`).set(auth(hr)).send({ status: 'published' }), 200);
+  expectStatus(await request(app).put(`/api/cbt/tes/${paket.body.id}`).set(auth(hr)).send({ scope, status: 'published' }), 200);
   return { paketId: paket.body.id as string, pgId: pg.body.id as string, esaiId: esai.body.id as string };
 };
 
 const tugaskan = (paketId: string, isi: Record<string, unknown>) =>
-  request(app).post('/api/cbt/penugasan').set(auth(hr)).send({ testId: paketId, ...isi });
+  request(app).post('/api/cbt/penugasan').set(auth(hr)).send({ scope: Array.isArray(isi.candidateIds) && isi.candidateIds.length > 0 ? 'recruitment' : 'development', testId: paketId, ...isi });
 
 describe('Bank soal', () => {
   it('menolak soal berpilihan yang kuncinya tidak menunjuk pilihan mana pun', async () => {
@@ -580,7 +582,7 @@ describe('Pengerjaan oleh pelamar lewat tautan', () => {
     expectStatus(await request(app).post(`/api/cbt/publik/${token}/kirim`), 200);
     expectStatus(await request(app).post(`/api/cbt/publik/${token}/mulai`), 409);
 
-    const hasil = await request(app).get('/api/cbt/hasil').set(auth(hr));
+    const hasil = await request(app).get('/api/cbt/hasil?scope=recruitment').set(auth(hr));
     expect(hasil.body.data[0]).toMatchObject({ status: 'submitted', candidate: { name: 'Siti Aminah' } });
   });
 
@@ -593,7 +595,7 @@ describe('Pengerjaan oleh pelamar lewat tautan', () => {
     expectStatus(await request(app).get(`/api/cbt/publik/${'x'.repeat(43)}`), 404);
     expectStatus(await request(app).get(`/api/cbt/publik/terlalu-pendek`), 400);
 
-    const baru = await request(app).post(`/api/cbt/penugasan/${tugas.body.tautan[0].assignmentId}/tautan`).set(auth(hr));
+    const baru = await request(app).post(`/api/cbt/penugasan/${tugas.body.tautan[0].assignmentId}/tautan?scope=recruitment`).set(auth(hr));
     expectStatus(baru, 200);
     expectStatus(await request(app).get(`/api/cbt/publik/${lama}`), 404);
     expectStatus(await request(app).get(`/api/cbt/publik/${baru.body.token}`), 200);
@@ -601,11 +603,11 @@ describe('Pengerjaan oleh pelamar lewat tautan', () => {
 
   it('paket khusus pelamar tidak bisa ditugaskan ke karyawan, dan sebaliknya', async () => {
     const { paketId } = await paketSiap({ code: 'SEL-3', audience: 'pelamar' });
-    expectStatus(await tugaskan(paketId, { employeeIds: [budiId] }), 400);
+    expectStatus(await tugaskan(paketId, { employeeIds: [budiId] }), 404);
 
     const { paketId: internal } = await paketSiap({ code: 'INT-1', audience: 'karyawan' });
     const candidateId = await buatPelamar();
-    expectStatus(await tugaskan(internal, { candidateIds: [candidateId] }), 400);
+    expectStatus(await tugaskan(internal, { candidateIds: [candidateId] }), 404);
   });
 });
 
@@ -677,11 +679,27 @@ describe('Hak akses', () => {
 
 describe('Inventori kepribadian (paket standar Big Five)', () => {
   const buatStandar = () => request(app).post('/api/cbt/tes/standar/kepribadian-big5').set(auth(hr));
+  const buatStandarKaryawan = async () => {
+    const source = await buatStandar();
+    expectStatus(source, 201);
+    const original = await prisma.cbtTest.findUniqueOrThrow({ where: { id: source.body.id }, include: { questions: { include: { question: true } } } });
+    const testId = generateULID();
+    await prisma.$transaction(async (tx) => {
+      await tx.cbtTest.create({ data: { id: testId, code: 'BIG5-DEVELOPMENT', title: original.title, audience: 'karyawan', durationMinutes: original.durationMinutes, status: 'published', shuffleOptions: false, recordProctorEvents: false, createdById: original.createdById } });
+      for (const item of original.questions) {
+        const questionId = generateULID();
+        await tx.cbtQuestion.create({ data: { ...item.question, id: questionId, scope: 'development', options: item.question.options as Prisma.InputJsonValue } });
+        await tx.cbtTestQuestion.create({ data: { id: generateULID(), testId, questionId, sortOrder: item.sortOrder } });
+      }
+    });
+    return { body: { id: testId } };
+  };
+
 
   it('dibuat sekali: 50 butir skala dalam lima dimensi, paket langsung tayang; panggilan kedua mengembalikan yang sama', async () => {
     const pertama = await buatStandar();
     expectStatus(pertama, 201);
-    expect(pertama.body).toMatchObject({ code: 'KEPRIBADIAN-BIG5', status: 'published', passingScore: null, shuffleOptions: false, kind: 'kepribadian', dibuat: true });
+    expect(pertama.body).toMatchObject({ code: 'KEPRIBADIAN-BIG5', audience: 'pelamar', status: 'published', passingScore: null, shuffleOptions: false, kind: 'kepribadian', dibuat: true });
     expect(pertama.body._count.questions).toBe(50);
 
     const kedua = await buatStandar();
@@ -689,7 +707,7 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
     expect(kedua.body.id).toBe(pertama.body.id);
     expect(kedua.body.dibuat).toBe(false);
 
-    const kategori = await request(app).get('/api/cbt/soal/kategori').set(auth(hr));
+    const kategori = await request(app).get('/api/cbt/soal/kategori?scope=recruitment').set(auth(hr));
     expect(kategori.body.data).toEqual(
       expect.arrayContaining([
         { category: 'Ekstraversi', jumlah: 10 },
@@ -699,12 +717,12 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
         { category: 'Keterbukaan', jumlah: 10 },
       ])
     );
-    const daftar = await request(app).get('/api/cbt/tes').set(auth(hr));
+    const daftar = await request(app).get('/api/cbt/tes?scope=recruitment').set(auth(hr));
     expect(daftar.body.data.find((p: { id: string }) => p.id === pertama.body.id).kind).toBe('kepribadian');
   });
 
   it('peserta menerima skala berurutan tanpa nilai; hasilnya profil per dimensi, tanpa kelulusan', async () => {
-    const paket = await buatStandar();
+    const paket = await buatStandarKaryawan();
     expectStatus(await tugaskan(paket.body.id, { employeeIds: [budiId] }), 201);
     const budi = await login(app, 'budi@resto.id');
     const saya = await request(app).get('/api/cbt/saya').set(auth(budi));
@@ -749,7 +767,7 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
   });
 
   it('butir terbalik dihitung terbalik: "sangat sesuai" pada butir Ekstraversi terbalik menurunkan dimensi itu', async () => {
-    const paket = await buatStandar();
+    const paket = await buatStandarKaryawan();
     expectStatus(await tugaskan(paket.body.id, { employeeIds: [budiId] }), 201);
     const budi = await login(app, 'budi@resto.id');
     const assignmentId = (await request(app).get('/api/cbt/saya').set(auth(budi))).body.data[0].id;
@@ -772,7 +790,7 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
   });
 
   it('pernyataan yang dilewati tidak menurunkan skor dimensinya', async () => {
-    const paket = await buatStandar();
+    const paket = await buatStandarKaryawan();
     expectStatus(await tugaskan(paket.body.id, { employeeIds: [budiId] }), 201);
     const budi = await login(app, 'budi@resto.id');
     const assignmentId = (await request(app).get('/api/cbt/saya').set(auth(budi))).body.data[0].id;
@@ -834,7 +852,7 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
   });
 
   it('kiriman otomatis saat menyimpan setelah waktu habis membawa ringkasan hasil', async () => {
-    const paket = await buatStandar();
+    const paket = await buatStandarKaryawan();
     expectStatus(await tugaskan(paket.body.id, { employeeIds: [budiId] }), 201);
     const budi = await login(app, 'budi@resto.id');
     const id = (await request(app).get('/api/cbt/saya').set(auth(budi))).body.data[0].id;
@@ -849,7 +867,7 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
 
   it('paket standar dibuat ulang setelah dihapus memakai butir yang sudah ada, bukan menggandakannya', async () => {
     const pertama = await buatStandar();
-    expectStatus(await request(app).delete(`/api/cbt/tes/${pertama.body.id}`).set(auth(hr)), 204);
+    expectStatus(await request(app).delete(`/api/cbt/tes/${pertama.body.id}?scope=recruitment`).set(auth(hr)), 204);
     const kedua = await buatStandar();
     expectStatus(kedua, 201);
     expect(await prisma.cbtQuestion.count({ where: { type: 'skala' } })).toBe(50);
@@ -865,7 +883,7 @@ describe('Inventori kepribadian (paket standar Big Five)', () => {
   });
 
   it('membuat paket standar butuh izin bank soal, karena ikut menulis 50 butir', async () => {
-    const peran = await prisma.customRole.create({ data: { id: generateULID(), name: 'Penyusun Paket', baseRole: Role.MANAGER, permissions: ['cbt.lihat', 'cbt.buat', 'cbt.ubah'] } });
+    const peran = await prisma.customRole.create({ data: { id: generateULID(), name: 'Penyusun Paket', baseRole: Role.MANAGER, permissions: ['cbt.lihat', 'cbt.buat', 'cbt.ubah', 'rekrutmen.lihat'] } });
     await makeEmployee({ email: 'penyusun@resto.id', nik: 'K-9', role: Role.MANAGER, customRoleId: peran.id });
     const penyusun = await login(app, 'penyusun@resto.id');
     expectStatus(await request(app).post('/api/cbt/tes/standar/kepribadian-big5').set(auth(penyusun)), 403);

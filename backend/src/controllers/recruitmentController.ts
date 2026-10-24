@@ -2,6 +2,8 @@
 import { Request, Response } from 'express';
 import { Prisma, Role } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { GalatCbt } from '../services/cbt/attempt';
+import { lockCandidate, selectionAssignmentSelect, selectionReadiness, SelectionReadinessError } from '../services/cbt/selection';
 import { generateULID } from '../utils/generateULID';
 import { pasanganTeks } from '../utils/richText';
 import { kirimBerkas } from './karierController';
@@ -209,6 +211,7 @@ export const changeJobPostingStatus = async (req: Request, res: Response) => {
 // ============ Pelamar ============
 
 const candidateSelect = {
+  cbtAssignments: { select: selectionAssignmentSelect },
   id: true,
   name: true,
   email: true,
@@ -259,8 +262,9 @@ const candidateSelect = {
 
 type CandidateRow = Prisma.CandidateGetPayload<{ select: typeof candidateSelect }>;
 
-const candidateDTO = ({ account, ...row }: CandidateRow) => ({
+const candidateDTO = ({ account, cbtAssignments, ...row }: CandidateRow) => ({
   ...row,
+  selectionReadiness: selectionReadiness(cbtAssignments),
   expectedSalary: num(row.expectedSalary),
   // Pelamar yang datang lewat portal karier — CV-nya berupa berkas tersimpan
   // dan tahapnya ikut terbaca di dasbor pelamar, berbeda dari pelamar yang
@@ -386,41 +390,21 @@ export const getCandidateById = async (req: Request, res: Response) => {
 
 export const changeCandidateStage = async (req: Request, res: Response) => {
   const { stage, note, rejectionReason } = req.body as ChangeCandidateStageInput;
-
-  const pelamar = await prisma.candidate.findUnique({
-    where: { id: req.params.id },
-    select: { id: true, status: true },
-  });
-  if (!pelamar) return res.status(404).json({ error: 'Pelamar tidak ditemukan' });
-
-  const cek = canTransition(pelamar.status as CandidateStage, stage);
-  if (!cek.allowed) {
-    return res.status(409).json({ error: cek.reason });
+  try {
+    const hasil = await prisma.$transaction(async (tx) => {
+      const pelamar = await lockCandidate(tx, req.params.id);
+      const cek = canTransition(pelamar.status as CandidateStage, stage);
+      if (!cek.allowed) throw new GalatCbt(409, cek.reason ?? 'Perubahan tahap tidak diizinkan');
+      await tx.candidateStageHistory.create({
+        data: { id: generateULID(), candidateId: pelamar.id, fromStage: pelamar.status, toStage: stage, changedById: req.user!.id, note: note ?? rejectionReason },
+      });
+      return tx.candidate.update({ where: { id: pelamar.id }, data: { status: stage, ...(stage === 'rejected' ? { rejectionReason } : {}) }, select: candidateSelect });
+    });
+    res.json({ message: `Pelamar dipindahkan ke tahap "${stage}"`, candidate: candidateDTO(hasil) });
+  } catch (e) {
+    if (e instanceof GalatCbt) return res.status(e.status).json({ error: e.message });
+    throw e;
   }
-
-  const hasil = await prisma.$transaction(async (tx) => {
-    await tx.candidateStageHistory.create({
-      data: {
-        id: generateULID(),
-        candidateId: pelamar.id,
-        fromStage: pelamar.status,
-        toStage: stage,
-        changedById: req.user!.id,
-        note: note ?? rejectionReason,
-      },
-    });
-
-    return tx.candidate.update({
-      where: { id: pelamar.id },
-      data: {
-        status: stage,
-        ...(stage === 'rejected' ? { rejectionReason } : {}),
-      },
-      select: candidateSelect,
-    });
-  });
-
-  res.json({ message: `Pelamar dipindahkan ke tahap "${stage}"`, candidate: candidateDTO(hasil) });
 };
 
 /**
@@ -433,24 +417,17 @@ export const changeCandidateStage = async (req: Request, res: Response) => {
 export const hireCandidate = async (req: Request, res: Response) => {
   const input = req.body as HireCandidateInput;
 
-  const pelamar = await prisma.candidate.findUnique({
-    where: { id: req.params.id },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      phoneNumber: true,
-      status: true,
-      appliedPosition: { select: { id: true, positionId: true, openings: true } },
-    },
-  });
-  if (!pelamar) return res.status(404).json({ error: 'Pelamar tidak ditemukan' });
-
-  const cek = canHire(pelamar.status as CandidateStage);
-  if (!cek.allowed) return res.status(409).json({ error: cek.reason });
-
   try {
     const hasil = await prisma.$transaction(async (tx) => {
+      await lockCandidate(tx, req.params.id);
+      const pelamar = await tx.candidate.findUniqueOrThrow({
+        where: { id: req.params.id },
+        select: { id: true, name: true, email: true, phoneNumber: true, status: true, appliedPosition: { select: { id: true, positionId: true, openings: true } } },
+      });
+      const cek = canHire(pelamar.status as CandidateStage);
+      if (!cek.allowed) throw new GalatCbt(409, cek.reason ?? 'Pelamar belum dapat diterima');
+      const readiness = selectionReadiness(await tx.cbtAssignment.findMany({ where: { candidateId: pelamar.id }, select: selectionAssignmentSelect }));
+      if (!readiness.ready) throw new SelectionReadinessError(readiness);
       const karyawan = await tx.employee.create({
         data: {
           id: generateULID(),
@@ -488,29 +465,32 @@ export const hireCandidate = async (req: Request, res: Response) => {
         select: candidateSelect,
       });
 
-      return { karyawan, pelamar: diperbarui };
+      return { karyawan, pelamar: diperbarui, lowongan: pelamar.appliedPosition };
     });
 
     // Lowongan ditutup otomatis ketika jumlah yang diterima sudah memenuhi
     // kuota, supaya tidak ada lamaran masuk untuk kursi yang sudah terisi.
     const diterima = await prisma.candidate.count({
-      where: { appliedPositionId: pelamar.appliedPosition.id, status: 'hired' },
+      where: { appliedPositionId: hasil.lowongan.id, status: 'hired' },
     });
 
-    if (diterima >= pelamar.appliedPosition.openings) {
+    if (diterima >= hasil.lowongan.openings) {
       await prisma.jobPosting.update({
-        where: { id: pelamar.appliedPosition.id },
+        where: { id: hasil.lowongan.id },
         data: { status: 'filled', closedAt: new Date() },
       });
     }
 
+    res.locals.audit = { action: 'recruitment.hire', entity: 'Candidate', entityId: hasil.pelamar.id, summary: 'Menerima pelamar setelah seluruh tes wajib ditinjau HR', metadata: { employeeId: hasil.karyawan.id } };
     res.status(201).json({
       message: 'Pelamar diterima dan data karyawannya dibuat',
       employee: hasil.karyawan,
       candidate: candidateDTO(hasil.pelamar),
-      jobPostingFilled: diterima >= pelamar.appliedPosition.openings,
+      jobPostingFilled: diterima >= hasil.lowongan.openings,
     });
   } catch (error) {
+    if (error instanceof SelectionReadinessError) return res.status(409).json({ error: error.message, selectionReadiness: error.readiness });
+    if (error instanceof GalatCbt) return res.status(error.status).json({ error: error.message });
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const target = (error.meta?.target as string[] | undefined)?.join(', ') ?? 'NIK atau email';
       return res.status(409).json({ error: `${target} sudah terpakai oleh karyawan lain` });

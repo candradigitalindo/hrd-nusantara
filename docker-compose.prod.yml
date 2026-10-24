@@ -99,6 +99,16 @@ services:
       # Browser mengakses API lewat BFF Next satu origin, jadi yang perlu
       # diizinkan hanya origin publiknya sendiri.
       CORS_ORIGINS: ${CORS_ORIGINS:-https://hrd.nbp.co.id}
+      RECRUITMENT_PUBLIC_URL: ${RECRUITMENT_PUBLIC_URL:-}
+      SEEK_CLIENT_ID: ${SEEK_CLIENT_ID:-}
+      SEEK_CLIENT_SECRET: ${SEEK_CLIENT_SECRET:-}
+      SEEK_HIRER_ID: ${SEEK_HIRER_ID:-}
+      SEEK_CONTACT_NAME: ${SEEK_CONTACT_NAME:-}
+      SEEK_CONTACT_EMAIL: ${SEEK_CONTACT_EMAIL:-}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID:-}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET:-}
+      LINKEDIN_COMPANY_ID: ${LINKEDIN_COMPANY_ID:-}
+      LINKEDIN_API_VERSION: ${LINKEDIN_API_VERSION:-202604}
       # Satu lapis tepercaya: hrd_nginx (untuk aplikasi Android) atau
       # hrd_frontend (untuk web). Keduanya meneruskan tepat satu entri
       # X-Forwarded-For berisi IP asli pengunjung.

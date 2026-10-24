@@ -3,7 +3,9 @@ import { z } from 'zod';
 import { dateOnlyField, latitudeField, longitudeField } from './common';
 
 export const TRACKING_MODES = ['always', 'while_working'] as const;
-export const TRACKING_PERMISSIONS = ['granted_always', 'granted_while_in_use', 'denied', 'denied_forever', 'service_off'] as const;
+// Selain izin lokasi, klien baru melaporkan penghalang layanan pemantauan.
+// Klien lama tetap dapat mengirim kelima nilai sebelumnya.
+export const TRACKING_PERMISSIONS = ['granted_always', 'granted_while_in_use', 'denied', 'denied_forever', 'service_off', 'notifications_denied', 'unavailable'] as const;
 
 /** Diatur Super Admin: kapan dan seberapa sering ponsel mengirim lokasi, dan berapa lama disimpan. */
 export const trackingSettingsSchema = z
@@ -35,7 +37,7 @@ export const locationPingsSchema = z
   })
   .strict();
 
-/** Keadaan pemantauan di ponsel: persetujuan karyawan dan izin lokasinya. */
+/** Keadaan pemantauan di ponsel: persetujuan dan izin/ketersediaan layanannya. */
 export const trackingStatusSchema = z
   .object({
     consent: z.boolean(),

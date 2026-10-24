@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, Controller } from "react-hook-form";
 import { InputRupiah } from "@/components/ui/input-rupiah";
 import { Plus, Search, UserCheck, CalendarPlus, ClipboardList, ArrowRightCircle, FileText, ExternalLink, ClipboardPen, Save, UserPlus, X, Download, MonitorCheck, Globe } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, ambilSemua } from "@/lib/api";
 import { notifikasi } from "@/hooks/use-notifikasi";
 import { useSesi, punyaIzin } from "@/hooks/use-sesi";
 import { Card } from "@/components/ui/card";
@@ -19,6 +19,9 @@ import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ResponsiveTable, type Kolom } from "@/components/ui/responsive-table";
 import { formatTanggal, formatRupiah, formatRelatif, LABEL_TAHAP, LABEL_HASIL_WAWANCARA, LABEL_STATUS_TES, labelStatus, LABEL_STATUS } from "@/lib/utils";
+import { kandidatBisaDites, tautanHasilCbt } from "@/lib/lingkup-cbt";
+import { BadgeTinjauanSeleksi, DialogSyaratSeleksi } from "@/components/cbt/tinjauan-seleksi";
+import { TugaskanTesPelamar } from "./tugaskan-tes";
 import type { Halaman, Kandidat, Lowongan, Karyawan, Departemen, Jabatan, HasilPsikotes, PenugasanCbt, TahapKandidat } from "@/lib/types";
 
 const TAHAP: TahapKandidat[] = ["applied", "screening", "interview", "offer", "hired", "rejected", "withdrawn"];
@@ -53,6 +56,11 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   const bolehBuat = punyaIzin(saya, "rekrutmen.buat");
   const bolehUbah = punyaIzin(saya, "rekrutmen.ubah");
   const bolehLihatTes = punyaIzin(saya, "cbt_hasil.lihat") || punyaIzin(saya, "cbt.buat") || punyaIzin(saya, "cbt.ubah");
+  const bolehTugaskan = punyaIzin(saya, "cbt.buat");
+  const bolehHasil = punyaIzin(saya, "cbt_hasil.lihat");
+  const bolehSyarat = bolehUbah && punyaIzin(saya, "cbt.ubah");
+  const [tugaskanBuka, setTugaskanBuka] = React.useState(false);
+  const [syarat, setSyarat] = React.useState<PenugasanCbt | null>(null);
   const [cari, setCari] = React.useState("");
   const [cariTunda, setCariTunda] = React.useState("");
   const [tahap, setTahap] = React.useState("");
@@ -75,9 +83,10 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   const departemen = useQuery({ queryKey: ["departemen", "semua"], queryFn: async () => (await api.get<Halaman<Departemen>>("/departments?limit=100")).data.data, enabled: aksi === "hire" });
   const jabatan = useQuery({ queryKey: ["jabatan", "semua"], queryFn: async () => (await api.get<Halaman<Jabatan>>("/positions?limit=100")).data.data, enabled: aksi === "hire" });
   const psikotes = useQuery({ queryKey: ["psikotes", detail?.id], queryFn: async () => (await api.get<Halaman<HasilPsikotes>>(`/psychometric-tests?candidateId=${detail!.id}&limit=50`)).data.data, enabled: Boolean(detail) });
-  // Tes CBT ditugaskan dari halaman CBT, tapi keputusan atas pelamar diambil di
-  // sini: skornya harus terbaca tanpa pindah halaman.
-  const tesCbt = useQuery({ queryKey: ["cbt-pelamar", detail?.id], queryFn: async () => (await api.get<Halaman<PenugasanCbt>>(`/cbt/penugasan?candidateId=${detail!.id}&limit=20`)).data.data, enabled: Boolean(detail) && bolehLihatTes });
+  const rincianKandidat = useQuery({ queryKey: ["kandidat", "detail", detail?.id], queryFn: async () => (await api.get<Kandidat>(`/candidates/${detail!.id}`)).data, enabled: Boolean(detail) });
+  const kesiapan = rincianKandidat.data?.selectionReadiness;
+  const siapDiterima = kesiapan?.ready === true && !rincianKandidat.isFetching && !rincianKandidat.isError;
+  const tesCbt = useQuery({ queryKey: ["cbt", "pelamar", detail?.id], queryFn: async () => ambilSemua<PenugasanCbt>("/cbt/penugasan", { candidateId: detail!.id, scope: "recruitment" }), enabled: Boolean(detail) && bolehLihatTes });
 
   const segarkan = async () => {
     await qc.invalidateQueries({ queryKey: ["kandidat"] });
@@ -87,7 +96,7 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   const fk = useForm<FormKandidat>({ defaultValues: { jobPostingId: "", name: "", email: "", phoneNumber: "", source: "", cvUrl: "", expectedSalary: "", notes: "" } });
   const ft = useForm<FormTahap>({ defaultValues: { stage: "screening", note: "", rejectionReason: "" } });
   const fw = useForm<FormWawancara>({ defaultValues: { interviewerId: "", stage: "hr", round: "1", scheduledDateTime: "", durationMinutes: "60", location: "", notes: "" } });
-  const fp = useForm<FormPsikotes>({ defaultValues: { testName: "DISC", score: "", maxScore: "100", testDate: "", interpretation: "" } });
+  const fp = useForm<FormPsikotes>({ defaultValues: { testName: "", score: "", maxScore: "100", testDate: "", interpretation: "" } });
   const fh = useForm<FormHire>({ defaultValues: { nik: "", joinDate: "", departmentId: "", positionId: "", employeeStatus: "probation", note: "" } });
 
   const tambah = useMutation({
@@ -107,13 +116,13 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
   });
   const catatPsikotes = useMutation({
     mutationFn: async (v: FormPsikotes) => (await api.post(`/candidates/${detail!.id}/psychometric-tests`, { testName: v.testName, score: Number(v.score), ...(v.maxScore ? { maxScore: Number(v.maxScore) } : {}), ...(v.testDate ? { testDate: v.testDate } : {}), ...(v.interpretation ? { interpretation: v.interpretation } : {}) })).data,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["psikotes", detail?.id] }); notifikasi.sukses("Hasil psikotes dicatat"); setAksi(null); fp.reset(); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["psikotes", detail?.id] }); notifikasi.sukses("Hasil tes eksternal dicatat"); setAksi(null); fp.reset(); },
     onError: (e) => notifikasi.galat(e, "Hasil gagal dicatat"),
   });
   const terima = useMutation({
     mutationFn: async (v: FormHire) => (await api.post<{ candidate: Kandidat; employee: { id: string; nik: string; name: string } }>(`/candidates/${detail!.id}/hire`, { nik: v.nik, joinDate: v.joinDate, employeeStatus: v.employeeStatus, ...(v.departmentId ? { departmentId: v.departmentId } : {}), ...(v.positionId ? { positionId: v.positionId } : {}), ...(v.note ? { note: v.note } : {}) })).data,
     onSuccess: async (r) => { await segarkan(); qc.invalidateQueries({ queryKey: ["karyawan"] }); notifikasi.sukses("Kandidat diterima", `Data karyawan ${r.employee?.nik ?? ""} dibuat. Lengkapi gaji dan dokumennya di halaman Karyawan.`); setAksi(null); fh.reset(); },
-    onError: (e) => notifikasi.galat(e, "Penerimaan gagal"),
+    onError: (e) => { qc.invalidateQueries({ queryKey: ["kandidat"] }); notifikasi.galat(e, "Penerimaan gagal"); },
   });
 
   const kolom: Kolom<Kandidat>[] = [
@@ -155,13 +164,13 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
         </form>
       </Modal>
 
-      <Modal open={Boolean(detail) && !aksi} onClose={() => setDetail(null)} size="lg" title={detail?.name ?? ""} description={detail ? `${detail.appliedPosition.title} · ${detail.email}${detail.phoneNumber ? ` · ${detail.phoneNumber}` : ""}` : undefined}
+      <Modal open={Boolean(detail) && !aksi && !tugaskanBuka && !syarat} onClose={() => setDetail(null)} size="lg" title={detail?.name ?? ""} description={detail ? `${detail.appliedPosition.title} · ${detail.email}${detail.phoneNumber ? ` · ${detail.phoneNumber}` : ""}` : undefined}
         footer={detail && (
           <div className="flex flex-wrap gap-2">
             {bolehUbah && tahapBerikut(detail.status).length > 0 && <Button variant="outline" onClick={() => { ft.reset({ stage: tahapBerikut(detail.status)[0], note: "", rejectionReason: "" }); setAksi("tahap"); }}><ArrowRightCircle className="h-4 w-4" aria-hidden /> Ubah Tahap</Button>}
             {bolehBuat && !["hired", "rejected", "withdrawn"].includes(detail.status) && <Button variant="outline" onClick={() => { fw.reset({ interviewerId: "", stage: "hr", round: "1", scheduledDateTime: isoLokal(new Date(Date.now() + 86_400_000)), durationMinutes: "60", location: "", notes: "" }); setAksi("wawancara"); }}><CalendarPlus className="h-4 w-4" aria-hidden /> Jadwalkan Wawancara</Button>}
-            {bolehBuat && !["hired", "rejected", "withdrawn"].includes(detail.status) && <Button variant="outline" onClick={() => { fp.reset({ testName: "DISC", score: "", maxScore: "100", testDate: new Date().toISOString().slice(0, 10), interpretation: "" }); setAksi("psikotes"); }}><ClipboardList className="h-4 w-4" aria-hidden /> Catat Psikotes</Button>}
-            {bolehUbah && detail.status === "offer" && <Button onClick={() => { fh.reset({ nik: "", joinDate: new Date().toISOString().slice(0, 10), departmentId: "", positionId: detail.appliedPositionId ? "" : "", employeeStatus: "probation", note: "" }); setAksi("hire"); }}><UserCheck className="h-4 w-4" aria-hidden /> Terima</Button>}
+            {bolehTugaskan && kandidatBisaDites(detail.status) && <Button variant="outline" onClick={() => setTugaskanBuka(true)}><MonitorCheck className="h-4 w-4" aria-hidden /> Tugaskan Tes</Button>}
+            {bolehUbah && detail.status === "offer" && <Button disabled={!siapDiterima} title={kesiapan?.reason ?? "Memeriksa kesiapan tes seleksi"} onClick={() => { fh.reset({ nik: "", joinDate: new Date().toISOString().slice(0, 10), departmentId: "", positionId: detail.appliedPositionId ? "" : "", employeeStatus: "probation", note: "" }); setAksi("hire"); }}><UserCheck className="h-4 w-4" aria-hidden /> Terima</Button>}
           </div>
         )}>
         {detail && (
@@ -182,6 +191,13 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
                 );
               })()}
             </div>
+            {!detail.hiredEmployeeId && <Alert tone={siapDiterima ? "success" : "info"} title={siapDiterima ? "Tes wajib siap untuk keputusan HR" : "Tes seleksi belum siap untuk penerimaan"}>
+              {rincianKandidat.isFetching ? "Memeriksa kesiapan tes seleksi…" : rincianKandidat.isError ? "Kesiapan tes belum dapat diperiksa. Muat ulang detail pelamar sebelum menerima." : kesiapan ? <>
+                {kesiapan.requiredCount} tes wajib · {kesiapan.completedCount} selesai dinilai · {kesiapan.reviewedCount} ditinjau HR.
+                {kesiapan.reason && <p className="mt-1">{kesiapan.reason}</p>}
+                {kesiapan.ready && <p className="mt-1">Penerimaan dilakukan setelah tahap Penawaran. Penyelesaian tes bukan keputusan lulus/gagal kepribadian.</p>}
+              </> : "Status kesiapan tes belum tersedia."}
+            </Alert>}
             {detail.rejectionReason && <Alert tone="danger" title="Alasan penolakan">{detail.rejectionReason}</Alert>}
             {detail.hiredEmployeeId && <Alert tone="success" title="Sudah menjadi karyawan" action={<a href={`/karyawan/${detail.hiredEmployeeId}`} className="text-sm font-medium underline">Buka data karyawan</a>} />}
             {detail.coverLetter && (
@@ -212,7 +228,11 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
             </section>
 
             <section>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Psikotes</h3>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Hasil Tes Eksternal</h3>
+                {bolehBuat && kandidatBisaDites(detail.status) && <Button size="sm" variant="outline" onClick={() => { fp.reset({ testName: "", score: "", maxScore: "100", testDate: new Date().toISOString().slice(0, 10), interpretation: "" }); setAksi("psikotes"); }}><ClipboardList className="h-4 w-4" aria-hidden /> Catat Hasil Tes Eksternal</Button>}
+              </div>
+              <p className="mb-2 text-xs text-muted">Catatan tes dari luar aplikasi. Tidak menggantikan penyelesaian dan tinjauan tes seleksi wajib.</p>
               {!psikotes.data?.length ? <p className="text-muted">Belum ada.</p> : (
                 <ul className="divide-y divide-border rounded-xl border border-border">
                   {psikotes.data.map((p) => (
@@ -227,15 +247,16 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
 
             {bolehLihatTes && (
               <section>
-                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Tes CBT</h3>
-                {!tesCbt.data?.length ? (
-                  <p className="text-muted">Belum ditugaskan. Tugaskan dari halaman <a href="/cbt" className="text-primary hover:underline">CBT</a>.</p>
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Tes Seleksi</h3>
+                {tesCbt.isLoading ? <SkeletonBaris jumlah={2} /> : tesCbt.isError ? <Alert tone="danger" title="Daftar tes belum dapat dimuat" /> : !tesCbt.data?.length ? (
+                  <p className="text-muted">Belum ditugaskan.{bolehTugaskan && " Gunakan tombol Tugaskan Tes untuk memilih paket."}</p>
                 ) : (
                   <ul className="divide-y divide-border rounded-xl border border-border">
                     {tesCbt.data.map((t) => (
-                      <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
                         <div>
                           <p className="font-medium">{t.test.title}</p>
+                          <div className="my-1 flex flex-wrap gap-1"><Badge tone={t.required ? "primary" : "neutral"}>{t.required ? "Wajib" : "Opsional"}</Badge><BadgeTinjauanSeleksi tugas={t} /></div>
                           <p className="text-xs text-muted">{t.availableUntil ? `Berlaku sampai ${formatTanggal(t.availableUntil, "d MMM yyyy HH:mm")}` : `Ditugaskan ${formatTanggal(t.createdAt, "d MMM yyyy")}`}</p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -247,7 +268,8 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
                           ) : (
                             <Badge tone={nadaStatus(t.status)} dot>{LABEL_STATUS_TES[t.status] ?? t.status}</Badge>
                           )}
-                          {t.attempt && <a href={`/cbt/hasil/${t.attempt.id}`} className="text-primary hover:underline" aria-label={`Rincian hasil ${t.test.title}`}><MonitorCheck className="h-4 w-4" aria-hidden /></a>}
+                          {t.attempt && bolehHasil && <a href={tautanHasilCbt("recruitment", t.attempt.id)} className="text-primary hover:underline">{t.reviewedAt ? "Lihat hasil" : "Tinjau hasil"}</a>}
+                          {bolehSyarat && kandidatBisaDites(detail.status) && <Button size="sm" variant="ghost" onClick={() => setSyarat(t)}>{t.required ? "Jadikan opsional" : "Jadikan wajib"}</Button>}
                         </div>
                       </li>
                     ))}
@@ -267,6 +289,9 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
           </div>
         )}
       </Modal>
+
+      {detail && tugaskanBuka && <TugaskanTesPelamar candidate={detail} onClose={() => setTugaskanBuka(false)} />}
+      {syarat && <DialogSyaratSeleksi tugas={syarat} onClose={() => setSyarat(null)} />}
 
       <Modal open={aksi === "tahap"} onClose={() => setAksi(null)} title="Ubah Tahap" description={detail?.name}
         footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button variant={tahapDipilih === "rejected" ? "danger" : "primary"} form="form-tahap" type="submit" loading={pindah.isPending}>{!pindah.isPending && <Save className="h-4 w-4" aria-hidden />} Simpan</Button></>}>
@@ -293,10 +318,10 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
         </form>
       </Modal>
 
-      <Modal open={aksi === "psikotes"} onClose={() => setAksi(null)} title="Catat Hasil Psikotes" description={detail?.name}
+      <Modal open={aksi === "psikotes"} onClose={() => setAksi(null)} title="Catat Hasil Tes Eksternal" description={detail?.name}
         footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-psikotes" type="submit" loading={catatPsikotes.isPending}>{!catatPsikotes.isPending && <ClipboardPen className="h-4 w-4" aria-hidden />} Catat</Button></>}>
         <form id="form-psikotes" onSubmit={fp.handleSubmit((v) => catatPsikotes.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
-          <Field label="Nama tes" error={fp.formState.errors.testName?.message}><Input {...fp.register("testName", { required: "Wajib diisi" })} placeholder="DISC, Kraepelin, MBTI" /></Field>
+          <Field label="Nama tes" error={fp.formState.errors.testName?.message}><Input {...fp.register("testName", { required: "Wajib diisi" })} placeholder="Tes teknis dari pihak ketiga" /></Field>
           <Field label="Tanggal tes"><Input type="date" {...fp.register("testDate")} /></Field>
           <Field label="Skor" error={fp.formState.errors.score?.message}><Input type="number" min={0} step="0.1" {...fp.register("score", { required: "Wajib diisi", validate: (v, f) => !f.maxScore || Number(v) <= Number(f.maxScore) || "Melebihi skor maksimal" })} /></Field>
           <Field label="Skor maksimal" hint="Tanpa ini, angka 72 tidak berarti apa-apa"><Input type="number" min={1} {...fp.register("maxScore")} /></Field>
@@ -305,8 +330,8 @@ export const PanelPelamar = ({ lowonganAwal }: { lowonganAwal?: string }) => {
       </Modal>
 
       <Modal open={aksi === "hire"} onClose={() => setAksi(null)} title="Terima Kandidat" description="Data karyawan akan dibuat sekaligus. Gaji dan dokumen dilengkapi setelahnya."
-        footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-hire" type="submit" loading={terima.isPending}>{!terima.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Terima & Buat Karyawan</Button></>}>
-        <form id="form-hire" onSubmit={fh.handleSubmit((v) => terima.mutate(v))} className="grid gap-4 sm:grid-cols-2" noValidate>
+        footer={<><Button variant="outline" onClick={() => setAksi(null)}><X className="h-4 w-4" aria-hidden /> Batal</Button><Button form="form-hire" type="submit" loading={terima.isPending} disabled={!siapDiterima}>{!terima.isPending && <UserPlus className="h-4 w-4" aria-hidden />} Terima & Buat Karyawan</Button></>}>
+        <form id="form-hire" onSubmit={fh.handleSubmit((v) => { if (siapDiterima) terima.mutate(v); })} className="grid gap-4 sm:grid-cols-2" noValidate>
           <Field label="NIK" error={fh.formState.errors.nik?.message}><Input {...fh.register("nik", { required: "Wajib diisi" })} placeholder="EMP-0042" /></Field>
           <Field label="Tanggal bergabung" error={fh.formState.errors.joinDate?.message}><Input type="date" {...fh.register("joinDate", { required: "Wajib diisi" })} /></Field>
           <Field label="Departemen"><Select {...fh.register("departmentId")}><option value="">— Belum ditentukan —</option>{(departemen.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>

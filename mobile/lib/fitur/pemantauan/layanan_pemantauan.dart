@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/api/galat_api.dart';
 import '../../core/api/klien_api.dart';
@@ -146,6 +147,7 @@ class StatusPemantauan {
     DateTime? terakhirDiambil,
     bool? ditunda,
     StatusPenyiapan? penyiapan,
+    bool hapusPenyiapan = false,
     bool? penyiapanDitunda,
   }) =>
       StatusPemantauan(
@@ -156,7 +158,7 @@ class StatusPemantauan {
         tertunda: tertunda ?? this.tertunda,
         terakhirDiambil: terakhirDiambil ?? this.terakhirDiambil,
         ditunda: ditunda ?? this.ditunda,
-        penyiapan: penyiapan ?? this.penyiapan,
+        penyiapan: hapusPenyiapan ? null : (penyiapan ?? this.penyiapan),
         penyiapanDitunda: penyiapanDitunda ?? this.penyiapanDitunda,
       );
 }
@@ -213,6 +215,9 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
   bool _mengirim = false;
   bool _dibuang = false;
   String? _statusTerlapor;
+  DateTime? _statusTerlaporPada;
+  Future<String?>? _versiAplikasi;
+  static const jedaLaporanStatus = Duration(minutes: 15);
   Future<void> _antrian = Future.value();
   Future<void>? _sedangSegarkan;
   bool _segarkanLagi = false;
@@ -264,10 +269,16 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
       if (state.konfigurasi?.selamaBekerja == true) segarkan();
     });
     final siklus = AppLifecycleListener(onResume: segarkan);
+    // Status izin dapat berubah saat aplikasi tetap di latar. Penyegaran ini
+    // tidak mengambil lokasi baru dan bukan bukti lokasi masih terkirim.
+    final pemeriksa = Timer.periodic(jedaLaporanStatus, (_) {
+      if (state.aktif && ref.read(penggunaProvider) != null) unawaited(segarkan());
+    });
     ref.onDispose(() {
       _dibuang = true;
       _langganan?.cancel();
       siklus.dispose();
+      pemeriksa.cancel();
     });
     Future.microtask(segarkan);
     return const StatusPemantauan();
@@ -349,7 +360,11 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     final penyiapanDitunda = await _penyiapanDitunda(pengguna.id);
     final penyiapan = await _kanal.statusPenyiapan();
     if (_dibuang) return;
-    state = state.salin(konfigurasi: konfigurasi, setuju: setuju, izin: izin, penyiapan: penyiapan, penyiapanDitunda: penyiapanDitunda);
+    if (ref.read(penggunaProvider)?.id != pengguna.id) {
+      _segarkanLagi = true;
+      return;
+    }
+    state = state.salin(konfigurasi: konfigurasi, setuju: setuju, izin: izin, penyiapan: penyiapan, hapusPenyiapan: penyiapan == null, penyiapanDitunda: penyiapanDitunda);
     await _terapkan(konfigurasi, setuju, izin);
     if (_dibuang) return;
     await _laporkanStatus(pengguna.id);
@@ -401,8 +416,14 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
       // mis. kosong dari sebelum sesi pulih: jangan diputuskan dulu. Selesainya
       // pembacaan memicu putaran baru (lihat [build]).
       if (!presensi.hasValue || presensi.isLoading) return _Putusan.biarkan;
-      if (presensi.valueOrNull?.masihTerbuka != true) return _Putusan.henti;
+      final sesi = presensi.valueOrNull;
+      final masuk = sesi?.jamMasuk;
+      final usia = masuk == null ? null : DateTime.now().difference(masuk);
+      if (sesi?.masihTerbuka != true || sesi?.status == 'no_checkout' || usia == null || usia.isNegative || usia >= const Duration(hours: 16)) return _Putusan.henti;
     }
+    // Pemantauan hanya berjalan jika notifikasinya dapat terlihat.
+    // Di Android kegagalan membaca status native juga tidak dianggap sebagai izin.
+    if (state.penyiapan?.notifikasi == false || (_kanal.didukung && state.penyiapan == null)) return _Putusan.tertahan;
     return izin == 'granted_always' || izin == 'granted_while_in_use' ? _Putusan.jalan : _Putusan.tertahan;
   }
 
@@ -418,16 +439,17 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     }
   }
 
-  /// Karyawan menyatakan telah membaca pemberitahuan; izin lokasi diminta.
+  /// Karyawan menyetujui pengungkapan pemantauan; izin lokasi diminta.
   Future<void> setujui() async {
     final pengguna = ref.read(penggunaProvider);
     if (pengguna == null) return;
     await ref.read(penyimpananSesiProvider).simpanSetujuPantau(pengguna.id, true);
+    if (_dibuang || ref.read(penggunaProvider)?.id != pengguna.id) return;
     // Persetujuan dicatat sebelum dialog izin sistem muncul: saat aplikasi
     // kembali ke depan, pemberitahuan tidak boleh tampil lagi.
     state = state.salin(setuju: true, ditunda: false);
     final izin = await ref.read(izinLokasiProvider).minta();
-    if (_dibuang) return;
+    if (_dibuang || ref.read(penggunaProvider)?.id != pengguna.id) return;
     state = state.salin(izin: izin);
     await segarkan();
   }
@@ -458,7 +480,7 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     try {
       final izin = await ref.read(izinLokasiProvider).periksa();
       final penyiapan = await _kanal.statusPenyiapan();
-      if (!_dibuang) state = state.salin(izin: izin, penyiapan: penyiapan);
+      if (!_dibuang) state = state.salin(izin: izin, penyiapan: penyiapan, hapusPenyiapan: penyiapan == null);
     } catch (e) {
       debugPrint('Penyiapan pemantauan tidak terbaca: $e');
     }
@@ -544,6 +566,18 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     // Sebagian ponsel mengirim lebih sering dari yang diminta (dan iOS tidak
     // mengenal interval): cukup satu titik per interval.
     if (_terakhir != null && p.timestamp.difference(_terakhir!) < Duration(minutes: interval) - const Duration(seconds: 30)) return;
+    final idPengguna = ref.read(penggunaProvider)?.id;
+    final penyiapan = await _kanal.statusPenyiapan();
+    if (_dibuang || ref.read(penggunaProvider)?.id != idPengguna || !state.berjalan) return;
+    state = state.salin(penyiapan: penyiapan, hapusPenyiapan: penyiapan == null);
+    if (penyiapan?.notifikasi == false || (_kanal.didukung && penyiapan == null)) {
+      // Izin bisa dicabut tanpa kembali ke aplikasi: jangan simpan/kirim titik ini.
+      await _hentikanAliran();
+      if (idPengguna != null) await _laporkanStatus(idPengguna);
+      return;
+    }
+    // Event lain dapat selesai selama pembacaan izin: batasi interval lagi.
+    if (_terakhir != null && p.timestamp.difference(_terakhir!) < Duration(minutes: interval) - const Duration(seconds: 30)) return;
     _terakhir = p.timestamp;
     unawaited(_kanal.denyut(interval));
     _segarkanPresensiBilaPerlu();
@@ -617,21 +651,42 @@ class PemantauLokasi extends Notifier<StatusPemantauan> {
     }
   }
 
+  Future<String?> _bacaVersi() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      return '${info.version} (${info.buildNumber})';
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _laporkanStatus(String idPengguna) async {
     if (_dibuang) return;
     final s = state;
-    final izin = s.izin;
-    if (s.setuju == null || izin == null) return;
+    final izinLokasi = s.izin;
+    if (s.setuju == null || izinLokasi == null) return;
+    // permission menjelaskan penghambat pemantauan; state.izin tetap menyimpan
+    // izin lokasi asli untuk alur permintaan izin sistem.
+    final lokasiDiizinkan = izinLokasi == 'granted_always' || izinLokasi == 'granted_while_in_use';
+    final izin = lokasiDiizinkan && s.penyiapan?.notifikasi == false
+        ? 'notifications_denied'
+        : lokasiDiizinkan && _kanal.didukung && s.penyiapan == null
+            ? 'unavailable'
+            : izinLokasi;
     // Per akun: ponsel bisa dipakai bergantian.
     final kunci = '$idPengguna:${s.setuju}:$izin';
-    if (kunci == _statusTerlapor) return;
+    if (kunci == _statusTerlapor && _statusTerlaporPada != null && DateTime.now().difference(_statusTerlaporPada!) < jedaLaporanStatus) return;
     try {
+      final versi = await (_versiAplikasi ??= _bacaVersi());
+      if (_dibuang || ref.read(penggunaProvider)?.id != idPengguna) return;
       await ref.read(repoPemantauanProvider).laporkanStatus(
             setuju: s.setuju!,
             izin: izin,
             platform: defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android',
+            versi: versi,
           );
       _statusTerlapor = kunci;
+      _statusTerlaporPada = DateTime.now();
     } catch (e) {
       debugPrint('Status pemantauan belum terlapor: $e');
     }

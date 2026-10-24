@@ -303,7 +303,7 @@ export const lamar = async (req: Request, res: Response) => {
       email: akun.email,
       phoneNumber: akun.phoneNumber,
       appliedPositionId: lowongan.id,
-      source: 'portal-karier',
+      source: input.source ?? 'portal-karier',
       status: 'applied',
       expectedSalary: input.expectedSalary ?? null,
       coverLetter: input.coverLetter ?? null,
@@ -437,4 +437,14 @@ export const fotoTes = async (req: Request, res: Response) => {
     if (e instanceof InvalidImageError) return res.status(400).json({ error: e.message });
     galatCbt(e, res);
   }
+};
+
+export const gambarSoalTes = async (req: Request, res: Response) => {
+  try {
+    const penugasan = await penugasanPelamar(req.params.id, req.pelamar!.id);
+    const question = penugasan.test.questions.find((q) => q.questionId === req.params.questionId)?.question;
+    if (!question?.imagePath) return res.status(404).json({ error: 'Gambar tidak ditemukan' });
+    const { kirimGambar } = await import('./cbtController');
+    await kirimGambar(res, question.imagePath, false);
+  } catch (e) { galatCbt(e, res); }
 };

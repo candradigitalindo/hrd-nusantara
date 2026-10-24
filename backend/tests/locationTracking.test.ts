@@ -4,6 +4,7 @@ import { DateTime } from 'luxon';
 import { prisma, resetDatabase, makeEmployee, tungguJejakAudit, TEST_TIMEZONE } from './helpers/db';
 import { login, auth } from './helpers/api';
 import { bikinApp } from './helpers/app';
+import { generateULID } from '../src/utils/generateULID';
 
 const app = bikinApp();
 
@@ -84,7 +85,7 @@ describe('Pemantauan Lokasi', () => {
     expect(b.last.latitude).toBe(-6.2);
     expect(b.status).toMatchObject({ permission: 'granted_always', platform: 'android' });
     expect(b.status.consentAt).toBeTruthy();
-    expect(s).toMatchObject({ last: null, status: null });
+    expect(s).toMatchObject({ last: null, status: null, currentAttendance: null });
     expect(await tungguJejakAudit({ action: 'lokasi.pantau.lihat' })).not.toBeNull();
   });
 
@@ -161,5 +162,61 @@ describe('Pemantauan Lokasi', () => {
     expect((await prisma.locationTrackingStatus.findUniqueOrThrow({ where: { employeeId: budi.id } })).consentAt).toEqual(awal);
     await kirim(false);
     expect((await prisma.locationTrackingStatus.findUniqueOrThrow({ where: { employeeId: budi.id } })).consentAt).toBeNull();
+  });
+
+  it.each(['notifications_denied', 'unavailable'])('menerima dan mengembalikan penghalang pemantauan %s tanpa menyimpulkan izin lokasi ditolak', async (permission) => {
+    const status = await request(app)
+      .put('/api/location-tracking/status')
+      .set(auth(tokenBudi))
+      .send({ consent: true, permission, platform: 'android' });
+    expect(status.status).toBe(204);
+    const res = await request(app).get('/api/location-tracking/latest').set(auth(pemilik));
+    const karyawan = res.body.data.find((d: { employee: { id: string } }) => d.employee.id === budi.id);
+    expect(karyawan.status.permission).toBe(permission);
+    expect(karyawan.status.consentAt).toBeTruthy();
+    expect(karyawan.last).toBeNull();
+  });
+
+  it('status klien lama tetap diterima dan kode penghalang tak dikenal ditolak', async () => {
+    for (const permission of ['granted_always', 'granted_while_in_use', 'denied', 'denied_forever', 'service_off']) {
+      const res = await request(app).put('/api/location-tracking/status').set(auth(tokenBudi)).send({ consent: true, permission });
+      expect(res.status).toBe(204);
+    }
+    expect((await request(app).put('/api/location-tracking/status').set(auth(tokenBudi)).send({ consent: true, permission: 'unknown_state' })).status).toBe(400);
+  });
+
+  it('presensi aktif memakai sesi terbaru kurang dari 16 jam, termasuk shift malam; tanggal peta tidak mengubahnya', async () => {
+    await aktifkan({ mode: 'while_working' });
+    const sudahPulang = await makeEmployee({ password: null });
+    const terlaluLama = await makeEmployee({ password: null });
+    const lupaPulang = await makeEmployee({ password: null });
+    const belumMulai = await makeEmployee({ password: null });
+    const sekarang = DateTime.now().setZone(TEST_TIMEZONE).startOf('day').plus({ hours: 2 });
+    const jam = (h: number) => sekarang.minus({ hours: h }).toJSDate();
+    const waktu = jest.spyOn(Date, 'now').mockReturnValue(sekarang.toMillis());
+    try {
+      await prisma.attendance.createMany({
+        data: [
+          { id: generateULID(), employeeId: budi.id, checkInTime: jam(8), checkInMethod: 'gps', status: 'present' },
+          { id: generateULID(), employeeId: budi.id, checkInTime: jam(4), checkInMethod: 'gps', status: 'present' },
+          { id: generateULID(), employeeId: sudahPulang.id, checkInTime: jam(4), checkOutTime: jam(1), checkInMethod: 'gps', status: 'present' },
+          { id: generateULID(), employeeId: terlaluLama.id, checkInTime: jam(16), checkInMethod: 'gps', status: 'present' },
+          { id: generateULID(), employeeId: lupaPulang.id, checkInTime: jam(4), checkInMethod: 'gps', status: 'no_checkout' },
+          { id: generateULID(), employeeId: belumMulai.id, checkInTime: jam(-1), checkInMethod: 'gps', status: 'present' },
+        ],
+      });
+      const tanggalLampau = sekarang.minus({ days: 2 }).toISODate();
+      const cari = (res: request.Response, id: string) => res.body.data.find((d: { employee: { id: string } }) => d.employee.id === id);
+      for (const akhir of ['', `?date=${tanggalLampau}`]) {
+        const res = await request(app).get(`/api/location-tracking/latest${akhir}`).set(auth(pemilik));
+        expect(res.status).toBe(200);
+        expect(cari(res, budi.id).currentAttendance).toEqual({ checkIn: jam(4).toISOString() });
+        for (const k of [sudahPulang, terlaluLama, lupaPulang, belumMulai]) {
+          expect(cari(res, k.id).currentAttendance).toBeNull();
+        }
+      }
+    } finally {
+      waktu.mockRestore();
+    }
   });
 });

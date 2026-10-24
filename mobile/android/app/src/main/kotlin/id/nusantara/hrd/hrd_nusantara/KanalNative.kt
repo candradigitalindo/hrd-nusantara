@@ -9,6 +9,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import com.baseflow.geolocator.GeolocatorLocationService
+import com.baseflow.geolocator.location.BackgroundNotification
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -23,6 +25,8 @@ object KanalNative {
     const val KANAL_PEMANTAUAN = "id.nusantara.hrd/pemantauan"
 
     fun pasang(app: Context, mesin: FlutterEngine) {
+        // Buat kanal sebelum Dart membaca izin; migrasi tidak mengaktifkan blokir pengguna.
+        BackgroundNotification.createChannel(app, GeolocatorLocationService.CHANNEL_ID, "Pemantauan lokasi")
         val pesan = mesin.dartExecutor.binaryMessenger
         val integritas = SinyalIntegritas(app)
         MethodChannel(pesan, KANAL_INTEGRITAS).setMethodCallHandler(integritas::tangani)
@@ -98,8 +102,14 @@ object KanalNative {
     private fun bebasPenghematBaterai(app: Context): Boolean =
         (app.getSystemService(Context.POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(app.packageName)
 
-    private fun notifikasiDiizinkan(app: Context): Boolean =
-        (app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).areNotificationsEnabled()
+    private fun notifikasiDiizinkan(app: Context): Boolean {
+        val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (!nm.areNotificationsEnabled()) return false
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+            nm.getNotificationChannel(GeolocatorLocationService.CHANNEL_ID)?.importance?.let {
+                it != NotificationManager.IMPORTANCE_NONE
+            } == true
+    }
 
     /**
      * Menampilkan dialog sistem "izinkan berjalan tanpa pembatasan baterai".
@@ -122,7 +132,14 @@ object KanalNative {
      */
     private fun bukaPengaturanNotifikasi(app: Context): Boolean {
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
+            val nm = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.areNotificationsEnabled()) {
+                Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, GeolocatorLocationService.CHANNEL_ID)
+            } else {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, app.packageName)
+            }
         } else {
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${app.packageName}"))
         }

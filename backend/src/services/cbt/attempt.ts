@@ -5,7 +5,7 @@
 // objek penugasan yang sama, jadi aturan mainnya hanya ditulis sekali di sini.
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
-import { prisma } from '../../lib/prisma';
+import { prisma, type PrismaTransactionClient } from '../../lib/prisma';
 import { generateULID } from '../../utils/generateULID';
 import { acak, bacaPilihan, dinilaiOtomatis, hitungNilai, jenisPaket, nilaiButir, petaNilaiSkala, pilihanTanpaNilai, sisaDetik, type JenisPaket } from '../../utils/cbt';
 
@@ -22,7 +22,7 @@ export const penugasanLengkap = {
 export type PenugasanLengkap = Prisma.CbtAssignmentGetPayload<typeof penugasanLengkap>;
 
 export class GalatCbt extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(readonly status: number, message: string, readonly code?: string) {
     super(message);
     this.name = 'GalatCbt';
   }
@@ -453,8 +453,8 @@ export const tutupPengerjaanKedaluwarsa = async (
 };
 
 /** Menghitung ulang nilai setelah penguji menilai esai. */
-export const hitungUlangNilai = async (attemptId: string, penilaiId: string) => {
-  const attempt = await prisma.cbtAttempt.findUnique({
+export const hitungUlangNilai = async (attemptId: string, penilaiId: string, tx: PrismaTransactionClient) => {
+  const attempt = await tx.cbtAttempt.findUnique({
     where: { id: attemptId },
     include: {
       answers: true,
@@ -474,8 +474,7 @@ export const hitungUlangNilai = async (attemptId: string, penilaiId: string) => 
   );
   const statusBaru = ringkasan.menungguPenilaian ? 'submitted' : 'graded';
 
-  await prisma.$transaction([
-    prisma.cbtAttempt.update({
+  await tx.cbtAttempt.update({
       where: { id: attemptId },
       data: {
         scoreObjective: ringkasan.objektif,
@@ -487,9 +486,8 @@ export const hitungUlangNilai = async (attemptId: string, penilaiId: string) => 
         gradedById: statusBaru === 'graded' ? penilaiId : null,
         gradedAt: statusBaru === 'graded' ? new Date() : null,
       },
-    }),
-    prisma.cbtAssignment.update({ where: { id: attempt.assignmentId }, data: { status: statusBaru } }),
-  ]);
+    });
+  await tx.cbtAssignment.update({ where: { id: attempt.assignmentId }, data: { status: statusBaru, reviewedAt: null, reviewedById: null } });
 
   return { status: statusBaru, nilai: ringkasan };
 };

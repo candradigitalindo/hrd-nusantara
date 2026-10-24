@@ -41,6 +41,21 @@ const envSchema = z.object({
 
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
 
+  // Job board resmi: isi setelah onboarding partner selesai. Tidak dikirim ke browser.
+  RECRUITMENT_PUBLIC_URL: z.preprocess(kosongBerartiTakDiisi, z.url().refine((v) => {
+    const u = new URL(v);
+    return u.protocol === 'https:' && !u.username && !u.password && u.pathname === '/' && !u.search && !u.hash;
+  }, 'RECRUITMENT_PUBLIC_URL harus berupa origin HTTPS tanpa path').optional()),
+  SEEK_CLIENT_ID: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
+  SEEK_CLIENT_SECRET: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
+  SEEK_HIRER_ID: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
+  SEEK_CONTACT_NAME: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
+  SEEK_CONTACT_EMAIL: z.preprocess(kosongBerartiTakDiisi, z.email().optional()),
+  LINKEDIN_CLIENT_ID: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
+  LINKEDIN_CLIENT_SECRET: z.preprocess(kosongBerartiTakDiisi, z.string().optional()),
+  LINKEDIN_COMPANY_ID: z.preprocess(kosongBerartiTakDiisi, z.string().regex(/^\d+$/).optional()),
+  LINKEDIN_API_VERSION: z.string().regex(/^\d{6}$/).default('202604'),
+
   /**
    * Berapa lapis proxy tepercaya di depan aplikasi.
    *

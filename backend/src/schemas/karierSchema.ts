@@ -36,6 +36,7 @@ export const gantiSandiPelamarSchema = z
 export const lamarSchema = z
   .object({
     jobPostingId: ulidField,
+    source: z.enum(['jobstreet', 'linkedin']).optional(),
     expectedSalary: z.coerce.number().min(0).max(1_000_000_000).nullable().optional(),
     coverLetter: z.string().trim().max(5000).nullable().optional(),
     /// Berkas CV sebagai data URI base64; server memeriksa jenisnya dari isi berkas.

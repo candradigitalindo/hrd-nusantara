@@ -34,6 +34,7 @@ import { Alert } from "@/components/ui/alert";
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatRupiah, formatTanggal, LABEL_TAHAP } from "@/lib/utils";
 import type { LamaranSaya, LowonganPublik, ProfilPelamar } from "@/lib/types";
+import { sumberRekrutmen } from "@/lib/sumber-rekrutmen";
 
 type Tab = "lamaran" | "lowongan" | "profil";
 
@@ -184,7 +185,7 @@ function IsiDashboard() {
     return (
       <div className="mx-auto max-w-md p-6">
         <Alert tone="danger" title="Sesi berakhir">Silakan masuk lagi untuk melihat lamaran Anda.</Alert>
-        <Link href="/karier/masuk"><Button className="mt-4 w-full">Masuk</Button></Link>
+        <Link href={`/karier/masuk?kembali=${encodeURIComponent(`/karier/dashboard?${params.toString()}`)}`}><Button className="mt-4 w-full">Masuk</Button></Link>
       </div>
     );
   }
@@ -299,13 +300,13 @@ function IsiDashboard() {
 
       {/* Dipasang hanya saat dibuka: satu kali pakai, isinya selalu mulai
           dari nol tanpa effect pereset. */}
-      {lamarUntuk && <DialogLamar key={lamarUntuk.id} lowongan={lamarUntuk} punyaCv={p.punyaCv} onClose={() => setLamarUntuk(null)} />}
+      {lamarUntuk && <DialogLamar key={lamarUntuk.id} lowongan={lamarUntuk} punyaCv={p.punyaCv} source={lamarUntuk.id === params.get("lamar") ? sumberRekrutmen(params.get("source")) : undefined} onClose={() => setLamarUntuk(null)} />}
     </div>
   );
 }
 
 /** Formulir lamaran: ekspektasi gaji, surat lamaran, dan CV. */
-const DialogLamar = ({ lowongan, punyaCv, onClose }: { lowongan: LowonganPublik; punyaCv: boolean; onClose: () => void }) => {
+const DialogLamar = ({ lowongan, punyaCv, source, onClose }: { lowongan: LowonganPublik; punyaCv: boolean; source?: "jobstreet" | "linkedin"; onClose: () => void }) => {
   const qc = useQueryClient();
   const [gaji, setGaji] = React.useState("");
   const [surat, setSurat] = React.useState("");
@@ -314,6 +315,7 @@ const DialogLamar = ({ lowongan, punyaCv, onClose }: { lowongan: LowonganPublik;
   const kirim = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = { jobPostingId: lowongan.id, situs: "" };
+      if (source) body.source = source;
       if (gaji) body.expectedSalary = Number(gaji);
       if (surat.trim()) body.coverLetter = surat.trim();
       if (berkas) {

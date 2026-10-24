@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch } from "react-hook-form";
 import { format, subMonths, startOfMonth } from "date-fns";
@@ -21,11 +22,12 @@ import { Pagination } from "@/components/ui/pagination";
 import { GrafikBatang } from "@/components/dashboard/grafik-batang";
 import { FormLowongan } from "@/components/rekrutmen/form-lowongan";
 import { PanelPelamar } from "@/components/rekrutmen/panel-pelamar";
+import { PanelIntegrasi } from "@/components/rekrutmen/panel-integrasi";
 import { formatTanggal, formatRupiah, labelStatus, LABEL_TAHAP, LABEL_EMPLOYMENT, LABEL_HASIL_WAWANCARA } from "@/lib/utils";
 import type { Halaman, Lowongan, Wawancara, CorongRekrutmen, StatusLowongan } from "@/lib/types";
 import { TeksKaya } from "@/components/ui/editor-teks";
 
-type Tab = "lowongan" | "pelamar" | "wawancara" | "corong";
+type Tab = "lowongan" | "pelamar" | "wawancara" | "corong" | "integrasi";
 type FormUmpan = { status: "completed" | "cancelled" | "no_show"; result: "pass" | "fail" | "hold" | ""; score: string; notes: string };
 
 const TRANSISI: Record<StatusLowongan, StatusLowongan[]> = { draft: ["open", "cancelled"], open: ["closed", "filled", "cancelled"], closed: ["open"], filled: [], cancelled: [] };
@@ -79,6 +81,7 @@ export default function HalamanRekrutmen() {
 
   const TABS: { id: Tab; label: string; hrSaja?: boolean }[] = [
     { id: "lowongan", label: "Lowongan" }, { id: "pelamar", label: "Pelamar", hrSaja: true }, { id: "wawancara", label: "Wawancara" }, { id: "corong", label: "Corong", hrSaja: true },
+    { id: "integrasi", label: "Integrasi Job Fair", hrSaja: true },
   ];
 
   return (
@@ -90,6 +93,7 @@ export default function HalamanRekrutmen() {
         {TABS.filter((t) => !t.hrSaja || hr).map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${tab === t.id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground"}`}>{t.label}</button>
         ))}
+        {hr && punyaIzin(saya, "cbt.buat", "cbt.ubah", "cbt.hapus", "cbt_soal.lihat", "cbt_soal.buat", "cbt_soal.ubah", "cbt_soal.hapus", "cbt_hasil.lihat") && <Link href="/rekrutmen/tes" className="whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium text-primary hover:bg-surface">Tes Seleksi →</Link>}
       </div>
 
       {tab === "lowongan" && (
@@ -140,6 +144,7 @@ export default function HalamanRekrutmen() {
       )}
 
       {tab === "pelamar" && hr && <PanelPelamar />}
+      {tab === "integrasi" && hr && <PanelIntegrasi />}
 
       {tab === "wawancara" && (
         <Card>

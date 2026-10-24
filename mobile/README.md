@@ -229,9 +229,12 @@ Setiap pembukaan peta atau riwayat seseorang tercatat di jejak audit.
 Di ponsel (`lib/fitur/pemantauan/`):
 
 - `PemantauLokasi` berjalan hanya bila pemantauan aktif, karyawan sudah
-  membaca pemberitahuan ("Saya mengerti"), dan izin lokasi diberikan.
+  menyetujui pengungkapan ("Setuju & lanjut"), dan izin lokasi diberikan.
+  Persetujuan versi sebelumnya tidak dipromosikan: karyawan menyetujui sekali
+  pengungkapan baru tentang pengiriman lokasi kepada perusahaan di latar.
+  Persetujuan disimpan per akun.
 - Di Android memakai layanan latar depan geolocator, dengan notifikasi tetap
-  "Pemantauan lokasi aktif" (izin `FOREGROUND_SERVICE_LOCATION`,
+  "Pemantauan lokasi aktif" yang senyap tanpa suara/getar/pop-up (izin `FOREGROUND_SERVICE_LOCATION`,
   `ACCESS_BACKGROUND_LOCATION`). Di iOS memakai mode latar `location` dan izin
   "Selalu".
 - Hanya satu titik per interval yang diambil. Titik disimpan terenkripsi di
@@ -239,8 +242,11 @@ Di ponsel (`lib/fitur/pemantauan/`):
   yang terkumpul saat offline terkirim begitu tersambung, dan server
   mengabaikan titik dobel.
 - Keadaan persetujuan dan izin dilaporkan ke `PUT /location-tracking/status`,
-  supaya Super Admin tahu kenapa seseorang tidak mengirim lokasi. Di ponsel,
-  karyawan diberi tahu lewat dialog "Akses Lokasi" (sekali, sampai disetujui
+  supaya Super Admin tahu kenapa seseorang tidak mengirim lokasi. Laporan
+  memuat versi aplikasi dan penghambat notifikasi/status native, disegarkan
+  saat berubah dan setiap 15 menit selama proses aplikasi hidup. Waktu laporan
+  status bukan bukti bahwa lokasi terbaru telah diterima. Di ponsel,
+  karyawan diberi tahu lewat dialog singkat "Pemantauan lokasi" (sekali, sampai disetujui
   atau ditunda) dan notifikasi tetap selama berjalan; layar Profil tidak
   memuat baris status pemantauan.
 - Agar tetap berjalan saat aplikasi ditutup (Android; kode native di
@@ -249,11 +255,10 @@ Di ponsel (`lib/fitur/pemantauan/`):
     `MainActivity.kt`). Mengusap aplikasi dari daftar aplikasi atau menekan
     Kembali dari layar awal tidak lagi menghentikan pengiriman; saat dibuka
     lagi, aplikasi mulai dari beranda.
-  - Sesudah persetujuan dan izin lokasi, dialog "Agar pemantauan tidak
-    terputus" menawarkan yang masih kurang: izin notifikasi, "tanpa pembatasan
-    baterai", dan lokasi "Izinkan sepanjang waktu" (di Android 11+ membuka
-    halaman izin aplikasi). Bila masih ada yang kurang, ditawarkan lagi paling
-    cepat 7 hari kemudian.
+  - Tidak ada popup tambahan "Pengaturan ponsel" atau pengingat penyiapannya.
+    Izin lokasi saat persetujuan/presensi dan izin notifikasi setelah login
+    menggunakan dialog bawaan sistem. Pengaturan baterai dan lokasi
+    "Izinkan sepanjang waktu" mengikuti pilihan pengguna di pengaturan ponsel.
   - Setelah ponsel dinyalakan ulang atau aplikasi diperbarui
     (`BootReceiver.kt`), pemantauan dinyalakan lagi tanpa membuka aplikasi —
     hanya bila izinnya "sepanjang waktu". Tanpa izin itu Android menolak
@@ -262,10 +267,21 @@ Di ponsel (`lib/fitur/pemantauan/`):
   - Pengingat "Pemantauan lokasi terhenti" (`AlarmPemantauan.kt`,
     `PengingatReceiver.kt`): alarm yang dipasang ulang setiap titik diterima.
     Bila tidak ada titik selama 1 jam (atau dua kali interval, mana yang lebih
-    lama), karyawan mendapat notifikasi untuk membuka aplikasi. Alarmnya tidak
+    lama), karyawan mendapat notifikasi senyap untuk membuka aplikasi. Alarmnya tidak
     presisi, jadi notifikasi bisa tiba hingga sekitar 45 menit setelah batas
     itu. Alarm dibatalkan bila pemantauan dihentikan dengan sengaja
     (dimatikan Super Admin, check-out pada mode "selama bekerja", keluar akun).
+- Kanal pemantauan memakai prioritas LOW yang tetap terlihat, tanpa bunyi,
+  getar, atau heads-up. Salinan `geolocator_android` 5.0.3 di `third_party/`
+  memperbaiki bawaan upstream NONE/HIGH; lihat `HRD_PATCH.md`. Kanal baru
+  mempertahankan blokir pengguna; pada Android 8/9 blokir lama yang ambigu
+  juga dipertahankan. Pengguna bisa mengaktifkannya lewat pengaturan kanal.
+  Pemantauan berhenti bila notifikasi aplikasi/kanalnya tidak diizinkan.
+- Manifest menyatakan `isMonitoringTool=enterprise_management`. Perubahan ini
+  memenuhi kebutuhan pengungkapan/notifikasi pada alur ini, bukan sertifikasi
+  lolos Play Store. Publikasi masih memerlukan kebijakan privasi, Data safety,
+  deklarasi izin lokasi/layanan latar depan, deskripsi pemantauan, dan peninjauan
+  izin lain (termasuk QUERY_ALL_PACKAGES dan pengecualian baterai) oleh Google.
 - Keterbatasan:
   - Sebagian ponsel menghentikan paksa aplikasi saat diusap dari daftar
     aplikasi (pengelola baterai bawaan merek). Penghentian paksa ikut menghapus
@@ -312,11 +328,11 @@ Izin yang benar-benar masuk ke APK (hasil merge manifest) dan gunanya:
 |---|---|---|
 | `ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION` | radius lokasi kerja saat presensi; pembanding lokasi jaringan untuk deteksi fake GPS | check-in/out pertama |
 | `CAMERA` | selfie verifikasi wajah, pindai QR, foto stempel ke grup WhatsApp | kamera dibuka pertama kali |
-| `ACCESS_BACKGROUND_LOCATION` | Pemantauan Lokasi saat aplikasi ditutup dan setelah ponsel restart ("Izinkan sepanjang waktu") | dialog penyiapan Pemantauan Lokasi |
+| `ACCESS_BACKGROUND_LOCATION` | Pemantauan Lokasi saat aplikasi ditutup dan setelah ponsel restart ("Izinkan sepanjang waktu") | melalui pengaturan izin lokasi Android |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_LOCATION` | layanan latar depan Pemantauan Lokasi | tidak ada dialog |
-| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | meminta aplikasi dikecualikan dari penghemat baterai agar Pemantauan Lokasi tidak dihentikan sistem (distribusi APK internal; bila ke Play Store harus dibenarkan atau dihapus) | dialog penyiapan Pemantauan Lokasi |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | jembatan native pengecualian penghemat baterai (distribusi APK internal; bila ke Play Store harus dibenarkan atau dihapus) | tidak diminta otomatis; pengguna mengatur baterai melalui pengaturan ponsel |
 | `RECEIVE_BOOT_COMPLETED` | menyalakan lagi Pemantauan Lokasi dan pengingatnya setelah ponsel restart | tidak ada dialog |
-| `POST_NOTIFICATIONS` (Android 13+) | push: presensi, cuti, sesi WhatsApp putus; notifikasi Pemantauan Lokasi dan pengingat "terhenti" | setelah login (bila Firebase aktif); dialog penyiapan Pemantauan Lokasi |
+| `POST_NOTIFICATIONS` (Android 13+) | push: presensi, cuti, sesi WhatsApp putus; notifikasi Pemantauan Lokasi dan pengingat "terhenti" | dialog bawaan sistem setelah login (bila Firebase aktif) |
 | `QUERY_ALL_PACKAGES` | mendeteksi aplikasi lokasi palsu yang terpasang (distribusi APK internal; bila ke Play Store harus dibenarkan atau dihapus) | tidak ada dialog |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `VIBRATE`, `WAKE_LOCK`, `c2dm.RECEIVE` | jaringan dan notifikasi (ditambahkan plugin) | tidak ada dialog |
 

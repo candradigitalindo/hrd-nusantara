@@ -123,7 +123,8 @@ export const getLatestLocations = async (req: Request, res: Response) => {
   const { date } = req.query as unknown as LatestQuery;
   const rentang = date ? businessDayRange(date, date, env.APP_TIMEZONE) : null;
   const tanggal = date ? date.toISOString().slice(0, 10) : null;
-  const [karyawan, terakhir, status, p, padaTanggal, jumlahPadaTanggal] = await Promise.all([
+  const sekarang = new Date(Date.now());
+  const [karyawan, terakhir, status, p, padaTanggal, jumlahPadaTanggal, presensiTerbuka] = await Promise.all([
     prisma.employee.findMany({
       where: { status: { in: [...ACTIVE_STATUSES] } },
       select: { id: true, nik: true, name: true, department: { select: { name: true } } },
@@ -145,11 +146,26 @@ export const getLatestLocations = async (req: Request, res: Response) => {
     rentang
       ? prisma.locationPing.groupBy({ by: ['employeeId'], where: { recordedAt: { gte: rentang.gte, lt: rentang.lt } }, _count: { _all: true } })
       : Promise.resolve([]),
+    // Sama dengan sesi terbuka yang diprioritaskan mobile: belum pulang,
+    // bukan lupa check-out, dan belum 16 jam. Shift lewat tengah malam tetap
+    // aktif. Ini keadaan sekarang, tidak mengikuti tanggal riwayat peta.
+    prisma.attendance.findMany({
+      where: {
+        checkOutTime: null,
+        status: { not: 'no_checkout' },
+        checkInTime: { gt: new Date(sekarang.getTime() - 16 * 60 * 60_000), lte: sekarang },
+        employee: { status: { in: [...ACTIVE_STATUSES] } },
+      },
+      select: { employeeId: true, checkInTime: true },
+      orderBy: { checkInTime: 'desc' },
+      distinct: ['employeeId'],
+    }),
   ]);
   const titikPer = new Map(terakhir.map((t) => [t.employeeId, t]));
   const statusPer = new Map(status.map((s) => [s.employeeId, s]));
   const titikTanggalPer = new Map(padaTanggal.map((t) => [t.employeeId, t]));
   const jumlahPer = new Map(jumlahPadaTanggal.map((j) => [j.employeeId, j._count._all]));
+  const presensiPer = new Map(presensiTerbuka.map((a) => [a.employeeId, a.checkInTime]));
 
   res.locals.audit = {
     action: 'lokasi.pantau.lihat',
@@ -164,6 +180,7 @@ export const getLatestLocations = async (req: Request, res: Response) => {
       return {
         employee: { id: k.id, nik: k.nik, name: k.name, department: k.department?.name ?? null },
         last: bentukTitik(titikPer.get(k.id)),
+        currentAttendance: presensiPer.has(k.id) ? { checkIn: presensiPer.get(k.id)! } : null,
         ...(tanggal ? { lastOnDate: bentukTitik(titikTanggalPer.get(k.id)), countOnDate: jumlahPer.get(k.id) ?? 0 } : {}),
         status: s ? { consentAt: s.consentAt, permission: s.permission, platform: s.platform, appVersion: s.appVersion, updatedAt: s.updatedAt } : null,
       };

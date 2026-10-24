@@ -92,10 +92,10 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
           permintaan = PermintaanAbsen(metode: metode, qrToken: token, catatan: _catatan.text, fotoStempelBase64: fotoStempel);
         case MetodeAbsen.gps:
         case MetodeAbsen.wajah:
-          setState(() => _langkah = 'Mengambil lokasi GPS…');
+          setState(() => _langkah = 'Memproses…');
           final posisi = await ambilPosisi();
           if (!mounted) return;
-          setState(() => _langkah = 'Memeriksa keaslian lokasi…');
+          setState(() => _langkah = 'Memproses…');
           final integritas = await periksaIntegritas(posisi);
           if (integritas.diblokir) {
             if (!mounted) return;
@@ -288,7 +288,7 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
         children: [
           Text(widget.pulang ? 'Check-out' : 'Check-in', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text('Pilih cara verifikasi. Lokasi dan waktu dicatat otomatis.', style: TextStyle(color: skema.onSurfaceVariant)),
+          Text('Pilih cara verifikasi.', style: TextStyle(color: skema.onSurfaceVariant)),
           const SizedBox(height: 16),
           if (_sedang != null)
             Container(
@@ -310,7 +310,7 @@ class _LayarAbsenState extends ConsumerState<LayarAbsen> {
                 KeadaanWajah.belum || KeadaanWajah.ditolak => 'Belum terdaftar — ketuk untuk mendaftar',
                 KeadaanWajah.menunggu => 'Menunggu persetujuan HR',
                 KeadaanWajah.nonaktif => 'Sedang dinonaktifkan — pakai GPS atau QR',
-                KeadaanWajah.terdaftar || null => 'Selfie + lokasi GPS. Paling kuat, dianjurkan.',
+                KeadaanWajah.terdaftar || null => 'Ambil selfie.',
               },
               warnaKeterangan: switch (keadaanWajah) {
                 KeadaanWajah.belum || KeadaanWajah.ditolak => warnaNada(Nada.peringatan, skema),

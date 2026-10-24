@@ -13,7 +13,7 @@ enum LangkahPenyiapan { notifikasi, baterai, sepanjangWaktu }
 class StatusPenyiapan {
   const StatusPenyiapan({required this.notifikasi, required this.penghematBaterai, this.jendelaBoot = false});
 
-  /// Notifikasi aplikasi diizinkan (di Android 13+ perlu persetujuan sendiri).
+  /// Notifikasi aplikasi dan kanal pemantauan diizinkan; Android 13+ meminta izin.
   final bool notifikasi;
 
   /// true = aplikasi dikecualikan dari pembatasan baterai — juga berarti

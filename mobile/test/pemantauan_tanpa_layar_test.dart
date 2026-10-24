@@ -68,7 +68,7 @@ void main() {
   });
 
   // Terakhir: tes ini mengubah status siklus menjadi resumed.
-  testWidgets('tanpa layar: dialog tidak tampil dan tidak dicatat sudah ditawarkan; tampil begitu aplikasi dibuka', (tester) async {
+  testWidgets('tanpa layar dan setelah dibuka: tidak ada popup penyiapan ponsel', (tester) async {
     expect(binding.lifecycleState, isNull, reason: 'prasyarat tes: belum ada status siklus');
     FlutterSecureStorage.setMockInitialValues({});
     ukuranPonsel(tester);
@@ -90,14 +90,15 @@ void main() {
     ));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    expect(find.text('Agar pemantauan tidak terputus'), findsNothing);
+    expect(find.text('Pengaturan ponsel'), findsNothing);
     final wadah = ProviderScope.containerOf(tester.element(find.byType(Scaffold)));
     expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isFalse, reason: 'belum ada yang melihat');
     expect(binding.lifecycleState, isNull);
 
     binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
-    expect(find.text('Agar pemantauan tidak terputus'), findsOneWidget);
-    expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isTrue);
+    expect(find.text('Pengaturan ponsel'), findsNothing);
+    expect(wadah.read(pemantauLokasiProvider).penyiapanDitunda, isFalse);
+    expect(kunciNavigatorAkar.currentState!.canPop(), isFalse);
   });
 }

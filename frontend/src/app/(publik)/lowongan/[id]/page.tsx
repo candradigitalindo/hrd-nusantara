@@ -5,8 +5,9 @@ import { ArrowLeft, Banknote, Building2, CalendarClock, MapPin, Users } from "lu
 import { TeksKaya } from "@/components/ui/editor-teks";
 import { formatRupiah, formatTanggal, LABEL_EMPLOYMENT } from "@/lib/utils";
 import { ALAMAT_SITUS, NAMA_PERUSAHAAN, ambilLowonganById } from "@/lib/karier-server";
+import { sumberRekrutmen } from "@/lib/sumber-rekrutmen";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ source?: string | string[] }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
@@ -31,8 +32,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** Rincian satu lowongan, lengkap dengan data terstruktur JobPosting. */
-export default async function HalamanRincianLowongan({ params }: Props) {
+export default async function HalamanRincianLowongan({ params, searchParams }: Props) {
   const { id } = await params;
+  const source = sumberRekrutmen((await searchParams).source);
+  const querySource = source ? `&source=${source}` : "";
   const l = await ambilLowonganById(id);
   if (!l) notFound();
 
@@ -121,13 +124,13 @@ export default async function HalamanRincianLowongan({ params }: Props) {
         <p className="mt-1 text-sm text-muted">Lamar lewat portal pelamar, dan pantau sendiri status seleksinya.</p>
         <div className="mt-5 flex flex-wrap justify-center gap-3">
           <Link
-            href={`/karier/daftar?lowongan=${l.id}`}
+            href={`/karier/daftar?lowongan=${l.id}${querySource}`}
             className="inline-flex h-12 items-center rounded-xl bg-primary px-6 text-base font-semibold text-on-primary hover:bg-primary-hover"
           >
             Lamar sekarang
           </Link>
           <Link
-            href={`/karier/masuk?kembali=${encodeURIComponent(`/karier/dashboard?lamar=${l.id}`)}`}
+            href={`/karier/masuk?kembali=${encodeURIComponent(`/karier/dashboard?lamar=${l.id}${querySource}`)}`}
             className="inline-flex h-12 items-center rounded-xl border border-border bg-surface px-6 text-base font-semibold hover:bg-surface-2"
           >
             Sudah punya akun

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { NAMA_COOKIE, NAMA_COOKIE_PELAMAR } from "@/lib/nama-cookie";
 
 /**
  * Pemeriksaan optimistis: halaman aplikasi butuh cookie sesi, halaman login
  * tidak. Keabsahan tokennya sendiri diputuskan backend pada setiap panggilan
  * API — di sini hanya mencegah orang tanpa sesi melihat kerangka halaman.
  */
-const NAMA_COOKIE = "hrd_sesi";
-const NAMA_COOKIE_PELAMAR = "hrd_pelamar";
 
 /**
  * Halaman yang memang untuk umum: landing, lowongan, unduhan aplikasi, ujian
@@ -41,7 +40,7 @@ export function proxy(req: NextRequest) {
   if (pathname.startsWith("/karier")) {
     if (adaSesiPelamar) return NextResponse.next();
     const ke = new URL("/karier/masuk", req.url);
-    ke.searchParams.set("kembali", pathname);
+    ke.searchParams.set("kembali", pathname + req.nextUrl.search);
     return NextResponse.redirect(ke);
   }
 

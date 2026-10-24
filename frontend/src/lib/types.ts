@@ -171,6 +171,9 @@ export interface PosisiKaryawan {
   /** Hanya bila diminta dengan ?date=: titik terakhir dan jumlah titik pada tanggal itu (WIB). */
   lastOnDate?: TitikPantauan | null;
   countOnDate?: number;
+  /** Presensi hari ini yang masih terbuka, terlepas dari tanggal riwayat yang dipilih. */
+  currentAttendance: { checkIn: string } | null;
+  /** permission juga dapat berupa notifications_denied atau unavailable; kode tak dikenal tetap ditampilkan sebagai belum diketahui. */
   status: { consentAt: string | null; permission: string | null; platform: string | null; appVersion: string | null; updatedAt: string } | null;
 }
 
@@ -716,7 +719,16 @@ export interface WawancaraRingkas {
   interviewerId: string;
 }
 
+export interface KesiapanSeleksi {
+  requiredCount: number;
+  completedCount: number;
+  reviewedCount: number;
+  ready: boolean;
+  reason: string | null;
+}
+
 export interface Kandidat {
+  selectionReadiness: KesiapanSeleksi;
   id: string;
   name: string;
   email: string;
@@ -1421,6 +1433,7 @@ export type TipeSoalCbt = "pilihan_ganda" | "banyak_jawaban" | "benar_salah" | "
 /** "kepribadian" bila seluruh butir paket bertipe skala: tanpa benar/salah, hasilnya profil per dimensi. */
 export type JenisPaketCbt = "pengetahuan" | "kepribadian";
 export type TingkatSoalCbt = "mudah" | "sedang" | "sulit";
+export type LingkupCbt = "recruitment" | "development";
 export type AudiensCbt = "karyawan" | "pelamar" | "keduanya";
 export type StatusPaketCbt = "draft" | "published" | "archived";
 export type StatusPenugasanCbt = "assigned" | "in_progress" | "submitted" | "graded" | "expired";
@@ -1433,6 +1446,7 @@ export interface PilihanSoal {
 }
 
 export interface SoalCbt {
+  scope: LingkupCbt | "shared";
   id: string;
   category: string;
   difficulty: TingkatSoalCbt;
@@ -1479,6 +1493,9 @@ export interface PaketCbtRinci extends PaketCbt {
 }
 
 export interface PenugasanCbt {
+  required: boolean;
+  reviewedAt: string | null;
+  reviewedBy: { id: string; name: string } | null;
   id: string;
   testId: string;
   status: StatusPenugasanCbt;
@@ -1493,6 +1510,7 @@ export interface PenugasanCbt {
   attempt: {
     id: string;
     startedAt: string;
+    updatedAt: string;
     submittedAt: string | null;
     autoSubmitted: boolean;
     scoreTotal: number | null;
@@ -1619,6 +1637,7 @@ export interface HasilCbtRinci {
   attempt: {
     id: string;
     startedAt: string;
+    updatedAt: string;
     deadlineAt: string;
     submittedAt: string | null;
     autoSubmitted: boolean;

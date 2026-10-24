@@ -10,6 +10,7 @@ import 'package:hrd_nusantara/core/api/klien_api.dart';
 import 'package:hrd_nusantara/core/api/status_jaringan.dart';
 import 'package:hrd_nusantara/core/penyimpanan/cache_lokal.dart';
 import 'package:hrd_nusantara/core/penyimpanan/penyimpanan_sesi.dart';
+import 'package:hrd_nusantara/fitur/auth/model_pengguna.dart';
 import 'package:hrd_nusantara/fitur/auth/sesi_provider.dart';
 import 'package:hrd_nusantara/fitur/pemantauan/layanan_pemantauan.dart';
 import 'package:hrd_nusantara/fitur/pemantauan/layar_pemantauan.dart';
@@ -193,7 +194,7 @@ void main() {
     expect(laporan.last, containsPair('permission', 'denied_forever'));
   });
 
-  testWidgets('dialog Akses Lokasi: teks absensi, lalu "Saya mengerti" menyetujui dan menjalankan pemantauan', (tester) async {
+  testWidgets('dialog menjelaskan pengiriman lokasi di latar; hanya persetujuan yang mengaktifkan pemantauan', (tester) async {
     ukuranPonsel(tester);
     const konfig = KonfigurasiPemantauan(aktif: true, selamaBekerja: false, intervalMenit: 15);
     await tester.pumpWidget(aplikasiUji(
@@ -202,22 +203,60 @@ void main() {
           body: Center(child: FilledButton(onPressed: () => tampilkanPemberitahuanPemantauan(context, ref), child: const Text('Buka pemberitahuan'))),
         ),
       ),
-      overrides: [pemantauLokasiProvider.overrideWith(() => PemantauTetap(const StatusPemantauan(konfigurasi: konfig, setuju: false, izin: 'granted_while_in_use')))],
+      overrides: [
+        penggunaProvider.overrideWithValue(pengguna),
+        pemantauLokasiProvider.overrideWith(() => PemantauTetap(const StatusPemantauan(konfigurasi: konfig, setuju: false, izin: 'granted_while_in_use'))),
+      ],
     ));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Buka pemberitahuan'));
     await tester.pumpAndSettle();
-    expect(find.text('Akses Lokasi'), findsOneWidget);
-    expect(find.textContaining('memastikan absensi dilakukan di lokasi kerja'), findsOneWidget);
-    expect(find.textContaining('pilih "Izinkan sepanjang waktu" bila tersedia'), findsOneWidget);
+    expect(find.text('Pemantauan lokasi'), findsOneWidget);
+    expect(find.textContaining('mengumpulkan dan mengirim lokasi Anda kepada perusahaan'), findsOneWidget);
+    expect(find.textContaining('termasuk saat aplikasi ditutup atau tidak digunakan'), findsOneWidget);
     await potret(tester, 'pemantauan-pemberitahuan');
 
-    await tester.tap(find.text('Saya mengerti'));
+    await tester.tap(find.text('Nanti'));
     await tester.pumpAndSettle();
-    expect(find.text('Akses Lokasi'), findsNothing);
+    final wadah = ProviderScope.containerOf(tester.element(find.byType(Scaffold)));
+    expect(wadah.read(pemantauLokasiProvider).setuju, isFalse);
+    expect(wadah.read(pemantauLokasiProvider).berjalan, isFalse);
+    await tester.tap(find.text('Buka pemberitahuan'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Setuju & lanjut'));
+    await tester.pumpAndSettle();
+    expect(find.text('Pemantauan lokasi'), findsNothing);
     final status = ProviderScope.containerOf(tester.element(find.byType(Scaffold))).read(pemantauLokasiProvider);
     expect(status.setuju, isTrue);
     expect(status.berjalan, isTrue);
+  });
+
+  testWidgets('jawaban dialog akun lama tidak menyetujui pemantauan akun pengganti', (tester) async {
+    ukuranPonsel(tester);
+    final akun = StateProvider<Pengguna?>((ref) => pengguna);
+    const lain = Pengguna(id: 'K9', nik: 'EMP-0009', nama: 'Rina', email: 'rina@contoh.id', peran: 'EMPLOYEE', status: 'active');
+    const konfig = KonfigurasiPemantauan(aktif: true, selamaBekerja: false, intervalMenit: 15);
+    await tester.pumpWidget(aplikasiUji(
+      Consumer(
+        builder: (context, ref, _) => Scaffold(
+          body: FilledButton(onPressed: () => tampilkanPemberitahuanPemantauan(context, ref), child: const Text('Buka pemberitahuan')),
+        ),
+      ),
+      overrides: [
+        penggunaProvider.overrideWith((ref) => ref.watch(akun)),
+        pemantauLokasiProvider.overrideWith(() => PemantauTetap(const StatusPemantauan(konfigurasi: konfig, setuju: false, izin: 'granted_always'))),
+      ],
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Buka pemberitahuan'));
+    await tester.pumpAndSettle();
+    final wadah = ProviderScope.containerOf(tester.element(find.byType(Scaffold)));
+    wadah.read(akun.notifier).state = lain;
+    await tester.pump();
+    await tester.tap(find.text('Setuju & lanjut'));
+    await tester.pumpAndSettle();
+    expect(wadah.read(pemantauLokasiProvider).setuju, isFalse);
+    expect(wadah.read(pemantauLokasiProvider).berjalan, isFalse);
   });
 }

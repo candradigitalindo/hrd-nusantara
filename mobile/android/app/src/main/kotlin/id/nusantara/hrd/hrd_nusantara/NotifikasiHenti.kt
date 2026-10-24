@@ -14,7 +14,8 @@ import android.os.Build
  * proses Dart sudah tidak ada.
  */
 object NotifikasiHenti {
-    private const val SALURAN = "pemantauan_terhenti"
+    private const val SALURAN = "pemantauan_terhenti_senyap_v2"
+    private const val SALURAN_LAMA = "pemantauan_terhenti"
     private const val ID = 7102
 
     private fun manajer(c: Context) = c.applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -23,7 +24,13 @@ object NotifikasiHenti {
         val c = context.applicationContext
         val nm = manajer(c)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val saluran = NotificationChannel(SALURAN, "Pemantauan terhenti", NotificationManager.IMPORTANCE_HIGH)
+            // Kanal lama memakai prioritas tinggi. Kanal baru senyap; pilihan
+            // pengguna yang memblokir pengingat tetap dihormati.
+            val diblokir = nm.getNotificationChannel(SALURAN_LAMA)?.importance == NotificationManager.IMPORTANCE_NONE
+            val saluran = NotificationChannel(SALURAN, "Pemantauan terhenti", if (diblokir) NotificationManager.IMPORTANCE_NONE else NotificationManager.IMPORTANCE_LOW)
+            saluran.setSound(null, null)
+            saluran.enableVibration(false)
+            saluran.setShowBadge(false)
             saluran.description = "Peringatan bila lokasi ponsel tidak terkirim lebih dari satu jam."
             nm.createNotificationChannel(saluran)
         }
@@ -51,10 +58,14 @@ object NotifikasiHenti {
             .setStyle(Notification.BigTextStyle().bigText(isi))
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_STATUS)
+            .setSound(null)
+            .setVibrate(null)
+            .setDefaults(0)
+            .setOnlyAlertOnce(true)
         if (tujuan != null) pembangun.setContentIntent(tujuan)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             @Suppress("DEPRECATION")
-            pembangun.setPriority(Notification.PRIORITY_HIGH)
+            pembangun.setPriority(Notification.PRIORITY_LOW)
         }
         try {
             nm.notify(ID, pembangun.build())

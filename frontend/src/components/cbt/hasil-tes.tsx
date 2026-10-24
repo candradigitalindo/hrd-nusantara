@@ -17,14 +17,16 @@ import { Pagination } from "@/components/ui/pagination";
 import { SkeletonBaris } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatTanggal, LABEL_STATUS_TES } from "@/lib/utils";
+import { BadgeTinjauanSeleksi } from "./tinjauan-seleksi";
 import { DaftarTautan } from "./tugaskan";
-import type { Halaman, PaketCbt, PenugasanCbt } from "@/lib/types";
+import { tautanHasilCbt } from "@/lib/lingkup-cbt";
+import type { LingkupCbt, Halaman, PaketCbt, PenugasanCbt } from "@/lib/types";
 
 /** Status yang belum menghasilkan jawaban: dipantau di sini, dibatalkan atau diberi tautan baru. */
 const BELUM_SELESAI = new Set(["assigned", "in_progress", "expired"]);
 
 /** Hasil semua peserta, pintu masuk ke penilaian esai dan bukti pengawasan, serta pemantauan penugasan. */
-export const HasilTes = () => {
+export const HasilTes = ({ scope }: { scope: LingkupCbt }) => {
   const qc = useQueryClient();
   const { data: saya } = useSesi();
   const bolehBatal = punyaIzin(saya, "cbt.ubah");
@@ -36,11 +38,11 @@ export const HasilTes = () => {
   const [tautan, setTautan] = React.useState<{ assignmentId: string; nama: string; token: string } | null>(null);
 
   const paket = useQuery({
-    queryKey: ["cbt", "paket"],
-    queryFn: async () => (await api.get<{ data: PaketCbt[] }>("/cbt/tes")).data.data,
+    queryKey: ["cbt", "paket", scope],
+    queryFn: async () => (await api.get<{ data: PaketCbt[] }>(`/cbt/tes?scope=${scope}`)).data.data,
   });
 
-  const params = new URLSearchParams({ page: String(page), limit: "20" });
+  const params = new URLSearchParams({ page: String(page), limit: "20", scope });
   if (testId) params.set("testId", testId);
   if (status) params.set("status", status);
 
@@ -53,9 +55,10 @@ export const HasilTes = () => {
   const nama = (a: PenugasanCbt) => a.employee?.name ?? a.candidate?.name ?? "Peserta";
 
   const batalkan = useMutation({
-    mutationFn: async (a: PenugasanCbt) => api.delete(`/cbt/penugasan/${a.id}`),
+    mutationFn: async (a: PenugasanCbt) => api.delete(`/cbt/penugasan/${a.id}?scope=${scope}`),
     onSuccess: (_, a) => {
       qc.invalidateQueries({ queryKey: ["cbt"] });
+      qc.invalidateQueries({ queryKey: ["kandidat"] });
       notifikasi.sukses("Penugasan dibatalkan", `${a.test.title} · ${nama(a)}`);
       setBatal(null);
     },
@@ -63,7 +66,7 @@ export const HasilTes = () => {
   });
 
   const buatTautan = useMutation({
-    mutationFn: async (a: PenugasanCbt) => (await api.post<{ assignmentId: string; token: string }>(`/cbt/penugasan/${a.id}/tautan`)).data,
+    mutationFn: async (a: PenugasanCbt) => (await api.post<{ assignmentId: string; token: string }>(`/cbt/penugasan/${a.id}/tautan?scope=${scope}`)).data,
     onSuccess: (d, a) => setTautan({ assignmentId: d.assignmentId, nama: nama(a), token: d.token }),
     onError: (e) => notifikasi.galat(e, "Tautan baru gagal dibuat"),
   });
@@ -82,6 +85,7 @@ export const HasilTes = () => {
         </div>
       ),
     },
+    ...(scope === "recruitment" ? [{ key: "review", header: "Tinjauan HR", cell: (a: PenugasanCbt) => <div className="space-y-1"><Badge tone={a.required ? "primary" : "neutral"}>{a.required ? "Wajib" : "Opsional"}</Badge><div><BadgeTinjauanSeleksi tugas={a} /></div></div> }] : []),
     { key: "tes", header: "Paket", cell: (a) => <span>{a.test.title}{a.test.kind === "kepribadian" && <Badge tone="info" className="ml-1.5">Kepribadian</Badge>}</span> },
     {
       key: "nilai",
@@ -148,7 +152,7 @@ export const HasilTes = () => {
         return (
           <div className="flex flex-wrap justify-end gap-1.5">
             {selesai && a.attempt && (
-              <Link href={`/cbt/hasil/${a.attempt.id}`}>
+              <Link href={tautanHasilCbt(scope, a.attempt.id)}>
                 <Button size="sm" variant="outline">
                   {a.status === "submitted" ? <ClipboardCheck className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
                   {a.status === "submitted" ? "Nilai" : "Lihat"}

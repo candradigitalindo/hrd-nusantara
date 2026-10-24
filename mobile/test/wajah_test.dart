@@ -331,10 +331,10 @@ void main() {
 
     testWidgets('terdaftar, atau status tidak terbaca (offline): keterangan seperti biasa', (tester) async {
       await bukaLembar(tester, statusTetap(jsonStatusWajah(terdaftar: true)));
-      expect(find.text('Selfie + lokasi GPS. Paling kuat, dianjurkan.'), findsOneWidget);
+      expect(find.text('Ambil selfie.'), findsOneWidget);
 
       await bukaLembar(tester, statusWajahProvider.overrideWith((ref) async => throw GalatApi('Tidak bisa terhubung ke server.')));
-      expect(find.text('Selfie + lokasi GPS. Paling kuat, dianjurkan.'), findsOneWidget);
+      expect(find.text('Ambil selfie.'), findsOneWidget);
     });
   });
 }

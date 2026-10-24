@@ -157,6 +157,7 @@ model Employee {
   cbtQuestions            CbtQuestion[]                   @relation("CbtQuestionAuthor")
   cbtTests                CbtTest[]                       @relation("CbtTestAuthor")
   cbtAssignments          CbtAssignment[]                 @relation("CbtPeserta")
+  cbtSelectionReviews     CbtAssignment[]                 @relation("CbtSelectionReviewer")
   cbtAssignedBy           CbtAssignment[]                 @relation("CbtAssigner")
   cbtGradedAttempts       CbtAttempt[]                    @relation("CbtGrader")
 
@@ -855,12 +856,37 @@ model JobPosting {
   createdBy   Employee    @relation(fields: [createdById], references: [id])
   createdById String
   candidates  Candidate[]
+  publications RecruitmentPublication[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
   @@index([positionId])
   @@index([status])
   @@index([createdById])
+}
+
+/// Pengiriman lowongan ke job board. Kredensial hanya berada di environment server.
+model RecruitmentPublication {
+  id           String @id
+  jobPostingId String
+  jobPosting   JobPosting @relation(fields: [jobPostingId], references: [id], onDelete: Cascade)
+  platform     String // jobstreet, linkedin
+  operation    String // CREATE, CLOSE
+  status       String // sending, pending, published, closed, failed, uncertain, processed
+  requestKey   String @unique
+  /// Snapshot tanpa kredensial: retry SEEK harus memakai input dan idempotencyId yang sama.
+  payload      Json
+  remoteId     String?
+  taskId       String?
+  remoteUrl    String?
+  error        String?
+  leaseUntil   DateTime?
+  checkedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([jobPostingId, platform])
+  @@index([status])
 }
 
 model PerformanceReview {
@@ -2332,6 +2358,10 @@ model MobileRelease {
 /// banyak paket tanpa disalin — menyalin berarti perbaikan kunci jawaban
 /// harus diulang di tiap salinan, dan cepat atau lambat ada yang terlewat.
 model CbtQuestion {
+  /// recruitment | development | shared (legacy materials only).
+  scope String @default("shared")
+
+  @@index([scope, isActive])
   id String @id
 
   /// Kategori yang diukur, mis. "Numerik", "Bahasa Inggris", "Higiene Dapur".
@@ -2483,6 +2513,13 @@ model CbtAssignment {
 
   assignedBy   Employee @relation("CbtAssigner", fields: [assignedById], references: [id])
   assignedById String
+
+  required Boolean @default(false)
+  reviewedAt DateTime?
+  reviewedBy Employee? @relation("CbtSelectionReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedById String?
+
+  @@index([candidateId, required])
 
   attempt CbtAttempt?
 
